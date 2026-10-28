@@ -38,6 +38,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     class Role(models.TextChoices):
         OWNER       = "owner",       "Pemilik Perusahaan"
         SUPER_ADMIN = "super_admin", "Super Admin"
+        EMPLOYEE    = "employee",    "Karyawan (login HP + PIN)"
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email      = models.EmailField(unique=True)
