@@ -6,6 +6,7 @@ from apps.sites.hr_views import ShiftDetailView, ShiftListView, SiteDetailView, 
 from apps.attendance.hr_views import DailyView, DayDetailView, DecideView, FixTimesView, ReviewQueueView, SelfieView
 from apps.payroll.views import OvertimeMonthView
 from apps.attendance.dashboard import SummaryView
+from apps.leave.hr_views import HrLeaveAttachmentView, HrLeaveBalanceView, HrLeaveDecideView, HrLeaveListView
 
 from .hr_views import EmployeeDetailView, EmployeeListView, EmployeeLoginView
 
@@ -29,4 +30,9 @@ urlpatterns = [
     path("overtime/",                          OvertimeMonthView.as_view(), name="hr-overtime"),
     # the Ringkasan dashboard in one call (G6)
     path("summary/",                           SummaryView.as_view(),     name="hr-summary"),
+    # cuti & izin (G7)
+    path("leave/",                             HrLeaveListView.as_view(),       name="hr-leave"),
+    path("leave/<uuid:pk>/decide/",            HrLeaveDecideView.as_view(),     name="hr-leave-decide"),
+    path("leave/<uuid:pk>/attachment/",        HrLeaveAttachmentView.as_view(), name="hr-leave-attachment"),
+    path("leave/balance/<uuid:employee_id>/",  HrLeaveBalanceView.as_view(),    name="hr-leave-balance"),
 ]
