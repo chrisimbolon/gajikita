@@ -116,3 +116,28 @@ class Outbox(TenantScopedModel):
         self.status = self.Status.FAILED
         self.last_error = error_message
         self.save(update_fields=["status", "attempts", "last_error"])
+
+
+class AuditEntry(TenantScopedModel):
+    """
+    One line in the audit log (G3, 28 Oct 2026): who changed what, when, and the
+    values before and after. Written by apps/core/audit.py record_audit().
+    """
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    actor       = models.ForeignKey("authentication.CustomUser", null=True, blank=True,
+                                    on_delete=models.SET_NULL, related_name="+")
+    action      = models.CharField(max_length=50, db_index=True)
+    target_type = models.CharField(max_length=60)
+    target_id   = models.CharField(max_length=64)
+    summary     = models.CharField(max_length=255)
+    data        = models.JSONField(encoder=DjangoJSONEncoder, default=dict, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name        = "Audit Log"
+        verbose_name_plural = "Audit Log"
+        ordering            = ["-created_at"]
+        indexes             = [models.Index(fields=["target_type", "target_id"])]
+
+    def __str__(self):
+        return f"{self.created_at:%Y-%m-%d %H:%M} {self.summary}"
