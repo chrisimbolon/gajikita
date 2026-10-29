@@ -62,6 +62,10 @@ class Employee(TenantScopedModel):
     base_rate       = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"),
                                           verbose_name="Tarif Dasar",
                                           help_text="Bulanan: gaji pokok sebulan. Harian: upah per hari.")
+    # G4a: overtime under PP 35/2021 uses gaji pokok + tunjangan tetap; managers are often not paid overtime.
+    fixed_allowance   = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"),
+                                            verbose_name="Tunjangan Tetap (sebulan)")
+    overtime_eligible = models.BooleanField(default=True, verbose_name="Berhak Upah Lembur")
     bank_name         = models.CharField(max_length=50, blank=True, default="", verbose_name="Bank")
     bank_account_no   = models.CharField(max_length=30, blank=True, default="", verbose_name="No. Rekening")
     bank_account_name = models.CharField(max_length=200, blank=True, default="", verbose_name="Nama Pemilik Rekening")
