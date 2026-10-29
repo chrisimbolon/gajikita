@@ -11,6 +11,7 @@ no clock-out...) and HR's decisions are added in G3.
 import os
 import uuid
 
+from django.conf import settings
 from django.db import models
 from django.db.models import Q
 
@@ -26,6 +27,17 @@ class AttendanceDay(TenantScopedModel):
     shift      = models.ForeignKey("sites.Shift", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     is_locked  = models.BooleanField(default=False, verbose_name="Terkunci",
                                      help_text="Dikunci setelah pay run disetujui.")
+    # HR's review (G3). hr_in / hr_out replace the taps when HR fixes the times.
+    hr_in         = models.DateTimeField(null=True, blank=True, verbose_name="Jam Masuk (koreksi HR)")
+    hr_out        = models.DateTimeField(null=True, blank=True, verbose_name="Jam Pulang (koreksi HR)")
+    decision      = models.CharField(max_length=10, blank=True, default="", verbose_name="Keputusan HR",
+                                     choices=[("approved", "Disetujui"), ("rejected", "Ditolak")])
+    decision_note = models.TextField(blank=True, default="", verbose_name="Catatan HR")
+    waive_late    = models.BooleanField(default=False, verbose_name="Terlambat dimaafkan")
+    overtime_approved_minutes = models.PositiveIntegerField(null=True, blank=True, verbose_name="Lembur Disetujui (menit)")
+    decided_by    = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name="+")
+    decided_at    = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
