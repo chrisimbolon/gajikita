@@ -1,24 +1,49 @@
 @import "tailwindcss";
 
+/* =============================================================================
+   GajiKita theme: Midnight + Marigold (chosen 28 Oct 2026, "Arah A").
+   Midnight = brand, headings, primary buttons, the sidebar.
+   Marigold = the ONE thing that matters on a screen (needs action, MASUK, net pay).
+   Status colours never change with the theme: green ok, amber check, red problem.
+
+   The old variable names (--rust, --paper, --workshop...) are kept and pointed
+   at the new palette, so every page built so far reskins without touching it.
+   ============================================================================= */
 :root {
-  --ink: #17181A;
-  --ink-soft: #3C3C38;
-  --paper: #EDEBE5;
-  --paper-2: #DCD8CD;
-  --paper-3: #F8F7F3;
-  --rust: #C1401C;
-  --rust-dark: #9A3116;
-  --rust-light: #F3D2C6;
-  --workshop: #2F4A3C;
-  --workshop-lt: #DCE7DC;
-  --steel: #5B6670;
-  --steel-lt: #8A929A;
-  --hazard: #E8A93B;
-  --hazard-dark: #B8811F;
-  --hazard-light: #F5E3C2;
-  --danger: #B23A2E;
-  --danger-light: #F3D9D4;
-  --line: rgba(23, 24, 26, 0.12);
+  /* the palette */
+  --midnight: #013D5A;
+  --midnight-deep: #012A3E;
+  --midnight-soft: #DCE8F0;
+  --action: #1F78A8;
+  --marigold: #F5A623;
+  --marigold-soft: #FDEFD6;
+  --marigold-ink: #7A4A00;
+  --on-dark-muted: #A9C3D2;
+  --font-display: var(--font-sans), "Plus Jakarta Sans", system-ui, sans-serif;
+
+  /* text and surfaces */
+  --ink: #0F2533;
+  --ink-soft: #2E4555;
+  --paper: #EEF3F7;          /* page background */
+  --paper-2: #E3EAF0;        /* quiet fills */
+  --paper-3: #FFFFFF;        /* cards */
+  --steel: #4F6372;          /* secondary text (5.9:1 on white) */
+  --steel-lt: #8A9BA8;
+  --line: rgba(1, 61, 90, 0.12);
+
+  /* primary = Midnight (old name: rust) */
+  --rust: #013D5A;
+  --rust-dark: #012A3E;
+  --rust-light: #DCE8F0;
+
+  /* status */
+  --workshop: #1E7F4F;       /* ok */
+  --workshop-lt: #DFF2E7;
+  --hazard: #F5A623;         /* check / marigold */
+  --hazard-dark: #8A4E00;
+  --hazard-light: #FDF0D9;
+  --danger: #B42318;         /* problem */
+  --danger-light: #FDE3E1;
 }
 
 * {
@@ -34,24 +59,27 @@ body {
 body {
   background: var(--paper);
   color: var(--ink);
-  font-family: "Work Sans", sans-serif;
+  font-family: var(--font-display);
   -webkit-font-smoothing: antialiased;
 }
 
 .display {
-  font-family: "Big Shoulders Display", sans-serif;
+  font-family: var(--font-display);
   font-weight: 800;
-  letter-spacing: -0.01em;
-  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  color: var(--midnight);
+  text-transform: none;
 }
 
+/* numbers and codes line up in tables */
 .mono {
-  font-family: "IBM Plex Mono", monospace;
+  font-family: var(--font-display);
+  font-variant-numeric: tabular-nums;
 }
 
-/* a {
-  color: inherit;
-} */
+a {
+  color: var(--action);
+}
 
 button {
   font-family: inherit;
@@ -83,18 +111,19 @@ textarea {
 
 .card {
   background: var(--paper-3);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  border: 1px solid #D5E0E8;
+  border-radius: 14px;
   padding: 24px;
 }
 
+/* primary button: Midnight (the class keeps its old name) */
 .btn-rust {
-  background: var(--rust);
-  color: var(--paper-3);
+  background: var(--midnight);
+  color: #FFFFFF;
   padding: 10px 18px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 14px;
-  border-radius: 5px;
+  border-radius: 10px;
   border: none;
   display: inline-flex;
   align-items: center;
@@ -103,65 +132,93 @@ textarea {
 }
 
 .btn-rust:hover {
-  background: var(--rust-dark);
+  background: var(--midnight-deep);
 }
 
 .btn-rust:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* the one big warm action (MASUK) */
+.btn-marigold {
+  background: var(--marigold);
+  color: var(--midnight);
+  padding: 10px 18px;
+  font-weight: 800;
+  font-size: 14px;
+  border-radius: 14px;
+  border: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: filter 0.15s ease;
+}
+
+.btn-marigold:hover {
+  filter: brightness(0.96);
+}
+
+.btn-marigold:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .btn-ghost {
-  background: transparent;
-  color: var(--ink);
+  background: #FFFFFF;
+  color: var(--midnight);
   padding: 9px 16px;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 14px;
-  border-radius: 5px;
-  border: 1.5px solid var(--ink);
-  transition: background 0.15s ease;
+  border-radius: 10px;
+  border: 1.5px solid #C9D7E1;
+  transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .btn-ghost:hover {
-  background: var(--ink);
-  color: var(--paper);
+  background: var(--midnight-soft);
+  border-color: var(--midnight);
+}
+
+.btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .input {
   width: 100%;
-  padding: 9px 12px;
-  border: 1.5px solid var(--line);
-  border-radius: 5px;
-  background: var(--paper-3);
+  padding: 10px 12px;
+  border: 1.5px solid #D5E0E8;
+  border-radius: 10px;
+  background: #FFFFFF;
   color: var(--ink);
   outline: none;
   transition: border-color 0.15s ease;
 }
 
 .input:focus {
-  border-color: var(--rust);
+  border-color: var(--action);
 }
 
 .label {
   display: block;
-  font-size: 12.5px;
-  font-weight: 600;
-  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--steel);
   margin-bottom: 6px;
   text-transform: uppercase;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.05em;
 }
 
 .pill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11.5px;
+  font-size: 12px;
   font-weight: 700;
   padding: 4px 10px;
   border-radius: 999px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+  white-space: nowrap;
 }
 
 .pill .dot {
@@ -173,7 +230,7 @@ textarea {
 
 .pill.ok {
   background: var(--workshop-lt);
-  color: var(--workshop);
+  color: #1E6B44;
 }
 
 .pill.soon {
@@ -182,8 +239,8 @@ textarea {
 }
 
 .pill.due {
-  background: var(--rust-light);
-  color: var(--rust-dark);
+  background: var(--danger-light);
+  color: #A3261C;
 }
 
 .data-table {
@@ -194,27 +251,39 @@ textarea {
 .data-table th {
   text-align: left;
   font-size: 11.5px;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--steel);
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: 10px 14px;
-  border-bottom: 1.5px solid var(--line);
+  letter-spacing: 0.05em;
+  padding: 12px 16px;
+  border-bottom: 1px solid #E6EDF2;
 }
 
 .data-table td {
-  padding: 14px;
-  border-bottom: 1px solid var(--line);
+  padding: 13px 16px;
+  border-bottom: 1px solid #E6EDF2;
   font-size: 14px;
   vertical-align: middle;
 }
 
 .data-table tr:hover td {
-  background: var(--paper);
+  background: #F6F9FB;
+}
+
+/* Icons sit in the text line. Tailwind's base styles make every svg a block,
+   which pushed icons onto their own line (e.g. the pin on the Absen page). */
+svg.lucide {
+  display: inline-block;
+}
+
+/* Leaflet map tiles must not be squeezed by Tailwind's img max-width rule. */
+.leaflet-container img {
+  max-width: none !important;
+  max-height: none !important;
 }
 
 :focus-visible {
-  outline: 2.5px solid var(--rust);
+  outline: 2.5px solid var(--action);
   outline-offset: 2px;
 }
 
