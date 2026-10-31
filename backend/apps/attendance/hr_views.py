@@ -36,9 +36,10 @@ from .geofence import FLAG_LABELS
 from .models import AttendanceDay, ClockEvent
 from .review import evaluate, evaluate_missing, row
 from apps.payroll.services import day_overtime
+from apps.leave.services import approved_leave_on
 
 # The counters across the top of the daily page, in order (Talenta-style).
-COUNTERS = ["on_time", "late", "early_out", "no_clock_out", "working", "absent", "not_yet", "day_off",
+COUNTERS = ["on_time", "late", "early_out", "no_clock_out", "working", "absent", "leave", "not_yet", "day_off",
             "day_off_work", "rejected"]
 LOCKED = "Hari ini sudah dikunci karena sudah masuk pay run."
 
@@ -66,12 +67,14 @@ def _employees_on(org, day):
 def daily_rows(org, day, now):
     """Every active employee's row for one date (shared by the daily page and the dashboard)."""
     days = {d.employee_id: d for d in _days_qs(org).filter(date=day)}
+    leaves = approved_leave_on(org, day)          # G7: approved cuti / sakit / izin that day
     rows = []
     for emp in _employees_on(org, day):
         d = days.pop(emp.id, None)
-        rows.append(row(emp, day, d, evaluate(d, now) if d else evaluate_missing(emp, day, now)))
+        leave = leaves.get(emp.id, "")
+        rows.append(row(emp, day, d, evaluate(d, now, leave=leave) if d else evaluate_missing(emp, day, now, leave=leave)))
     for d in days.values():            # taps from someone no longer listed (resigned since)
-        rows.append(row(d.employee, day, d, evaluate(d, now)))
+        rows.append(row(d.employee, day, d, evaluate(d, now, leave=leaves.get(d.employee_id, ""))))
     return rows
 
 
