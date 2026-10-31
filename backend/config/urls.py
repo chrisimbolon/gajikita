@@ -13,6 +13,9 @@ urlpatterns = [
     path("api/health/",        HealthView.as_view(), name="health"),
     path("api/auth/",          include("apps.authentication.urls")),
     path("api/organizations/", include("apps.organizations.urls")),
+    path("api/attendance/",    include("apps.attendance.urls")),
+    path("api/worker/",        include("apps.employees.urls")),
+    path("api/hr/",            include("apps.employees.hr_urls")),
 ]
 
 if settings.DEBUG:
