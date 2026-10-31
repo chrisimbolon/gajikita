@@ -38,13 +38,14 @@ class Status:
     DAY_OFF_WORK = "day_off_work"   # came in on a day off
     REJECTED     = "rejected"       # HR rejected the day: counts as not worked
     PRESENT      = "present"        # came in, no shift to measure against
+    LEAVE        = "leave"          # approved cuti / sakit / izin (G7)
 
 
 STATUS_LABELS = {
     Status.NOT_YET: "Belum masuk", Status.WORKING: "Sedang bekerja", Status.ON_TIME: "Tepat waktu",
     Status.LATE: "Terlambat", Status.EARLY_OUT: "Pulang cepat", Status.NO_CLOCK_OUT: "Tidak absen pulang",
     Status.ABSENT: "Tidak hadir", Status.DAY_OFF: "Libur", Status.DAY_OFF_WORK: "Masuk di hari libur",
-    Status.REJECTED: "Ditolak HR", Status.PRESENT: "Hadir",
+    Status.REJECTED: "Ditolak HR", Status.PRESENT: "Hadir", Status.LEAVE: "Cuti / izin",
 }
 
 # Which status is shown first when a day has several (late AND early out, say).
@@ -85,9 +86,12 @@ class DayResult:
     flags: list = field(default_factory=list)          # flags from the taps (outside site, low accuracy...)
     review_reasons: list = field(default_factory=list)  # plain words for HR
     needs_review: bool = False
+    leave: str = ""                                    # the approved leave that day, e.g. "Sakit" (G7)
 
     @property
     def label(self):
+        if self.status == Status.LEAVE and self.leave:
+            return self.leave
         return STATUS_LABELS.get(self.status, self.status)
 
 
@@ -96,7 +100,7 @@ def _minutes(delta):
 
 
 def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision="", waive_late=False,
-                 overtime_approved=None):
+                 overtime_approved=None, leave=""):
     """
     day      the working date (a night shift belongs to the date it started)
     shift    ShiftInfo or None
@@ -105,6 +109,7 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     tz       the company's timezone (tzinfo), e.g. ZoneInfo("Asia/Jakarta")
     hr_in / hr_out   HR's corrected clock-in / clock-out (aware), override the taps
     decision         "" (not reviewed) | "approved" | "rejected"
+    leave            the approved leave that day ("Sakit", "Cuti tahunan"...), "" if none (G7)
     """
     taps = sorted(taps, key=lambda t: t.at)
     flags = list(dict.fromkeys(f for t in taps for f in t.flags))
@@ -131,6 +136,8 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     if first_in is None:
         if not working_day:
             return DayResult(status=Status.DAY_OFF, tags=[Status.DAY_OFF])
+        if leave:                    # approved leave: not absent, and nothing for HR to look at
+            return DayResult(status=Status.LEAVE, tags=[Status.LEAVE], leave=leave)
         if start_dt is not None:
             not_started = now < start_dt + timedelta(minutes=shift.grace_minutes)
         else:
@@ -196,6 +203,9 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
         reasons.append(f"Lembur {result.overtime_proposed_minutes} menit menunggu persetujuan")
     if Status.DAY_OFF_WORK in tags:
         reasons.append("Masuk di hari libur")
+    if leave and working_day:
+        result.leave = leave
+        reasons.append(f"Masuk padahal {leave.lower()}")
     result.review_reasons = reasons
     result.needs_review = bool(reasons) and decision != "approved"
     return result
