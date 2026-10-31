@@ -22,19 +22,19 @@ def taps_of(day):
             for e in day.events.all()]
 
 
-def evaluate(day, now=None, shift=None):
+def evaluate(day, now=None, shift=None, leave=""):
     shift = shift or day.shift or day.employee.default_shift
     return evaluate_day(
         day.date, shift_info(shift), taps_of(day), now or timezone.now(), timezone.get_current_timezone(),
         hr_in=day.hr_in, hr_out=day.hr_out, decision=day.decision, waive_late=day.waive_late,
-        overtime_approved=day.overtime_approved_minutes,
+        overtime_approved=day.overtime_approved_minutes, leave=leave,
     )
 
 
-def evaluate_missing(employee, date, now=None):
+def evaluate_missing(employee, date, now=None, leave=""):
     """A day with no taps at all (absent, not yet, or a day off)."""
     return evaluate_day(date, shift_info(employee.default_shift), [], now or timezone.now(),
-                        timezone.get_current_timezone())
+                        timezone.get_current_timezone(), leave=leave)
 
 
 def _t(dt):
@@ -47,7 +47,8 @@ def row(employee, date, day, result):
         "date": date.isoformat(),
         "day_id": str(day.id) if day else None,
         "status": result.status,
-        "status_label": STATUS_LABELS.get(result.status, result.status),
+        "status_label": result.label,          # "Sakit", "Cuti tahunan"... for approved leave (G7)
+        "leave": result.leave,
         "tags": result.tags,
         "first_in": _t(result.first_in),
         "last_out": _t(result.last_out),
