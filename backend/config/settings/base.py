@@ -37,6 +37,11 @@ LOCAL_APPS = [
     "apps.authentication",
     "apps.organizations",
     "apps.core",
+    "apps.sites",
+    "apps.employees",
+    "apps.attendance",
+    "apps.payroll",
+    "apps.leave",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -89,7 +94,7 @@ USE_TZ        = True
 STATIC_URL  = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STORAGES = {
-    # Local disk for now. Passports and attachments move to a PRIVATE
+    # Local disk for now. Selfies and attachments move to a PRIVATE
     # DigitalOcean Spaces bucket before real data (Design v0.1) — a settings
     # change only, the code stays the same.
     "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
