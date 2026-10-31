@@ -9,7 +9,7 @@ export default function Home() {
   const { user, loading } = useAuth();
   const router = useRouter();
   useEffect(() => {
-    if (!loading) router.replace(user ? "/dashboard" : "/login");
+    if (!loading) router.replace(!user ? "/login" : user.role === "employee" ? "/absen" : "/dashboard");
   }, [loading, user, router]);
   return (
     <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--steel)" }}>
