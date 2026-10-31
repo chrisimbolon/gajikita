@@ -17,13 +17,14 @@ from apps.employees.models import Employee
 from apps.organizations.permissions import IsCompanyHR
 from apps.payroll.views import overtime_month
 from apps.sites.models import Site
+from apps.leave.models import LeaveRequest
 
 from .hr_views import daily_counters, daily_rows, review_rows, review_summary
 
 TODAY_LIMIT = 8
 # Problems first, then people still expected, then the fine ones.
 _ORDER = {"no_clock_out": 0, "absent": 1, "late": 2, "early_out": 3, "rejected": 4, "day_off_work": 5,
-          "not_yet": 6, "working": 7, "on_time": 8, "present": 8, "day_off": 9}
+          "not_yet": 6, "working": 7, "on_time": 8, "present": 8, "leave": 9, "day_off": 9}
 
 
 class SummaryView(APIView):
@@ -58,4 +59,6 @@ class SummaryView(APIView):
             "today": rows[:TODAY_LIMIT],
             "today_total": len(rows),
             "overtime": {"month": ot["month"], **ot["totals"], "sites": top},
+            "leave": {"pending": LeaveRequest.objects.filter(organization=org, status=LeaveRequest.Status.PENDING).count(),
+                      "today": counts.get("leave", 0)},
         })
