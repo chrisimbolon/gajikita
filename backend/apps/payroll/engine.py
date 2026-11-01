@@ -88,6 +88,8 @@ class EmployeeTerms:
     monthly_extras: tuple = ()               # Extra, paid every period (e.g. Insentif BPJS Kesehatan)
     overtime_eligible: bool = True
     bpjs_tk: bool = True                     # enrolled in BPJS Ketenagakerjaan (JHT, JKK, JKM)
+    overtime_basis: Decimal = None           # PP 35 monthly wage when it isn't pokok + tunjangan (daily workers)
+    check_minimum_wage: bool = True          # off for daily and piece-rate workers (G8b)
 
 
 @dataclass(frozen=True)
@@ -175,7 +177,8 @@ def _pp35_amount(days, basis, rules):
 def calculate(terms, period, rules):
     slip = Payslip()
     base = D(terms.base_salary)
-    basis = base + D(terms.fixed_allowance)
+    monthly_wage = base + D(terms.fixed_allowance)
+    basis = D(terms.overtime_basis) if terms.overtime_basis is not None else monthly_wage
 
     def earn(code, label, amount, **kw):
         amount = rupiah(amount)
@@ -254,8 +257,8 @@ def calculate(terms, period, rules):
     for x in period.deductions:
         deduct(x.code, x.label, x.amount, quantity=x.quantity, unit=x.unit, rate=x.rate)
 
-    if rules.minimum_wage and basis < D(rules.minimum_wage):
-        slip.warnings.append(f"Gaji pokok + tunjangan tetap Rp {basis:,.0f} di bawah UMK "
+    if terms.check_minimum_wage and rules.minimum_wage and monthly_wage < D(rules.minimum_wage):
+        slip.warnings.append(f"Gaji pokok + tunjangan tetap Rp {monthly_wage:,.0f} di bawah UMK "
                              f"Rp {D(rules.minimum_wage):,.0f}".replace(",", "."))
 
     slip.gross = sum((l.amount for l in slip.earnings), ZERO)
@@ -264,3 +267,33 @@ def calculate(terms, period, rules):
     if slip.net < 0:
         slip.warnings.append("Potongan lebih besar dari penghasilan: gaji bersih minus.")
     return slip
+
+
+# ── pay periods ──
+
+def _clamp(year, month, day):
+    from calendar import monthrange
+    return Date(year, month, min(day, monthrange(year, month)[1]))
+
+
+def period_for(year, month, start_day):
+    """
+    The period that ENDS in this month. start_day 26: October = 26 Sep - 25 Oct.
+    start_day 1: October = 1 - 31 Oct.
+    """
+    from datetime import timedelta
+    if start_day <= 1:
+        return Date(year, month, 1), _clamp(year, month, 31)
+    prev_year, prev_month = (year - 1, 12) if month == 1 else (year, month - 1)
+    start = _clamp(prev_year, prev_month, start_day)
+    end = _clamp(year, month, start_day) - timedelta(days=1)
+    return start, end
+
+
+def pay_date_for(period_end, pay_day):
+    """The first date after the period's end that falls on pay_day (end 25 Oct, pay day 5 -> 5 Nov)."""
+    candidate = _clamp(period_end.year, period_end.month, pay_day)
+    if candidate > period_end:
+        return candidate
+    year, month = (period_end.year + 1, 1) if period_end.month == 12 else (period_end.year, period_end.month + 1)
+    return _clamp(year, month, pay_day)
