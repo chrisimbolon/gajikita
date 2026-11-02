@@ -128,6 +128,9 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     if first_in and last_out and last_out < first_in:
         last_out = None
 
+    if decision == "rejected" and leave and working_day:
+        # G9b: HR rejected the taps on a leave day ("salah tap"): the day goes back to the leave
+        return DayResult(status=Status.LEAVE, tags=[Status.LEAVE], leave=leave)
     if decision == "rejected":
         return DayResult(status=Status.REJECTED, tags=[Status.REJECTED], first_in=first_in, last_out=last_out,
                          flags=flags)
@@ -150,18 +153,22 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     tags = []
     if not working_day:
         tags.append(Status.DAY_OFF_WORK)
+    # G9b: on an approved leave day there is nothing to fine (late, early, no clock-out);
+    # HR is asked about the day instead ("Masuk padahal cuti").
+    on_leave = bool(leave) and working_day
 
     if start_dt is not None and working_day:
         late = _minutes(first_in - start_dt)
         if late > shift.grace_minutes:
             result.late_minutes = late
-            if not waive_late:
+            if not waive_late and not on_leave:
                 tags.append(Status.LATE)
 
     if last_out is None:
         expected_end = end_dt if (end_dt is not None and working_day) else first_in + timedelta(hours=NO_SHIFT_DAY_HOURS)
         if now > expected_end + timedelta(hours=NO_CLOCK_OUT_AFTER_HOURS):
-            tags.append(Status.NO_CLOCK_OUT)
+            if not on_leave:
+                tags.append(Status.NO_CLOCK_OUT)
         else:
             tags.append(Status.WORKING)
     else:
@@ -170,7 +177,8 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
             early = _minutes(end_dt - last_out)
             if early > 0:
                 result.early_minutes = early
-                tags.append(Status.EARLY_OUT)
+                if not on_leave:
+                    tags.append(Status.EARLY_OUT)
             overtime = _minutes(last_out - end_dt)
         else:
             overtime = result.worked_minutes if not working_day else 0
