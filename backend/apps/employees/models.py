@@ -50,6 +50,7 @@ class Employee(TenantScopedModel):
     id              = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     employee_no     = models.CharField(max_length=30, verbose_name="No. Karyawan")
     full_name       = models.CharField(max_length=200, verbose_name="Nama Lengkap")
+    position        = models.CharField(max_length=100, blank=True, default="", verbose_name="Jabatan")  # G8b part 2
     nik             = models.CharField(max_length=16, blank=True, default="", verbose_name="NIK (KTP)")
     npwp            = models.CharField(max_length=20, blank=True, default="", verbose_name="NPWP")
     ptkp_status     = models.CharField(max_length=4, choices=PTKP.choices, default=PTKP.TK0, verbose_name="Status PTKP")
@@ -66,12 +67,17 @@ class Employee(TenantScopedModel):
     fixed_allowance   = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"),
                                             verbose_name="Tunjangan Tetap (sebulan)")
     overtime_eligible = models.BooleanField(default=True, verbose_name="Berhak Upah Lembur")
+    bpjs_tk_enrolled  = models.BooleanField(default=True, verbose_name="Terdaftar BPJS Ketenagakerjaan")  # G8b
     bank_name         = models.CharField(max_length=50, blank=True, default="", verbose_name="Bank")
     bank_account_no   = models.CharField(max_length=30, blank=True, default="", verbose_name="No. Rekening")
     bank_account_name = models.CharField(max_length=200, blank=True, default="", verbose_name="Nama Pemilik Rekening")
     bpjs_kesehatan_no = models.CharField(max_length=20, blank=True, default="", verbose_name="No. BPJS Kesehatan")
     bpjs_tk_no        = models.CharField(max_length=20, blank=True, default="", verbose_name="No. BPJS Ketenagakerjaan")
     phone             = models.CharField(max_length=20, blank=True, default="", verbose_name="No. HP")
+    # G9: the employee's ID on the fingerprint machine (links imported taps), and the end of probation
+    fingerprint_id     = models.CharField(max_length=30, blank=True, default="", db_index=True,
+                                          verbose_name="ID Mesin Fingerprint")
+    probation_end_date = models.DateField(null=True, blank=True, verbose_name="Tanggal Lolos Magang / Probation")
 
     sites         = models.ManyToManyField(Site, blank=True, related_name="employees", verbose_name="Lokasi Kerja")
     default_site  = models.ForeignKey(Site, null=True, blank=True, on_delete=models.SET_NULL,
