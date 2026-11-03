@@ -67,7 +67,8 @@ class EmployeeImportTests(APITestCase):
         rows = {r["employee_no"]: r for r in resp.data["rows"] if r["employee_no"]}
         self.assertEqual(rows["DK-001"]["changes"], [{"field": "Jabatan", "old": "-", "new": "Kepala Plant"}])
         self.assertIn("Wajib diisi untuk karyawan baru: Tanggal Masuk", rows["DK-003"]["errors"])
-        self.assertIn("Shift \"Malam\" belum ada di GajiKita; dikosongkan", rows["DK-003"]["warnings"])
+        self.assertIn("Shift \"Malam\" belum ada; dikosongkan. Pilih di \"Isi yang belum dikenali\" di atas, "
+                      "atau buat dulu di menu Shift.", rows["DK-003"]["warnings"])
         self.assertEqual(rows["DK-004"]["errors"], ["ID fingerprint 26 sudah dipakai karyawan DK-001"])
         self.assertEqual(Employee.objects.count(), 1)
 
