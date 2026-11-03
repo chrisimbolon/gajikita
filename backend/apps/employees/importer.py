@@ -56,7 +56,8 @@ REQUIRED_NEW = [f for f, _, req, _ in TEMPLATE_COLUMNS if req]
 # other titles HR files often use for the same column
 ALIASES = {
     "employee_no": ["nokaryawan", "noinduk", "nip", "idkaryawan", "nopegawai", "employeeno", "employeeid", "nikkaryawan"],
-    "full_name": ["nama", "namalengkap", "namakaryawan", "namalengkapsesuaiktp", "name", "fullname"],
+    "full_name": ["nama", "namalengkap", "namakaryawan", "namalengkapsesuaiktp", "namalengkapktp", "namaktp",
+                  "namasesuaiktp", "name", "fullname"],
     "position": ["jabatan", "posisi", "position"],
     "nik": ["nik", "nikktp", "noktp", "ktp"],
     "npwp": ["npwp"],
@@ -64,7 +65,8 @@ ALIASES = {
     "join_date": ["tanggalmasuk", "tglmasuk", "joindate", "mulaikerja", "tanggalbergabung"],
     "probation_end_date": ["tanggallolosmagangprobation", "tgllolosmagang", "lolosmagang", "akhirprobation", "tanggallolosmagang"],
     "end_date": ["tanggalkeluar", "tglkeluar", "enddate", "tanggalresign"],
-    "employment_type": ["jenishubungankerja", "statuskaryawan", "statuskerja", "jeniskaryawan"],
+    "employment_type": ["jenishubungankerja", "hubungankerja", "statushubungankerja", "statuskaryawan", "statuskerja",
+                        "jeniskaryawan", "statuspegawai"],
     "pay_type": ["jenisupah", "sistemupah"],
     "base_rate": ["gajipokokupahrp", "gajipokok", "upah", "basicsalary", "gapok", "upahrp", "gajipokokrp"],
     "fixed_allowance": ["tunjangantetaprp", "tunjangantetap", "tunjangan"],
@@ -79,7 +81,8 @@ ALIASES = {
     "fingerprint_id": ["idmesinfingerprint", "idfingerprint", "idmesin", "idfinger", "fingerprintid", "acno"],
     "shift": ["shift", "shiftutama"],
     "site": ["lokasiutama", "lokasi", "site"],
-    "mandor": ["nokaryawanatasanmandor", "atasan", "mandor", "noatasan"],
+    "mandor": ["nokaryawanatasanmandor", "atasanmandor", "mandoratasan", "noatasanmandor", "atasan", "mandor",
+               "noatasan", "nomandor"],
 }
 
 PTKP = ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3"]
@@ -110,7 +113,8 @@ def match_columns(header):
             by_key.setdefault(n, f)
     out, used = {}, set()
     for i, h in enumerate(header):
-        f = by_key.get(key(h))
+        # G9c: "Nama Lengkap (KTP)" also matches "Nama Lengkap": try again without the brackets
+        f = by_key.get(key(h)) or by_key.get(key(re.sub(r"\(.*?\)", "", str(h or ""))))
         if f and f not in used:
             out[i] = f
             used.add(f)
@@ -292,26 +296,26 @@ def parse_row(cells, columns):
     return values, errors, warnings
 
 
-def parse_rows(header, rows, first_row_number=2):
+def parse_rows(header, rows, first_row_number=2, columns=None):
     """
     Every data row -> dict(row, values, errors, warnings, skip). Rows that are completely empty
     are dropped; the template's hint row and example rows are marked skip with a reason.
     """
-    columns = match_columns(header)
-    no_col = next(i for i, f in columns.items() if f == "employee_no")
+    columns = match_columns(header) if columns is None else columns      # G9d: HR's choices from the preview
+    no_col = next((i for i, f in columns.items() if f == "employee_no"), None)
     hints = {key(h) for _, _, _, h in TEMPLATE_COLUMNS if h}
     out, seen = [], {}
     for n, cells in enumerate(rows, start=first_row_number):
         if not any(to_text(c) for c in cells):
             continue
-        raw_no = to_text(cells[no_col]) if no_col < len(cells) else ""
+        raw_no = to_text(cells[no_col]) if no_col is not None and no_col < len(cells) else ""
         if key(raw_no) in hints:
             out.append({"row": n, "values": {}, "errors": [], "warnings": [], "skip": "Baris petunjuk dari template"})
             continue
         values, errors, warnings = parse_row(cells, columns)
         no = to_text(values.get("employee_no", ""))
         item = {"row": n, "values": values, "errors": errors, "warnings": warnings, "skip": ""}
-        if no.upper().startswith("CTH-"):
+        if is_template_example(values):
             item["skip"] = "Baris contoh dari template"
             item["errors"], item["warnings"] = [], []
         elif not no:
@@ -322,6 +326,14 @@ def parse_rows(header, rows, first_row_number=2):
             seen[no.lower()] = n
         out.append(item)
     return out, columns
+
+
+def is_template_example(values):
+    """True only for the template's own example rows, unchanged (No. Karyawan, name and NIK as printed).
+    A real row that happens to be numbered CTH-… is imported (G9c)."""
+    sample = {(str(r[0]).lower(), str(r[1]).lower(), str(r[3])) for r in SAMPLE_ROWS}
+    return (to_text(values.get("employee_no", "")).lower(), to_text(values.get("full_name", "")).lower(),
+            to_text(values.get("nik", ""))) in sample
 
 
 # ── the template HR fills in ──
