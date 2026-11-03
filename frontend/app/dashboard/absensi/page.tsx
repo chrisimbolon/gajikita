@@ -8,7 +8,9 @@ import DayPanel, { StatusPill } from "@/components/DayPanel";
 import { Counter, DayRow, attendanceApi, minutesText } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
 import { todayISO } from "@/lib/format";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import FingerprintImport from "@/components/FingerprintImport";
+import AbsensiTabs from "@/components/AbsensiTabs";
+import { ChevronLeft, ChevronRight, Fingerprint, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -27,6 +29,7 @@ export default function AbsensiPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<DayRow | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const load = useCallback(async (d: string) => {
     setLoading(true);
@@ -59,12 +62,20 @@ export default function AbsensiPage() {
           <p style={{ color: "var(--steel)", margin: 0, fontSize: 14 }}>Status setiap karyawan per hari. Klik angka untuk menyaring.</p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="btn-ghost" onClick={() => setImporting(true)}
+                  style={{ display: "flex", alignItems: "center", gap: 6, marginRight: 8 }}>
+            <Fingerprint size={15} /> Import fingerprint
+          </button>
           <button className="btn-ghost" onClick={() => setDate(shiftDate(date, -1))} style={{ padding: "6px 8px" }} aria-label="Hari sebelumnya"><ChevronLeft size={16} /></button>
           <input className="input" type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} style={{ width: 160 }} />
           <button className="btn-ghost" onClick={() => setDate(shiftDate(date, 1))} style={{ padding: "6px 8px" }} aria-label="Hari berikutnya"><ChevronRight size={16} /></button>
           {date !== todayISO() && <button className="btn-ghost" onClick={() => setDate(todayISO())} style={{ padding: "6px 12px", fontSize: 13 }}>Hari ini</button>}
         </div>
       </div>
+
+      <AbsensiTabs active="harian" />
+
+      {importing && <FingerprintImport onClose={() => setImporting(false)} onDone={() => load(date)} />}
 
       {/* counters = filters */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
