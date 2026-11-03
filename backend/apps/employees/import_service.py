@@ -77,7 +77,8 @@ def plan_import(org, items):
             if field in v:
                 obj = table.get(v.pop(field).strip().lower())
                 if obj is None:
-                    row["warnings"].append(f"{word} \"{item['values'][field]}\" belum ada di GajiKita; dikosongkan")
+                    row["warnings"].append(f"{word} \"{item['values'][field]}\" belum ada; dikosongkan. Pilih di \"Isi yang "
+                                           f"belum dikenali\" di atas, atau buat dulu di menu {word}.")
                 else:
                     resolved[model_field] = obj
         if "mandor" in v:
