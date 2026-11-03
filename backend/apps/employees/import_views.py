@@ -49,6 +49,10 @@ class EmployeeImportView(APIView):
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
+        from .import_wizard import handle          # G9d: our template or the company's own file
+        return handle(request)
+
+    def post_template_only(self, request):         # the G9 version, kept for reference
         try:
             name, data = read_upload(request)
             header, rows, header_row = read_table(name, data)
@@ -64,6 +68,8 @@ class EmployeeImportView(APIView):
             "success": True, "file": name,
             "columns_found": [LABELS[f] for f in LABELS if f in found],
             "columns_missing": [LABELS[f] for f in REQUIRED_NEW if f not in found],
+            "columns_ignored": [str(h).strip() for i, h in enumerate(header)
+                                if i not in columns and h is not None and str(h).strip()],     # G9c
             "counts": summary(plan), "rows": public(plan),
         }
         if str(request.data.get("commit")) in ("1", "true", "True"):
