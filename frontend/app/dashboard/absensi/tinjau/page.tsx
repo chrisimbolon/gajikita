@@ -49,6 +49,8 @@ export default function TinjauPage() {
           <h1 className="display" style={{ fontSize: 28, marginBottom: 4, textTransform: "none" }}>Perlu Tinjau</h1>
           <p style={{ color: "var(--steel)", margin: 0, fontSize: 14 }}>
             Hanya absen yang perlu keputusan HR. <Link href="/dashboard/absensi" style={{ color: "var(--rust)" }}>Lihat semua absensi →</Link>
+            {" · "}<Link href="/dashboard/absensi/tinjau/periode" style={{ color: "var(--rust)", fontWeight: 700 }}>
+              Tinjau per periode (massal) →</Link>
           </p>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
