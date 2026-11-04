@@ -34,7 +34,7 @@ from apps.organizations.permissions import IsCompanyHR
 from .day_status import STATUS_LABELS
 from .geofence import FLAG_LABELS
 from .models import AttendanceDay, ClockEvent
-from .review import evaluate, evaluate_missing, row
+from .review import evaluate, evaluate_missing, leaves_between, row
 from apps.payroll.services import day_overtime
 from apps.leave.services import approved_leave_on
 
@@ -89,8 +89,9 @@ def review_rows(org, n, now):
     """Days in the last n days that need HR, newest first (shared by the queue and the dashboard)."""
     today = timezone.localtime(now).date()
     rows = []
+    leaves = leaves_between(org.id, today - timedelta(days=n - 1), today)          # G9b
     for d in _days_qs(org).filter(date__gte=today - timedelta(days=n - 1), date__lte=today, decision=""):
-        r = evaluate(d, now)
+        r = evaluate(d, now, leave=leaves.get((d.employee_id, d.date), ""))
         if r.needs_review:
             rows.append(row(d.employee, d.date, d, r))
     rows.sort(key=lambda r: (r["date"], r["employee"]["full_name"]), reverse=True)
@@ -128,7 +129,7 @@ def _day_detail(request, day):
     events = []
     for e in day.events.all():
         events.append({
-            "id": str(e.id), "kind": e.kind, "kind_label": e.get_kind_display(), "source": e.get_source_display(),
+            "id": str(e.id), "kind": e.kind, "kind_label": e.get_kind_display(), "source": e.get_source_display(), "source_code": e.source,
             "occurred_at": e.occurred_at.isoformat(), "time": timezone.localtime(e.occurred_at).strftime("%H:%M"),
             "received_at": e.received_at.isoformat(),
             "site": e.site.name if e.site else None,
@@ -219,7 +220,8 @@ class DecideView(APIView):
                         f", lembur {day.overtime_approved_minutes} menit" if day.overtime_approved_minutes else "")
                 else:
                     day.waive_late, day.overtime_approved_minutes = False, None
-                    summary = "Ditolak: dihitung tidak hadir"
+                    summary = (f"Ditolak: kembali ke {result.leave.lower()}" if result.leave
+                               else "Ditolak: dihitung tidak hadir")
             day.save()
             record_audit(organization=day.organization, actor=request.user, action=f"attendance.{d['action']}",
                          target=day, summary=f"{day.employee.full_name} {day.date:%d-%m-%Y}: {summary}",
