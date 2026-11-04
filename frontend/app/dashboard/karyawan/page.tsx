@@ -8,11 +8,25 @@ import {
   EMPLOYMENT_TYPE_LABEL, Employee, EmployeeInput, PAY_TYPE_LABEL, PTKP_OPTIONS, Shift, Site, hrApi, readErrors,
 } from "@/lib/api/hr";
 import { hhmm, rupiah, todayISO } from "@/lib/format";
-import EmployeeImport from "@/components/EmployeeImport";
+import EmployeeImport from "@/components/EmployeeImportWizard";     // G9d: template or the company's own file
 import { FileSpreadsheet, KeyRound, Loader2, Plus, Save, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Form = Omit<EmployeeInput, "end_date" | "probation_end_date"> & { end_date: string; probation_end_date: string };
+
+// G9e: how money and NPWP read in the form (stored as plain digits)
+const RP = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
+function moneyText(value: string): string {
+  if (value === "" || value == null) return "";
+  const n = Math.trunc(Number(value));
+  return Number.isFinite(n) ? RP.format(n) : value;
+}
+/** 15 digits -> 12.345.678.9-012.345 (the old NPWP); 16 digits (NIK as NPWP) stay as they are. */
+function npwpText(value: string): string {
+  const d = (value ?? "").replace(/\D/g, "");
+  if (d.length !== 15) return d;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}.${d.slice(8, 9)}-${d.slice(9, 12)}.${d.slice(12)}`;
+}
 
 const blank = (): Form => ({
   employee_no: "", full_name: "", position: "", fingerprint_id: "", probation_end_date: "", nik: "", npwp: "", ptkp_status: "TK/0", join_date: todayISO(), end_date: "",
@@ -194,6 +208,30 @@ function EmployeePanel({ employee, employees, sites, shifts, onClose, onSaved }:
     </div>
   );
 
+  const money = (key: "base_rate" | "fixed_allowance", label: string) => (
+    <div style={{ marginBottom: 12 }}>
+      <label className="label">{label}</label>
+      <div style={{ position: "relative" }}>
+        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--steel)",
+                       fontSize: 14, pointerEvents: "none" }}>Rp</span>
+        <input className="input" inputMode="numeric" aria-label={label} value={moneyText(String(form[key] ?? ""))}
+               onChange={(e) => set(key, e.target.value.replace(/\D/g, "").slice(0, 13) as never)}
+               style={{ paddingLeft: 40, ...(errors[key] ? { borderColor: "var(--danger)" } : {}) }} />
+      </div>
+      {errors[key] && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 4 }}>{errors[key]}</div>}
+    </div>
+  );
+
+  const npwp = () => (
+    <div style={{ marginBottom: 12 }}>
+      <label className="label">NPWP</label>
+      <input className="input" inputMode="numeric" aria-label="NPWP" placeholder="15 atau 16 angka" value={npwpText(form.npwp)}
+             onChange={(e) => set("npwp", e.target.value.replace(/\D/g, "").slice(0, 16))}
+             style={errors.npwp ? { borderColor: "var(--danger)" } : undefined} />
+      {errors.npwp && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 4 }}>{errors.npwp}</div>}
+    </div>
+  );
+
   const select = (key: keyof Form, label: string, options: [string, string][], allowEmpty = false) => (
     <div style={{ marginBottom: 12 }}>
       <label className="label">{label}</label>
@@ -230,7 +268,7 @@ function EmployeePanel({ employee, employees, sites, shifts, onClose, onSaved }:
       {text("position", "Jabatan", { placeholder: "Driver TM" })}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
         {text("nik", "NIK (KTP)", { inputMode: "numeric", maxLength: 16 })}
-        {text("npwp", "NPWP")}
+        {npwp()}
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
         {text("phone", "No. HP", { inputMode: "tel", placeholder: "0812 3456 7890" })}
@@ -245,9 +283,8 @@ function EmployeePanel({ employee, employees, sites, shifts, onClose, onSaved }:
         {select("employment_type", "Hubungan kerja", Object.entries(EMPLOYMENT_TYPE_LABEL))}
         {select("pay_type", "Jenis upah", Object.entries(PAY_TYPE_LABEL))}
       </div>
-      {text("base_rate", form.pay_type === "daily" ? "Upah per hari (Rp)" : form.pay_type === "piece" ? "Tarif per pekerjaan (Rp)" : "Gaji pokok sebulan (Rp)",
-            { inputMode: "numeric" })}
-      {text("fixed_allowance", "Tunjangan tetap sebulan (Rp)", { inputMode: "numeric" })}
+      {money("base_rate", form.pay_type === "daily" ? "Upah per hari" : form.pay_type === "piece" ? "Tarif per pekerjaan" : "Gaji pokok sebulan")}
+      {money("fixed_allowance", "Tunjangan tetap sebulan")}
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12 }}>
         <input type="checkbox" checked={form.overtime_eligible} onChange={(e) => set("overtime_eligible", e.target.checked)} />
         Berhak upah lembur (PP 35/2021)
