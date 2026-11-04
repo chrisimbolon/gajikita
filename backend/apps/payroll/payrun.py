@@ -24,6 +24,7 @@ from django.utils import timezone
 
 from apps.attendance.day_status import Status
 from apps.attendance.models import AttendanceDay
+from apps.attendance.rekap_codes import day_cell, outside_cell
 from apps.attendance.review import evaluate, evaluate_missing
 from apps.core.audit import record_audit
 from apps.employees.models import Employee
@@ -80,16 +81,21 @@ def _leaves_by_employee(org, start, end, employee_ids):
     return out
 
 
-def collect_numbers(emp, start, end, cfg, days, leaves, now):
+def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None):
+    """The month's numbers for one employee. With cells=[], also one Rekap Absensi cell per day (G10)."""
     shift = emp.default_shift
-    nums = {"present_days": 0, "absent_days": 0, "unpaid_leave_days": 0, "outside_days": 0, "paid_leave_days": 0,
+    nums = {"working_days": 0, "present_days": 0, "absent_days": 0, "unpaid_leave_days": 0, "outside_days": 0, "paid_leave_days": 0,
             "overtime": [], "late_raw": [], "meal_days": 0, "review_days": 0, "leave": {}}
     leave_count = Counter()
     for d in _dates(start, end):
         if d < emp.join_date or (emp.end_date and d > emp.end_date):
             nums["outside_days"] += 1
+            if cells is not None:
+                cells.append(outside_cell(d))
             continue
         working = shift is None or shift.is_working_day(d)
+        if working:
+            nums["working_days"] += 1
         day, leave = days.get(d), leaves.get(d)
         label = leave[1] if leave else ""
         r = evaluate(day, now, leave=label) if day else evaluate_missing(emp, d, now, leave=label)
@@ -116,6 +122,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now):
             nums["meal_days"] += 1
         elif cfg.meal_rule == PayrollSettings.MealRule.PRESENT_DAY and r.first_in and r.status != Status.REJECTED:
             nums["meal_days"] += 1
+        if cells is not None:
+            cells.append(day_cell(d, r, day, leave, ot))
     nums["leave"] = dict(leave_count)
     nums["late_minutes"] = engine.chargeable_late_minutes(nums["late_raw"], cfg.late_tolerance_minutes)
     nums["unpaid_days"] = nums["absent_days"] + nums["unpaid_leave_days"] + nums["outside_days"]
@@ -168,6 +176,9 @@ def calculate_line(line, cfg):
     slip = engine.calculate(terms, period, rules)
     if nums.get("review_days"):
         slip.warnings.insert(0, f"{nums['review_days']} hari absensi belum ditinjau HR di periode ini.")
+    worked_days, absent = nums.get("working_days", 0), nums.get("absent_days", 0)
+    if worked_days and absent * 2 >= worked_days:
+        slip.warnings.insert(0, f"Tidak hadir {absent} dari {worked_days} hari kerja di periode ini.")
 
     as_json = lambda lines: [{"code": l.code, "label": l.label, "amount": str(l.amount),
                               "quantity": str(l.quantity) if l.quantity is not None else None, "unit": l.unit}
