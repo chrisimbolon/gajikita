@@ -5,6 +5,8 @@
 Glue between the database and the pure rules in day_status.py (G3):
 evaluate(day) / evaluate_missing(employee, date) and the JSON rows HR sees.
 """
+from datetime import timedelta
+
 from django.utils import timezone
 
 from .day_status import STATUS_LABELS, ShiftInfo, Tap, evaluate_day
@@ -22,7 +24,24 @@ def taps_of(day):
             for e in day.events.all()]
 
 
-def evaluate(day, now=None, shift=None, leave=""):
+def leaves_between(organization_id, start, end):
+    """{(employee_id, date): label} for approved leave between two dates (G9b)."""
+    from apps.leave.models import LeaveRequest
+    out = {}
+    qs = LeaveRequest.objects.filter(organization_id=organization_id, status=LeaveRequest.Status.APPROVED,
+                                     start_date__lte=end, end_date__gte=start)
+    for leave in qs:
+        d = max(leave.start_date, start)
+        while d <= min(leave.end_date, end):
+            out[(leave.employee_id, d)] = leave.label
+            d += timedelta(days=1)
+    return out
+
+
+def evaluate(day, now=None, shift=None, leave=None):
+    """leave: the approved leave that day ("" = none). None = look it up, so no screen forgets it (G9b)."""
+    if leave is None:
+        leave = leaves_between(day.organization_id, day.date, day.date).get((day.employee_id, day.date), "")
     shift = shift or day.shift or day.employee.default_shift
     return evaluate_day(
         day.date, shift_info(shift), taps_of(day), now or timezone.now(), timezone.get_current_timezone(),
