@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Lets `npm run dev` be opened through a cloudflared quick tunnel (https on a
+  // real phone, needed for GPS and the camera). Dev server only; no effect on the build.
+  allowedDevOrigins: ["*.trycloudflare.com"],
   // Static export — the whole reason this change exists. Produces
   // pure HTML/CSS/JS with zero running Node process, served directly
   // by Caddy exactly like kla's Vite frontend already is. Only
