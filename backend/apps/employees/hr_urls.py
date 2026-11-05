@@ -6,14 +6,33 @@ from apps.sites.hr_views import ShiftDetailView, ShiftListView, SiteDetailView, 
 from apps.attendance.hr_views import DailyView, DayDetailView, DecideView, FixTimesView, ReviewQueueView, SelfieView
 from apps.payroll.views import OvertimeMonthView
 from apps.attendance.dashboard import SummaryView
+from apps.payroll.payrun_views import (ItemDeleteView, LineDetailView, LineItemsView, RunDetailView, RunListView,
+                                       RunLockView, RunRecalculateView, SettingsView)
+from apps.payroll.slip_views import SlipsView, TransfersView
 from apps.leave.hr_views import HrLeaveAttachmentView, HrLeaveBalanceView, HrLeaveDecideView, HrLeaveListView
 
 from .hr_views import EmployeeDetailView, EmployeeListView, EmployeeLoginView
+from .import_views import EmployeeImportView, EmployeeTemplateView
+from apps.attendance.fingerprint_views import FingerprintImportView
+from apps.attendance.fingerprint_delete_views import FingerprintDeleteView
+from apps.attendance.rekap import RekapExportView, RekapView
+from apps.attendance.review_bulk import BulkDecideView, ReviewPeriodView
 
 urlpatterns = [
     path("employees/",                EmployeeListView.as_view(),   name="hr-employees"),
     path("employees/<uuid:pk>/",      EmployeeDetailView.as_view(), name="hr-employee"),
     path("employees/<uuid:pk>/login/", EmployeeLoginView.as_view(), name="hr-employee-login"),
+    # imports (G9)
+    path("employees/import/",          EmployeeImportView.as_view(),   name="hr-employee-import"),
+    path("employees/import/template/", EmployeeTemplateView.as_view(), name="hr-employee-template"),
+    path("attendance/fingerprint/import/", FingerprintImportView.as_view(), name="hr-fingerprint-import"),
+    path("attendance/fingerprint/delete/", FingerprintDeleteView.as_view(), name="hr-fingerprint-delete"),   # G9b
+    # Rekap Absensi (G10)
+    path("attendance/rekap/",        RekapView.as_view(),       name="hr-att-rekap"),
+    # Tinjau massal per periode (G11)
+    path("attendance/review/period/", ReviewPeriodView.as_view(), name="hr-att-review-period"),
+    path("attendance/review/bulk/",   BulkDecideView.as_view(),   name="hr-att-review-bulk"),
+    path("attendance/rekap/export/", RekapExportView.as_view(), name="hr-att-rekap-export"),
     path("sites/",                    SiteListView.as_view(),       name="hr-sites"),
     path("sites/<uuid:pk>/",          SiteDetailView.as_view(),     name="hr-site"),
     path("sites/<uuid:pk>/pin/",      SitePinView.as_view(),        name="hr-site-pin"),
@@ -35,4 +54,15 @@ urlpatterns = [
     path("leave/<uuid:pk>/decide/",            HrLeaveDecideView.as_view(),     name="hr-leave-decide"),
     path("leave/<uuid:pk>/attachment/",        HrLeaveAttachmentView.as_view(), name="hr-leave-attachment"),
     path("leave/balance/<uuid:employee_id>/",  HrLeaveBalanceView.as_view(),    name="hr-leave-balance"),
+    # payroll (G8b part 1)
+    path("payroll/settings/",                                    SettingsView.as_view(),       name="hr-payroll-settings"),
+    path("payroll/runs/",                                        RunListView.as_view(),        name="hr-payroll-runs"),
+    path("payroll/runs/<uuid:pk>/",                              RunDetailView.as_view(),      name="hr-payroll-run"),
+    path("payroll/runs/<uuid:pk>/recalculate/",                  RunRecalculateView.as_view(), name="hr-payroll-recalc"),
+    path("payroll/runs/<uuid:pk>/lock/",                         RunLockView.as_view(),        name="hr-payroll-lock"),
+    path("payroll/runs/<uuid:pk>/lines/<uuid:line_id>/",         LineDetailView.as_view(),     name="hr-payroll-line"),
+    path("payroll/runs/<uuid:pk>/lines/<uuid:line_id>/items/",   LineItemsView.as_view(),      name="hr-payroll-items"),
+    path("payroll/runs/<uuid:pk>/items/<uuid:item_id>/",         ItemDeleteView.as_view(),     name="hr-payroll-item"),
+    path("payroll/runs/<uuid:pk>/slips/",                        SlipsView.as_view(),          name="hr-payroll-slips"),
+    path("payroll/runs/<uuid:pk>/transfers/",                    TransfersView.as_view(),      name="hr-payroll-transfers"),
 ]
