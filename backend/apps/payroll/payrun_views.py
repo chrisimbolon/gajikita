@@ -221,6 +221,7 @@ def _line_payload(line):
                    "recurring": i.recurring, "note": i.note} for i in line.items.all()],
         "result": line.result, "gross": _money(line.gross), "deductions": _money(line.deductions),
         "net": _money(line.net), "employer_cost": _money(line.employer_cost),
+        "loan_balance": _money(line.loan_balance) if line.loan_balance is not None else None,
     }
 
 
@@ -233,6 +234,8 @@ def _line(request, pk, line_id):
 class LineSerializer(serializers.Serializer):
     override = serializers.DictField(required=False)
     note = serializers.CharField(required=False, allow_blank=True, max_length=255)
+    loan_balance = serializers.DecimalField(max_digits=14, decimal_places=2, required=False, allow_null=True,
+                                            min_value=Decimal("0"))
 
     def validate_override(self, value):
         clean = {}
@@ -273,6 +276,8 @@ class LineDetailView(APIView):
             line.override = fix
         if "note" in ser.validated_data:
             line.note = ser.validated_data["note"]
+        if "loan_balance" in ser.validated_data:
+            line.loan_balance = ser.validated_data["loan_balance"]
         calculate_line(line, cfg)
         line.save()
         record_audit(organization=run.organization, actor=request.user, action="payroll.line", target=line,
