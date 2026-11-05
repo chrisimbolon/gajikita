@@ -123,3 +123,24 @@ class Employee(TenantScopedModel):
         if self.default_site_id:
             ids.add(self.default_site_id)
         return list(active.filter(id__in=ids) if ids else active)
+
+
+class EmployeeImportProfile(TenantScopedModel):
+    """
+    What a company chose in the employee import preview (G9d), so its own file imports in one
+    click next time. column_map: {column title key: field or "-"}; value_map: {field: {their
+    word key: our word or ""}}. Keys are titles / words with spaces and punctuation removed.
+    """
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    column_map = models.JSONField(default=dict, blank=True, verbose_name="Pilihan kolom")
+    value_map  = models.JSONField(default=dict, blank=True, verbose_name="Pilihan isi")
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+
+    class Meta:
+        verbose_name = verbose_name_plural = "Pilihan import karyawan"
+        constraints = [models.UniqueConstraint(fields=["organization"], name="one_employee_import_profile_per_org")]
+
+    def __str__(self):
+        return f"Pilihan import {self.organization}"
