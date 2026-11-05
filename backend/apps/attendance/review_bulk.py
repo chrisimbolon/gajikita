@@ -33,6 +33,7 @@ from apps.payroll.payrun import MONTHS
 from .hr_views import _days_qs, _snapshot
 from .rekap import _shift_month, period_of
 from .review import evaluate, leaves_between, row
+from .day_status import Status
 from .review_kinds import KINDS, LABELS, capped_overtime, kinds_of
 
 PAGE_SIZE = 100
@@ -152,7 +153,10 @@ class BulkDecideView(APIView):
                 day.decided_by, day.decided_at = request.user, now
                 if d["action"] == "approve":
                     day.waive_late = d["waive_late"]
-                    day.overtime_approved_minutes = capped_overtime(r.overtime_proposed_minutes, d["overtime_max_minutes"])
+                    # G11b: the cap is for normal working days; on a rest day every hour worked is overtime
+                    rest_day = Status.DAY_OFF_WORK in r.tags
+                    day.overtime_approved_minutes = capped_overtime(
+                        r.overtime_proposed_minutes, None if rest_day else d["overtime_max_minutes"])
                     summary = "Disetujui massal" + (" (terlambat dimaafkan)" if day.waive_late else "") + (
                         f", lembur {day.overtime_approved_minutes} menit" if day.overtime_approved_minutes else "")
                 else:
