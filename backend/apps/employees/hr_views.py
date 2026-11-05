@@ -36,9 +36,9 @@ class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
-            "id", "employee_no", "full_name", "nik", "npwp", "ptkp_status", "join_date", "end_date",
-            "employment_type", "pay_type", "base_rate", "fixed_allowance", "overtime_eligible", "bank_name", "bank_account_no", "bank_account_name",
-            "bpjs_kesehatan_no", "bpjs_tk_no", "phone", "sites", "default_site", "default_shift", "mandor",
+            "id", "employee_no", "full_name", "position", "nik", "npwp", "ptkp_status", "join_date", "end_date",
+            "employment_type", "pay_type", "base_rate", "fixed_allowance", "overtime_eligible", "bpjs_tk_enrolled", "bank_name", "bank_account_no", "bank_account_name",
+            "bpjs_kesehatan_no", "bpjs_tk_no", "phone", "fingerprint_id", "probation_end_date", "sites", "default_site", "default_shift", "mandor",
             "status", "login_phone", "must_change_pin", "has_login", "login_locked", "created_at",
         ]
         read_only_fields = ["id", "login_phone", "must_change_pin", "created_at"]
@@ -64,6 +64,18 @@ class EmployeeSerializer(serializers.ModelSerializer):
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
             raise serializers.ValidationError("No. karyawan sudah dipakai.")
+        return value
+
+    def validate_fingerprint_id(self, value):
+        value = (value or "").strip()
+        value = value.lstrip("0") or ("0" if value else "")      # "0015" on the machine = "15"
+        if value:
+            qs = Employee.objects.filter(organization=self.context["org"], fingerprint_id=value)
+            if self.instance:
+                qs = qs.exclude(pk=self.instance.pk)
+            other = qs.first()
+            if other:
+                raise serializers.ValidationError(f"ID ini sudah dipakai {other.full_name} ({other.employee_no}).")
         return value
 
     def validate(self, attrs):
