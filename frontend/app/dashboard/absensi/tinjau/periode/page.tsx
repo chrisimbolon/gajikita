@@ -218,7 +218,8 @@ export default function TinjauPeriodePage() {
                         <td onClick={() => setOpen(r)}><div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{r.employee.full_name}</div>
                           <div className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{r.employee.employee_no}</div></td>
                         <td onClick={() => setOpen(r)}><StatusPill status={r.status} label={r.status_label} /></td>
-                        <td style={{ fontSize: 13 }} onClick={() => setOpen(r)}>{r.review_reasons.join(" · ")}</td>
+                        <td style={{ fontSize: 13, ...(open ? { maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : {}) }}
+                            title={r.review_reasons.join(" · ")} onClick={() => setOpen(r)}>{r.review_reasons.join(" · ")}</td>
                         <td style={{ fontSize: 13, whiteSpace: "nowrap", color: r.overtime_proposed_minutes > 240 ? "var(--hazard-dark)" : undefined }}
                             onClick={() => setOpen(r)}>
                           {r.overtime_proposed_minutes ? minutesText(r.overtime_proposed_minutes) : "-"}
