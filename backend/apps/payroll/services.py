@@ -48,14 +48,44 @@ def pay_payload(pay, estimate=False):
     }
 
 
+def price_overtime(employee, shift, minutes, rest_day, cfg, estimate=False):
+    """
+    One day's overtime in rupiah, the way the company's payroll pays it (G11c):
+      PP 35 mode: the PP 35 calculation, as before.
+      Tarif tetap: rounded hours x the hourly rate (working day) or the rest-day rate, with the
+      PP 35 amount beside it (pp35_amount, gap) so HR sees the difference when approving.
+    """
+    from decimal import Decimal
+    from .engine import FLAT, round_overtime
+    basis, hourly, pattern, reason = wage_basis(employee, shift)
+    if reason == "not_eligible" or (reason and cfg.overtime_mode != FLAT):
+        return {"minutes": minutes, "not_paid": NOT_PAID_REASONS[reason]}
+    pp35 = None if reason else overtime_pay(minutes, rest_day, pattern, hourly)
+    if cfg.overtime_mode != FLAT:
+        return {**pay_payload(pp35, estimate=estimate), "mode": "pp35"}
+    rounded = round_overtime(minutes, cfg.overtime_rounding)
+    if rest_day:
+        rate = Decimal(cfg.flat_rest_day)
+        amount = rate if minutes > 0 else Decimal("0")
+    else:
+        rate = Decimal(cfg.flat_overtime_hour)
+        amount = Decimal(rounded) / 60 * rate
+    amount = rupiah(amount)
+    out = {"minutes": minutes, "rest_day": rest_day, "mode": "flat", "rounded_minutes": rounded,
+           "rate": str(rupiah(rate)), "amount": str(amount), "estimate": estimate, "lines": [], "warnings": [],
+           "hourly_rate": str(rupiah(hourly)) if hourly else "0", "pp35_amount": None, "gap": "0"}
+    if pp35 is not None:
+        out.update(lines=pay_payload(pp35)["lines"], warnings=pp35.warnings, pp35_amount=str(pp35.amount),
+                   gap=str(max(pp35.amount - amount, Decimal("0"))))
+    return out
+
+
 def day_overtime(day, proposed_minutes):
     """Overtime pay for one day: the approved minutes, or an estimate on the proposed ones."""
+    from .models import PayrollSettings
     approved = day.overtime_approved_minutes
     minutes = approved if approved is not None else proposed_minutes
     if not minutes:
         return None
-    basis, hourly, pattern, reason = wage_basis(day.employee, shift_of(day))
-    if reason:
-        return {"minutes": minutes, "not_paid": NOT_PAID_REASONS[reason]}
-    pay = overtime_pay(minutes, is_rest_day(day), pattern, hourly)
-    return pay_payload(pay, estimate=approved is None)
+    cfg = PayrollSettings.for_org(day.organization)
+    return price_overtime(day.employee, shift_of(day), minutes, is_rest_day(day), cfg, estimate=approved is None)
