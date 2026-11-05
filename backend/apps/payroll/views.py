@@ -23,7 +23,8 @@ from apps.attendance.models import AttendanceDay
 from apps.organizations.permissions import IsCompanyHR
 
 from .overtime import overtime_pay, week_warnings
-from .services import NOT_PAID_REASONS, is_rest_day, pay_payload, shift_of, wage_basis
+from .models import PayrollSettings
+from .services import NOT_PAID_REASONS, is_rest_day, pay_payload, price_overtime, shift_of, wage_basis
 
 
 def _month(value):
@@ -43,6 +44,7 @@ def overtime_month(org, first):
             .select_related("employee", "employee__default_shift", "shift")
             .prefetch_related("events__site").order_by("employee__full_name", "date"))
 
+    cfg = PayrollSettings.for_org(org)          # G11c: priced the way payroll pays it
     people, sites = {}, {}
     for day in days:
         emp = day.employee
@@ -55,21 +57,21 @@ def overtime_month(org, first):
         p["_entries"].append((day.date, minutes, rest))
         p["minutes"] += minutes
         last_site = next((e.site.name for e in reversed(list(day.events.all())) if e.site), "Tanpa lokasi")
-        basis, hourly, pattern, reason = wage_basis(emp, shift_of(day))
         entry = {"date": day.date.isoformat(), "day_id": str(day.id), "site": last_site, "minutes": minutes,
                  "rest_day": rest}
-        if reason:
-            p["not_paid"] = NOT_PAID_REASONS[reason]
+        price = price_overtime(emp, shift_of(day), minutes, rest, cfg)
+        if "not_paid" in price:
+            p["not_paid"] = price["not_paid"]
             entry.update({"amount": "0", "lines": [], "warnings": []})
         else:
-            pay = overtime_pay(minutes, rest, pattern, hourly)
-            entry.update(pay_payload(pay))
-            p["amount"] += pay.amount
-            p["hourly_rate"] = entry["hourly_rate"]
-            p["warnings"].extend(f"{day.date:%d/%m}: {w}" for w in pay.warnings)
+            amount = Decimal(price["amount"])
+            entry.update(price)
+            p["amount"] += amount
+            p["hourly_rate"] = entry.get("hourly_rate")
+            p["warnings"].extend(f"{day.date:%d/%m}: {w}" for w in price["warnings"])
             s = sites.setdefault(last_site, {"site": last_site, "minutes": 0, "amount": Decimal("0")})
             s["minutes"] += minutes
-            s["amount"] += pay.amount
+            s["amount"] += amount
         p["days"].append(entry)
 
     rows = []
