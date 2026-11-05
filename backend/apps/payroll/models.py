@@ -57,6 +57,10 @@ class PayrollSettings(TenantScopedModel):
                                             help_text="0.0024 / 0.0054 / 0.0089 / 0.0127 / 0.0174 (kelompok risiko 1-5)")
     minimum_wage      = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"),
                                             verbose_name="UMK", help_text="0 = tidak dicek")
+    # on the printed slip (G8b part 2)
+    slip_address      = models.TextField(blank=True, default="", verbose_name="Alamat di slip")
+    slip_place        = models.CharField(max_length=60, blank=True, default="", verbose_name="Tempat di slip")
+    slip_signer       = models.CharField(max_length=60, blank=True, default="HRD", verbose_name="Penanda tangan slip")
     updated_at        = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -124,6 +128,8 @@ class PayRunLine(TenantScopedModel):
     net       = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"))
     employer_cost = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"))
     warning_count = models.PositiveSmallIntegerField(default=0)
+    loan_balance  = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True,
+                                        verbose_name="Sisa pinjaman (di slip)")       # until the loan module (G8b part 2)
 
     class Meta:
         verbose_name = verbose_name_plural = "Baris pay run"
