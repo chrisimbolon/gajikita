@@ -87,6 +87,13 @@ class BulkReviewTests(APITestCase):
         self.locked.refresh_from_db()
         self.assertEqual((self.tp.decision, self.locked.decision), ("rejected", ""))
 
+    def test_the_cap_does_not_cut_rest_day_work(self):
+        sunday = self.work(self.budi, date(2026, 10, 4), (8, 0), (14, 30))          # 390 minutes on a Sunday
+        self.client.post(BULK, {"action": "approve", "ids": [str(sunday.id)], "overtime_max_minutes": 240},
+                         format="json")
+        sunday.refresh_from_db()
+        self.assertEqual(sunday.overtime_approved_minutes, 390)
+
     def test_workers_cannot_use_it(self):
         self.client.force_authenticate(CustomUser.objects.create_user(email="w@b.id", password="pass12345!",
                                                                       full_name="W", role="employee"))
