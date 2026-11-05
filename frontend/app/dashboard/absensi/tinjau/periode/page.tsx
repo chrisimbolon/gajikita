@@ -182,7 +182,9 @@ export default function TinjauPeriodePage() {
           )}
           {mode === "approve" && (
             <div style={{ fontSize: 12.5, color: "var(--steel)" }}>
-              Lembur disetujui sebesar usulan dari jam absen, paling banyak {cap || "∞"} menit per hari. Terlambat tetap didenda kecuali dimaafkan.
+              Lembur disetujui sebesar usulan dari jam absen, paling banyak {cap || "∞"} menit per hari kerja (masuk di hari libur tidak
+              dibatasi: semua jamnya lembur). Terlambat tetap didenda kecuali dimaafkan. Hari yang punya beberapa alasan
+              (mis. Terlambat + Tidak absen pulang) disetujui untuk semua alasannya.
             </div>
           )}
         </div>
