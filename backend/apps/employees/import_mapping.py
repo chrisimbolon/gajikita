@@ -42,6 +42,9 @@ VALUE_FIELDS = {
     "ptkp_status": [(p, p) for p in PTKP],
     "overtime_eligible": [("Ya", "Ya"), ("Tidak", "Tidak")],
     "bpjs_tk_enrolled": [("Ya", "Ya"), ("Tidak", "Tidak")],
+    "meal_rule": [("Ikut perusahaan", "Ikut perusahaan"), ("Per hari hadir", "Per hari hadir"),     # G12d
+                  ("Per hari lembur", "Per hari lembur"), ("Pulang malam", "Pulang malam"),
+                  ("Tidak ada", "Tidak ada")],
 }
 LOOKUP_FIELDS = ("shift", "site")             # mapped to names that exist in the company (import_wizard)
 
