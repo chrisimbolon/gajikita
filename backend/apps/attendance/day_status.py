@@ -100,7 +100,7 @@ def _minutes(delta):
 
 
 def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision="", waive_late=False,
-                 overtime_approved=None, leave=""):
+                 overtime_approved=None, leave="", overtime_eligible=True):
     """
     day      the working date (a night shift belongs to the date it started)
     shift    ShiftInfo or None
@@ -182,7 +182,7 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
             overtime = _minutes(last_out - end_dt)
         else:
             overtime = result.worked_minutes if not working_day else 0
-        if overtime >= OVERTIME_MIN_MINUTES:
+        if overtime >= OVERTIME_MIN_MINUTES and overtime_eligible:      # G12d: nothing to propose otherwise
             result.overtime_proposed_minutes = overtime
 
     # minutes per site: from each in / switch to the next tap
