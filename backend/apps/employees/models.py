@@ -68,6 +68,12 @@ class Employee(TenantScopedModel):
                                             verbose_name="Tunjangan Tetap (sebulan)")
     overtime_eligible = models.BooleanField(default=True, verbose_name="Berhak Upah Lembur")
     bpjs_tk_enrolled  = models.BooleanField(default=True, verbose_name="Terdaftar BPJS Ketenagakerjaan")  # G8b
+    # G12d: uang makan rule for this person; empty = the company's rule (Payroll → Pengaturan)
+    meal_rule         = models.CharField(max_length=15, blank=True, default="", verbose_name="Uang Makan",
+                                         choices=[("", "Ikut pengaturan perusahaan"), ("none", "Tidak ada"),
+                                                  ("present_day", "Per hari hadir"),
+                                                  ("overtime_day", "Per hari lembur"),
+                                                  ("late_out", "Per hari pulang malam")])
     bank_name         = models.CharField(max_length=50, blank=True, default="", verbose_name="Bank")
     bank_account_no   = models.CharField(max_length=30, blank=True, default="", verbose_name="No. Rekening")
     bank_account_name = models.CharField(max_length=200, blank=True, default="", verbose_name="Nama Pemilik Rekening")
