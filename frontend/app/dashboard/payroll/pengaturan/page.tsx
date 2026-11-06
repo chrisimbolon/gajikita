@@ -10,6 +10,14 @@ import { ArrowLeft, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+// G11c: money reads "12.500" while typing; saved as plain digits
+const RP = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
+function moneyText(value: string): string {
+  if (value === "" || value == null) return "";
+  const n = Math.trunc(Number(value));
+  return Number.isFinite(n) ? RP.format(n) : value;
+}
+
 const JKK = [["0.0024", "Kelompok 1 · 0,24% (risiko sangat rendah)"], ["0.0054", "Kelompok 2 · 0,54%"],
              ["0.0089", "Kelompok 3 · 0,89%"], ["0.0127", "Kelompok 4 · 1,27%"], ["0.0174", "Kelompok 5 · 1,74% (risiko sangat tinggi)"]];
 
@@ -44,8 +52,12 @@ export default function PayrollSettingsPage() {
   const money = (k: keyof PayrollSettings, label: string, hint?: string) => (
     <label>
       <div className="label">{label}</div>
-      <input className="input" inputMode="numeric" value={String(form[k] ?? "")} style={{ width: "100%" }}
-             onChange={(e) => set(k, e.target.value.replace(/[^\d.]/g, "") as never)} />
+      <div style={{ position: "relative" }}>
+        <span style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "var(--steel)",
+                       fontSize: 14, pointerEvents: "none" }}>Rp</span>
+        <input className="input" inputMode="numeric" value={moneyText(String(form[k] ?? ""))} style={{ width: "100%", paddingLeft: 40 }}
+               onChange={(e) => set(k, e.target.value.replace(/\D/g, "").slice(0, 13) as never)} />
+      </div>
       {hint && <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>{hint}</div>}
       {err(k)}
     </label>
@@ -112,8 +124,8 @@ export default function PayrollSettingsPage() {
             <option value="down_half">Ke bawah per 0,5 jam</option>
           </select>
         </label>
-        {form.overtime_mode === "flat" && money("flat_overtime_hour", "Tarif per jam (Rp)")}
-        {form.overtime_mode === "flat" && money("flat_rest_day", "Tarif per hari libur (Rp)", "Untuk kerja di hari libur / Minggu")}
+        {form.overtime_mode === "flat" && money("flat_overtime_hour", "Tarif per jam")}
+        {form.overtime_mode === "flat" && money("flat_rest_day", "Tarif per hari libur", "Untuk kerja di hari libur / Minggu")}
       </Section>
 
       <Section title="Uang makan & keterlambatan">
@@ -125,8 +137,8 @@ export default function PayrollSettingsPage() {
             <option value="present_day">Per hari hadir</option>
           </select>
         </label>
-        {form.meal_rule !== "none" && money("meal_allowance", "Uang makan per hari (Rp)")}
-        {money("late_fine_per_minute", "Potongan terlambat per menit (Rp)", "0 = tidak dipotong. Harus tercantum di Peraturan Perusahaan / PKB.")}
+        {form.meal_rule !== "none" && money("meal_allowance", "Uang makan per hari")}
+        {money("late_fine_per_minute", "Potongan terlambat per menit", "0 = tidak dipotong. Harus tercantum di Peraturan Perusahaan / PKB.")}
         {number("late_tolerance_minutes", "Toleransi terlambat (menit)", "Dikurangi dari menit terlambat setiap hari")}
       </Section>
 
@@ -142,7 +154,7 @@ export default function PayrollSettingsPage() {
                  onChange={(e) => set("bpjs_base_includes_allowance", e.target.checked)} />
           Upah BPJS = gaji pokok + tunjangan tetap
         </label>
-        {money("minimum_wage", "UMK (Rp)", "Untuk peringatan gaji di bawah UMK. 0 = tidak dicek.")}
+        {money("minimum_wage", "UMK", "Untuk peringatan gaji di bawah UMK. 0 = tidak dicek.")}
       </Section>
 
       <Section title="Slip gaji" hint="Tampil di setiap slip yang dicetak.">
