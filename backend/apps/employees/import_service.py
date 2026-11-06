@@ -26,7 +26,7 @@ from .models import Employee
 PLAIN_FIELDS = ["full_name", "position", "nik", "npwp", "ptkp_status", "join_date", "probation_end_date", "end_date",
                 "employment_type", "pay_type", "base_rate", "fixed_allowance", "overtime_eligible", "bpjs_tk_enrolled",
                 "bpjs_tk_no", "bpjs_kesehatan_no", "bank_name", "bank_account_no", "bank_account_name", "phone",
-                "fingerprint_id"]
+                "fingerprint_id", "meal_rule"]
 
 
 def show(value):
