@@ -16,6 +16,9 @@ export interface OvertimeDay {
   lines:        PayLine[];
   amount:       string;
   warnings:     string[];
+  mode?:        "pp35" | "flat";            // G11c
+  rounded_minutes?: number;
+  pp35_amount?: string | null;
 }
 
 export interface OvertimePerson {
