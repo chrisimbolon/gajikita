@@ -37,7 +37,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         model = Employee
         fields = [
             "id", "employee_no", "full_name", "position", "nik", "npwp", "ptkp_status", "join_date", "end_date",
-            "employment_type", "pay_type", "base_rate", "fixed_allowance", "overtime_eligible", "bpjs_tk_enrolled", "bank_name", "bank_account_no", "bank_account_name",
+            "employment_type", "pay_type", "base_rate", "fixed_allowance", "overtime_eligible", "bpjs_tk_enrolled", "meal_rule", "bank_name", "bank_account_no", "bank_account_name",
             "bpjs_kesehatan_no", "bpjs_tk_no", "phone", "fingerprint_id", "probation_end_date", "sites", "default_site", "default_shift", "mandor",
             "status", "login_phone", "must_change_pin", "has_login", "login_locked", "created_at",
         ]
