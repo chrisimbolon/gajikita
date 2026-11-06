@@ -52,7 +52,8 @@ def plan(org, punches):
                             "first": t[0].isoformat(sep=" ", timespec="minutes"),
                             "last": t[-1].isoformat(sep=" ", timespec="minutes")})
             continue
-        sessions = make_sessions(times[machine_id])
+        shift = emp.default_shift
+        sessions = make_sessions(times[machine_id], shift.start_time if shift else None)    # G12c
         events = []
         for s in sessions:
             events.append((s, "in", s.clock_in))
