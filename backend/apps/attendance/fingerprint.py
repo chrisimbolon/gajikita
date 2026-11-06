@@ -32,6 +32,11 @@ from apps.core.legacy_excel import LegacyExcelError, is_legacy_excel, read_legac
 DOUBLE_TAP = timedelta(minutes=3)        # taps this close together are one tap
 MAX_SESSION = timedelta(hours=16)        # a tap more than 16 h after the session's first tap starts a new one
 MIN_WORKED = timedelta(minutes=30)       # a last tap within 30 min of the first is not a clock-out
+# G12c: shift-aware pairing, when the employee has a shift
+START_EARLY = timedelta(hours=2)         # a clock-in can come this long before the shift starts ...
+START_LATE = timedelta(hours=5)          # ... or this long after it (e.g. Pagi 08:00: 06:00 - 13:00)
+NEW_DAY_AFTER = timedelta(hours=6)       # a tap in that window opens a new day only this long after the last clock-in
+MAX_SHIFT_SESSION = timedelta(hours=24)  # any other tap closes the open day, up to 24 h after its clock-in
 
 
 class FileError(Exception):
@@ -307,13 +312,32 @@ def read_punches(filename, data):
 
 
 # ── punches -> working sessions ──
-def make_sessions(punch_times):
-    """One person's tap times (any order) -> sessions. First tap = in, last = out."""
+def _start_day(t, shift_start):
+    """The date whose shift this tap could be the clock-in of, or None."""
+    for d in (t.date(), t.date() + timedelta(days=1), t.date() - timedelta(days=1)):
+        start = datetime.combine(d, shift_start)
+        if start - START_EARLY <= t <= start + START_LATE:
+            return d
+    return None
+
+
+def make_sessions(punch_times, shift_start=None):
+    """
+    One person's tap times (any order) -> sessions. First tap = in, last = out.
+
+    With the employee's shift start (G12c) the taps are paired around the shift instead of by
+    time alone: a tap near the start (06:00 - 13:00 for a 08:00 shift) opens a new day, any other
+    tap closes the open one, up to 24 h after its clock-in. So a concrete-pump day of 08:11 -> 02:01
+    the next night stays one day, and the next morning's 12:27 starts the next one. Without a
+    shift: the old rule, a new session when a tap is more than 16 h after the first one.
+    """
     taps = []
     for t in sorted(set(punch_times)):
         if taps and t - taps[-1] <= DOUBLE_TAP:
             continue                       # a double tap
         taps.append(t)
+    if shift_start is not None:
+        return _sessions_around_shift(taps, shift_start)
     sessions = []
     for t in taps:
         s = sessions[-1] if sessions else None
@@ -324,6 +348,27 @@ def make_sessions(punch_times):
             s.taps += 1
         else:
             sessions.append(Session(work_date=t.date(), clock_in=t))
+    return _drop_short_outs(sessions)
+
+
+def _sessions_around_shift(taps, shift_start):
+    sessions = []
+    for t in taps:
+        s = sessions[-1] if sessions else None
+        day = _start_day(t, shift_start)
+        span = t - s.clock_in if s is not None else None
+        opens_new_day = day is not None and span is not None and span >= NEW_DAY_AFTER
+        if s is not None and not opens_new_day and span <= MAX_SHIFT_SESSION:
+            if s.clock_out is not None:
+                s.ignored.append(s.clock_out)
+            s.clock_out = t
+            s.taps += 1
+        else:
+            sessions.append(Session(work_date=day or t.date(), clock_in=t))
+    return _drop_short_outs(sessions)
+
+
+def _drop_short_outs(sessions):
     for s in sessions:
         if s.clock_out is not None and s.clock_out - s.clock_in < MIN_WORKED:
             s.ignored.append(s.clock_out)
