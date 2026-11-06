@@ -14,6 +14,7 @@ Payroll in the database (G8b part 1, 1 Nov 2026).
                    the next run automatically (e.g. Insentif BPJS Kesehatan).
 """
 import uuid
+from datetime import time
 from decimal import Decimal
 
 from django.conf import settings
@@ -38,6 +39,7 @@ class PayrollSettings(TenantScopedModel):
         NONE         = "none",         "Tidak ada"
         OVERTIME_DAY = "overtime_day", "Per hari lembur"
         PRESENT_DAY  = "present_day",  "Per hari hadir"
+        LATE_OUT     = "late_out",     "Per hari pulang malam"          # G12d
 
     organization      = models.OneToOneField("organizations.Organization", on_delete=models.CASCADE,
                                              related_name="payroll_settings")
@@ -50,6 +52,7 @@ class PayrollSettings(TenantScopedModel):
     flat_rest_day     = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     meal_rule         = models.CharField(max_length=15, choices=MealRule.choices, default=MealRule.NONE)
     meal_allowance    = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
+    meal_late_after   = models.TimeField(default=time(19, 0), verbose_name="Pulang malam mulai jam")   # G12d
     late_fine_per_minute   = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
     late_tolerance_minutes = models.PositiveSmallIntegerField(default=0)
     bpjs_base_includes_allowance = models.BooleanField(default=True)
