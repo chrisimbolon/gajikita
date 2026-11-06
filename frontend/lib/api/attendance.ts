@@ -69,7 +69,9 @@ export interface DayDetail extends DayRow {
 export type DayOvertimePay =
   | { minutes: number; not_paid: string }
   | { minutes: number; rest_day: boolean; hourly_rate: string; amount: string; warnings: string[]; estimate: boolean;
-      lines: { minutes: number; multiplier: string; amount: string }[] };
+      lines: { minutes: number; multiplier: string; amount: string }[];
+      // G11c: "flat" = the company's own rates (Pengaturan payroll), with the PP 35 amount beside it
+      mode?: "pp35" | "flat"; rounded_minutes?: number; rate?: string; pp35_amount?: string | null; gap?: string };
 
 export const STATUS_STYLE: Record<DayStatus, { bg: string; fg: string }> = {
   on_time:      { bg: "var(--workshop-lt)", fg: "var(--workshop)" },
