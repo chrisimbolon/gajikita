@@ -13,7 +13,9 @@ Three formats, recognised automatically:
   3. Attendance Record Report    the Excel grid from the machine's software ("Att.log report"
      (.xlsx)                     sheet): "Att. Time 2026-09-26 ~ 2026-10-25", one column per day,
                                  a block per person ("ID: 15  Name: Eko") with that day's taps
-                                 stacked in one cell. An old .xls must be saved again as .xlsx.
+                                 stacked in one cell. Also old .xls files (G12a): real Excel 97-2003,
+                                 an HTML table or text saved as .xls. With several sheets (Schedule
+                                 Infor., Att. Stat., Att.log report...) the one with the clock times is read.
 
 Every format becomes the same thing: Punch(machine_id, at, name). Then make_sessions() turns
 one person's punches into working sessions: first tap = Masuk, last tap = Pulang, double
@@ -24,6 +26,8 @@ import io
 import re
 from dataclasses import dataclass, field
 from datetime import date as Date, datetime, time, timedelta
+
+from apps.core.legacy_excel import LegacyExcelError, is_legacy_excel, read_legacy_excel
 
 DOUBLE_TAP = timedelta(minutes=3)        # taps this close together are one tap
 MAX_SESSION = timedelta(hours=16)        # a tap more than 16 h after the session's first tap starts a new one
@@ -161,6 +165,8 @@ TIME_IN_CELL = re.compile(r"\b(\d{1,2}):(\d{2})\b")
 def _cell_text(v):
     if v is None:
         return ""
+    if isinstance(v, float) and v.is_integer():
+        return str(int(v))
     if isinstance(v, (datetime, time)):
         return v.strftime("%H:%M")
     return str(v)
@@ -238,32 +244,50 @@ def read_xlsx_rows(data):
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception:
         raise FileError("File Excel tidak bisa dibuka. Pastikan formatnya .xlsx.")
-    best = None
-    for ws in wb.worksheets:
-        rows = [list(r) for r in ws.iter_rows(values_only=True)]
-        joined = " ".join(_cell_text(c) for r in rows[:8] for c in r)
-        if RANGE.search(joined):
-            return rows
-        best = best or rows
+    return pick_sheet([(ws.title, [list(r) for r in ws.iter_rows(values_only=True)]) for ws in wb.worksheets])
+
+
+def pick_sheet(sheets):
+    """
+    The sheet to read (G12a): one with the report period and the most clock times in it. A
+    machine export often has several sheets that all show the period (Schedule Infor., Att.
+    Stat., Att.log report, Exception Stat.); only the Att.log report holds every tap.
+    """
+    best, best_score = None, None
+    for _name, rows in sheets:
+        head = " ".join(_cell_text(c) for r in rows[:8] for c in r)
+        times = sum(len(TIME_IN_CELL.findall(c)) for r in rows[:400] for c in r if isinstance(c, str))
+        score = (bool(RANGE.search(head)), times, len(rows))
+        if best_score is None or score > best_score:
+            best, best_score = rows, score
     return best or []
+
+
+def _from_rows(rows, label):
+    joined = " ".join(_cell_text(c) for r in rows[:8] for c in r)
+    if RANGE.search(joined):
+        punches, bad = parse_record_grid(rows)
+        return punches, bad, f"Attendance Record Report ({label})"
+    text = "\n".join(";".join(_cell_text(c) if not isinstance(c, datetime) else c.strftime("%Y-%m-%d %H:%M:%S")
+                              for c in r) for r in rows)
+    punches, bad = parse_csv(text)
+    return punches, bad, f"Tabel {label}"
 
 
 # ── which format? ──
 def read_punches(filename, data):
     """Returns (punches, unreadable_line_count, format_label)."""
     name = (filename or "").lower()
-    if name.endswith(".xls"):
-        raise FileError("File .xls (Excel lama) belum bisa dibaca. Buka di Excel, lalu Save As → \"Excel Workbook (.xlsx)\", dan upload lagi.")
-    if name.endswith(".xlsx") or data[:2] == b"PK":
-        rows = read_xlsx_rows(data)
-        joined = " ".join(_cell_text(c) for r in rows[:8] for c in r)
-        if RANGE.search(joined):
-            punches, bad = parse_record_grid(rows)
-            return punches, bad, "Attendance Record Report (Excel)"
-        text = "\n".join(";".join(_cell_text(c) if not isinstance(c, datetime) else c.strftime("%Y-%m-%d %H:%M:%S")
-                                  for c in r) for r in rows)
-        punches, bad = parse_csv(text)
-        return punches, bad, "Tabel Excel"
+    if is_legacy_excel(name, data):                       # G12a: old .xls from the machine software
+        try:
+            sheets = read_legacy_excel(data)
+        except LegacyExcelError as err:
+            raise FileError(str(err))
+        if sheets is not None:
+            return _from_rows(pick_sheet(sheets), "Excel .xls")
+        # text saved with an .xls name: read below like any text file
+    elif name.endswith(".xlsx") or data[:2] == b"PK":
+        return _from_rows(read_xlsx_rows(data), "Excel")
     for enc in ("utf-8-sig", "utf-16", "latin-1"):
         try:
             text = data.decode(enc)
