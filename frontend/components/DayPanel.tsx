@@ -134,10 +134,25 @@ export default function DayPanel({ row, onChanged, onClose }: Props) {
               ) : (
                 <>
                   <b>Upah lembur{detail.overtime_pay.estimate ? " (perkiraan, belum disetujui)" : ""}: {rupiah(detail.overtime_pay.amount)}</b>
-                  <div style={{ color: "var(--steel)", fontSize: 12.5, marginTop: 2 }}>
-                    {detail.overtime_pay.rest_day ? "Hari libur" : "Hari kerja"} · upah per jam {rupiah(detail.overtime_pay.hourly_rate)} ·{" "}
-                    {detail.overtime_pay.lines.map((l) => `${minutesText(l.minutes)} × ${l.multiplier.replace(".", ",")}`).join(" + ")}
-                  </div>
+                  {detail.overtime_pay.mode === "flat" ? (
+                    <>
+                      <div style={{ color: "var(--steel)", fontSize: 12.5, marginTop: 2 }}>
+                        Tarif perusahaan · {detail.overtime_pay.rest_day ? `hari libur ${rupiah(detail.overtime_pay.rate ?? "0")}`
+                          : `${minutesText(detail.overtime_pay.rounded_minutes ?? 0)} × ${rupiah(detail.overtime_pay.rate ?? "0")}/jam`}
+                      </div>
+                      {detail.overtime_pay.pp35_amount && (
+                        <div style={{ fontSize: 12.5, marginTop: 4, color: Number(detail.overtime_pay.gap) > 0 ? "var(--hazard-dark)" : "var(--steel)" }}>
+                          Menurut PP 35/2021: {rupiah(detail.overtime_pay.pp35_amount)}
+                          {Number(detail.overtime_pay.gap) > 0 && <> · kurang {rupiah(detail.overtime_pay.gap ?? "0")}</>}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ color: "var(--steel)", fontSize: 12.5, marginTop: 2 }}>
+                      {detail.overtime_pay.rest_day ? "Hari libur" : "Hari kerja"} · upah per jam {rupiah(detail.overtime_pay.hourly_rate)} ·{" "}
+                      {detail.overtime_pay.lines.map((l) => `${minutesText(l.minutes)} × ${l.multiplier.replace(".", ",")}`).join(" + ")}
+                    </div>
+                  )}
                   {detail.overtime_pay.warnings.map((w) => <div key={w} style={{ color: "var(--hazard-dark)", fontSize: 12.5 }}>{w}</div>)}
                 </>
               )}
