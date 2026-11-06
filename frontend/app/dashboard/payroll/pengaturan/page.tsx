@@ -135,9 +135,16 @@ export default function PayrollSettingsPage() {
             <option value="none">Tidak ada</option>
             <option value="overtime_day">Per hari lembur</option>
             <option value="present_day">Per hari hadir</option>
+            <option value="late_out">Per hari pulang malam</option>
           </select>
         </label>
-        {form.meal_rule !== "none" && money("meal_allowance", "Uang makan per hari")}
+        {money("meal_allowance", "Uang makan per hari", "Juga untuk karyawan yang punya aturan uang makan sendiri (menu Karyawan)")}
+        <label>
+          <div className="label">Pulang malam mulai jam</div>
+          <input className="input" type="time" value={(form.meal_late_after ?? "19:00").slice(0, 5)} style={{ width: "100%" }}
+                 onChange={(e) => set("meal_late_after", e.target.value as never)} />
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>Untuk aturan &quot;Per hari pulang malam&quot;</div>
+        </label>
         {money("late_fine_per_minute", "Potongan terlambat per menit", "0 = tidak dipotong. Harus tercantum di Peraturan Perusahaan / PKB.")}
         {number("late_tolerance_minutes", "Toleransi terlambat (menit)", "Dikurangi dari menit terlambat setiap hari")}
       </Section>
