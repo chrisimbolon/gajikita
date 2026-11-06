@@ -130,7 +130,10 @@ export default function LemburPage() {
                                       <td>{d.site}</td>
                                       <td>{minutesText(d.minutes)}</td>
                                       <td style={{ color: "var(--steel)" }}>
-                                        {d.lines.map((l) => `${minutesText(l.minutes)} × ${l.multiplier.replace(".", ",")}`).join(" + ")}
+                                        {d.mode === "flat"
+                                          ? (d.rest_day ? "Tarif hari libur perusahaan" : `${minutesText(d.rounded_minutes ?? d.minutes)} × tarif perusahaan`)
+                                            + (d.pp35_amount ? ` · PP 35: ${rupiah(d.pp35_amount)}` : "")
+                                          : d.lines.map((l) => `${minutesText(l.minutes)} × ${l.multiplier.replace(".", ",")}`).join(" + ")}
                                       </td>
                                       <td style={{ textAlign: "right", fontWeight: 600 }}>{rupiah(d.amount)}</td>
                                     </tr>
