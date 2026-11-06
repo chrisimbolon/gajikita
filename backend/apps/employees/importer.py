@@ -22,6 +22,8 @@ import re
 from datetime import date as Date, datetime
 from decimal import Decimal, InvalidOperation
 
+from apps.core.legacy_excel import LegacyExcelError, is_legacy_excel, read_legacy_excel
+
 TEMPLATE_COLUMNS = [
     # (field, title in the template, required for a NEW employee, hint)
     ("employee_no", "No. Karyawan", True, "Unik per perusahaan. Contoh: DK-001"),
@@ -123,9 +125,15 @@ def match_columns(header):
 
 def read_table(filename, data):
     name = (filename or "").lower()
-    if name.endswith(".xls"):
-        raise FileError("File .xls (Excel lama) belum bisa dibaca. Buka di Excel, Save As → \"Excel Workbook (.xlsx)\", lalu upload lagi.")
-    if name.endswith(".xlsx") or data[:2] == b"PK":
+    legacy = None
+    if is_legacy_excel(name, data):                       # G12a
+        try:
+            legacy = read_legacy_excel(data)
+        except LegacyExcelError as err:
+            raise FileError(str(err))
+    if legacy is not None:
+        rows = dict(legacy).get("Data Karyawan") or (legacy[0][1] if legacy else [])
+    elif name.endswith(".xlsx") or data[:2] == b"PK":
         from openpyxl import load_workbook
         try:
             wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
