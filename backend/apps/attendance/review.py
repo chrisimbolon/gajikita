@@ -47,6 +47,7 @@ def evaluate(day, now=None, shift=None, leave=None):
         day.date, shift_info(shift), taps_of(day), now or timezone.now(), timezone.get_current_timezone(),
         hr_in=day.hr_in, hr_out=day.hr_out, decision=day.decision, waive_late=day.waive_late,
         overtime_approved=day.overtime_approved_minutes, leave=leave,
+        overtime_eligible=day.employee.overtime_eligible,                # G12d
     )
 
 
