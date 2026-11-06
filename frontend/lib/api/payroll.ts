@@ -12,8 +12,9 @@ export interface PayrollSettings {
   overtime_rounding:            "exact" | "nearest_half" | "down_half";
   flat_overtime_hour:           string;
   flat_rest_day:                string;
-  meal_rule:                    "none" | "overtime_day" | "present_day";
+  meal_rule:                    "none" | "overtime_day" | "present_day" | "late_out";
   meal_allowance:               string;
+  meal_late_after:              string;   // "19:00:00" (G12d)
   late_fine_per_minute:         string;
   late_tolerance_minutes:       number;
   bpjs_base_includes_allowance: boolean;
