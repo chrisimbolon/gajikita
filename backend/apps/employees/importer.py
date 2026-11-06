@@ -51,6 +51,7 @@ TEMPLATE_COLUMNS = [
     ("shift", "Shift", False, "Nama shift persis seperti di GajiKita, contoh: Pagi"),
     ("site", "Lokasi Utama", False, "Nama lokasi persis seperti di GajiKita"),
     ("mandor", "No. Karyawan Atasan / Mandor", False, "Untuk persetujuan cuti"),
+    ("meal_rule", "Uang Makan", False, "Kosong = ikut pengaturan perusahaan"),                 # G12d
 ]
 LABELS = {f: title for f, title, _, _ in TEMPLATE_COLUMNS}
 REQUIRED_NEW = [f for f, _, req, _ in TEMPLATE_COLUMNS if req]
@@ -85,6 +86,7 @@ ALIASES = {
     "site": ["lokasiutama", "lokasi", "site"],
     "mandor": ["nokaryawanatasanmandor", "atasanmandor", "mandoratasan", "noatasanmandor", "atasan", "mandor",
                "noatasan", "nomandor"],
+    "meal_rule": ["uangmakan", "aturanuangmakan"],
 }
 
 PTKP = ["TK/0", "TK/1", "TK/2", "TK/3", "K/0", "K/1", "K/2", "K/3"]
@@ -92,6 +94,9 @@ EMPLOYMENT = {"pkwtt": "pkwtt", "tetap": "pkwtt", "pkwt": "pkwt", "kontrak": "pk
               "harian": "harian_lepas", "borongan": "borongan"}
 PAY = {"bulanan": "monthly", "monthly": "monthly", "harian": "daily", "daily": "daily", "perpekerjaan": "piece",
        "borongan": "piece", "piece": "piece"}
+MEALS = {"ikut": "", "perusahaan": "", "perharihadir": "present_day", "hadir": "present_day",   # G12d
+         "perharilembur": "overtime_day", "lembur": "overtime_day", "perharipulangmalam": "late_out",
+         "pulangmalam": "late_out", "tidak": "none"}
 YES = {"ya", "y", "yes", "true", "1", "iya", "v", "x"}
 NO = {"tidak", "t", "no", "n", "false", "0", "tdk", "-"}
 DIGIT_FIELDS = {"nik", "bank_account_no", "bpjs_tk_no", "bpjs_kesehatan_no"}
@@ -274,6 +279,7 @@ CLEANERS = {
     "base_rate": to_money, "fixed_allowance": to_money, "overtime_eligible": to_bool, "bpjs_tk_enrolled": to_bool,
     "ptkp_status": to_ptkp, "employment_type": to_choice(EMPLOYMENT, "Jenis hubungan kerja"),
     "pay_type": to_choice(PAY, "Jenis upah"),
+    "meal_rule": to_choice(MEALS, "Uang makan"),
     "fingerprint_id": lambda v: (to_text(v).lstrip("0") or ("0" if to_text(v) else "")),
 }
 MAX_LEN = {"employee_no": 30, "full_name": 200, "position": 100, "nik": 16, "npwp": 20, "bank_name": 50,
@@ -348,14 +354,15 @@ def is_template_example(values):
 SAMPLE_ROWS = [
     ["CTH-001", "Budi Santoso", "Driver TM", "1234567890123456", "", "K/1", "15/07/2018", "", "", "PKWTT (tetap)",
      "Bulanan", 2800000, 0, "Ya", "Ya", "22104124288", "", "BCA", "0123456789", "BUDI SANTOSO", "081234567890", 15,
-     "Pagi", "Batching Plant", "CTH-002"],
+     "Pagi", "Batching Plant", "CTH-002", "Pulang malam"],
     ["CTH-002", "Andi Wijaya", "Kepala Plant", "", "", "TK/0", "26/01/2023", "", "", "PKWTT (tetap)", "Bulanan",
      7500000, 500000, "Tidak", "Ya", "", "", "Mandiri", "1090012345678", "ANDI WIJAYA", "081298765432", 26, "Pagi",
-     "Batching Plant", ""],
+     "Batching Plant", "", "Tidak ada"],
 ]
 TEXT_COLUMNS = {"nik", "npwp", "bank_account_no", "phone", "bpjs_tk_no", "bpjs_kesehatan_no"}
 LISTS = {"ptkp_status": ",".join(PTKP), "employment_type": "PKWTT (tetap),PKWT (kontrak),Harian lepas,Borongan",
-         "pay_type": "Bulanan,Harian,Per pekerjaan", "overtime_eligible": "Ya,Tidak", "bpjs_tk_enrolled": "Ya,Tidak"}
+         "pay_type": "Bulanan,Harian,Per pekerjaan", "overtime_eligible": "Ya,Tidak", "bpjs_tk_enrolled": "Ya,Tidak",
+         "meal_rule": "Ikut perusahaan,Per hari hadir,Per hari lembur,Pulang malam,Tidak ada"}
 WIDTHS = {"full_name": 28, "bank_account_name": 24, "position": 20, "site": 18}
 
 
