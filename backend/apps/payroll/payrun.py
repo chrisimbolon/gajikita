@@ -28,6 +28,7 @@ from apps.attendance.rekap_codes import day_cell, outside_cell
 from apps.attendance.review import evaluate, evaluate_missing
 from apps.core.audit import record_audit
 from apps.employees.models import Employee
+from . import meals                                                     # G12d
 from apps.leave.models import LeaveRequest
 from apps.leave.rules import UNPAID
 
@@ -87,6 +88,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None):
     nums = {"working_days": 0, "present_days": 0, "absent_days": 0, "unpaid_leave_days": 0, "outside_days": 0, "paid_leave_days": 0,
             "overtime": [], "late_raw": [], "meal_days": 0, "review_days": 0, "leave": {}}
     leave_count = Counter()
+    meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
+    tz = timezone.get_current_timezone()
     for d in _dates(start, end):
         if d < emp.join_date or (emp.end_date and d > emp.end_date):
             nums["outside_days"] += 1
@@ -118,9 +121,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None):
         ot = day.overtime_approved_minutes if (day is not None and day.decision == "approved") else 0
         if ot:
             nums["overtime"].append({"date": d.isoformat(), "minutes": ot, "rest_day": not working})
-        if cfg.meal_rule == PayrollSettings.MealRule.OVERTIME_DAY and ot:
-            nums["meal_days"] += 1
-        elif cfg.meal_rule == PayrollSettings.MealRule.PRESENT_DAY and r.first_in and r.status != Status.REJECTED:
+        if meals.earns_meal(meal_rule, d, r.first_in, r.last_out, r.status == Status.REJECTED, ot,
+                            cfg.meal_late_after, tz):
             nums["meal_days"] += 1
         if cells is not None:
             cells.append(day_cell(d, r, day, leave, ot))
