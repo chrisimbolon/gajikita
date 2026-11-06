@@ -25,11 +25,12 @@ class TemplateRoundTripTests(SimpleTestCase):
         data = filled_template([
             ["DK-007", "Sudarmono", "Operator Loader", "2101100107620008", None, "k1", "08/08/2024", "06/11/2024", None,
              "PKWTT (tetap)", "Bulanan", "4.000.000", None, "Ya", "Ya", 24198476079.0, None, "BCA", "0123456789",
-             "SUDARMONO", "+62 812-3456-7890", 32.0, "Pagi", "Batching Plant", "DK-001"],
+             "SUDARMONO", "+62 812-3456-7890", 32.0, "Pagi", "Batching Plant", "DK-001", "Pulang malam"],
         ])
         header, rows, first = read_table("karyawan.xlsx", data)
         items, columns = parse_rows(header, rows, first + 1)
-        self.assertEqual(len(columns), 25)
+        self.assertEqual(len(columns), 26)                                  # G12d: + Uang Makan
+        self.assertEqual(items[-1]["values"]["meal_rule"], "late_out")
         hint, ex1, ex2, real = items
         self.assertEqual((hint["skip"], ex1["skip"], ex2["skip"]),
                          ("Baris petunjuk dari template", "Baris contoh dari template", "Baris contoh dari template"))
