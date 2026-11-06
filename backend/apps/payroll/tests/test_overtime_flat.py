@@ -68,5 +68,6 @@ class FlatOvertimePriceTests(APITestCase):
     def test_not_eligible_is_not_paid(self):
         self.emp.overtime_eligible = False
         self.emp.save()
-        p = self.pay(self.day(date(2026, 10, 27), (7, 55), (18, 40)))
+        self.assertIsNone(self.pay(self.day(date(2026, 10, 27), (7, 55), (18, 40))))   # G12d: nothing proposed
+        p = self.pay(self.day(date(2026, 10, 28), (7, 55), (18, 40), decision="approved", overtime_approved_minutes=100))
         self.assertIn("not_paid", p)
