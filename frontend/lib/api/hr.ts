@@ -63,6 +63,7 @@ export interface Employee {
   fixed_allowance:   string;
   overtime_eligible: boolean;
   bpjs_tk_enrolled:  boolean;
+  meal_rule:         "" | "none" | "present_day" | "overtime_day" | "late_out";   // G12d
   bank_name:         string;
   bank_account_no:   string;
   bank_account_name: string;
@@ -81,6 +82,12 @@ export interface Employee {
   has_login:         boolean;
   login_locked:      boolean;
 }
+
+// G12d: uang makan per employee; "" = follow Payroll → Pengaturan
+export const MEAL_RULE_OPTIONS: [string, string][] = [
+  ["", "Ikut pengaturan perusahaan"], ["present_day", "Per hari hadir"], ["overtime_day", "Per hari lembur"],
+  ["late_out", "Per hari pulang malam"], ["none", "Tidak ada"],
+];
 
 export type EmployeeInput = Omit<Employee, "id" | "login_phone" | "must_change_pin" | "has_login" | "login_locked">;
 
