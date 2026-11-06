@@ -5,7 +5,7 @@
 // employee and to turn on their phone + PIN login.
 // =============================================================================
 import {
-  EMPLOYMENT_TYPE_LABEL, Employee, EmployeeInput, PAY_TYPE_LABEL, PTKP_OPTIONS, Shift, Site, hrApi, readErrors,
+  EMPLOYMENT_TYPE_LABEL, Employee, EmployeeInput, MEAL_RULE_OPTIONS, PAY_TYPE_LABEL, PTKP_OPTIONS, Shift, Site, hrApi, readErrors,
 } from "@/lib/api/hr";
 import { hhmm, rupiah, todayISO } from "@/lib/format";
 import EmployeeImport from "@/components/EmployeeImportWizard";     // G9d: template or the company's own file
@@ -30,7 +30,7 @@ function npwpText(value: string): string {
 
 const blank = (): Form => ({
   employee_no: "", full_name: "", position: "", fingerprint_id: "", probation_end_date: "", nik: "", npwp: "", ptkp_status: "TK/0", join_date: todayISO(), end_date: "",
-  employment_type: "pkwtt", pay_type: "monthly", base_rate: "0", fixed_allowance: "0", overtime_eligible: true, bpjs_tk_enrolled: true,
+  employment_type: "pkwtt", pay_type: "monthly", base_rate: "0", fixed_allowance: "0", overtime_eligible: true, bpjs_tk_enrolled: true, meal_rule: "",
   bank_name: "", bank_account_no: "",
   bank_account_name: "", bpjs_kesehatan_no: "", bpjs_tk_no: "", phone: "", sites: [], default_site: null,
   default_shift: null, mandor: null, status: "active",
@@ -41,7 +41,7 @@ const fromEmployee = (e: Employee): Form => ({
   probation_end_date: e.probation_end_date ?? "", nik: e.nik, npwp: e.npwp, ptkp_status: e.ptkp_status,
   join_date: e.join_date, end_date: e.end_date ?? "", employment_type: e.employment_type, pay_type: e.pay_type,
   base_rate: e.base_rate, fixed_allowance: e.fixed_allowance, overtime_eligible: e.overtime_eligible,
-  bpjs_tk_enrolled: e.bpjs_tk_enrolled,
+  bpjs_tk_enrolled: e.bpjs_tk_enrolled, meal_rule: e.meal_rule ?? "",
   bank_name: e.bank_name, bank_account_no: e.bank_account_no,
   bank_account_name: e.bank_account_name, bpjs_kesehatan_no: e.bpjs_kesehatan_no, bpjs_tk_no: e.bpjs_tk_no,
   phone: e.phone, sites: e.sites.map(String), default_site: e.default_site, default_shift: e.default_shift,
@@ -293,6 +293,7 @@ function EmployeePanel({ employee, employees, sites, shifts, onClose, onSaved }:
         <input type="checkbox" checked={form.bpjs_tk_enrolled} onChange={(e) => set("bpjs_tk_enrolled", e.target.checked)} />
         Terdaftar BPJS Ketenagakerjaan (JHT 2% dipotong dari gaji)
       </label>
+      {select("meal_rule", "Uang makan", MEAL_RULE_OPTIONS)}
       {select("default_shift", "Shift utama", shifts.filter((s) => s.is_active || s.id === form.default_shift)
         .map((s): [string, string] => [s.id, `${s.name} (${hhmm(s.start_time)}-${hhmm(s.end_time)})`]), true)}
       {select("default_site", "Lokasi utama", activeSites.map((s): [string, string] => [s.id, s.name]), true)}
