@@ -43,7 +43,7 @@ export default function TinjauPeriodePage() {
 
   useEffect(() => { const t = setTimeout(() => { setQuery(q.trim()); setPage(1); }, 350); return () => clearTimeout(t); }, [q]);
 
-  const clearPick = () => { setPicked(new Set()); setAllMatching(false); setMode(null); };
+  const clearPick = () => { setPicked(new Set()); setAllMatching(false); setMode(null); setWaiveLate(false); };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,9 +84,11 @@ export default function TinjauPeriodePage() {
         ...(allMatching ? { month: data.month, kind: kind || "", q: query } : { ids: Array.from(picked) }),
       });
       setDone(`${r.decided} hari ${mode === "approve" ? "disetujui" : "ditolak"}` +
+              (mode === "approve" && waiveLate ? " · terlambat dimaafkan (tanpa denda)" : "") +
               (r.overtime_minutes ? ` · lembur ${minutesText(r.overtime_minutes)}` : "") +
               (r.skipped ? ` · ${r.skipped} dilewati (terkunci / sudah diputuskan)` : ""));
       clearPick(); setNote("");
+      setData(null);                      // no stale rows while the list reloads
       await load();
     } catch (err) {
       setError(readErrors(err).summary);
@@ -174,9 +176,10 @@ export default function TinjauPeriodePage() {
                 <input className="input" value={note} onChange={(e) => setNote(e.target.value)}
                        placeholder={mode === "reject" ? "mis. titip absen" : "mis. sesuai SPL bulan ini"} /></div>
               <button className="btn-rust" disabled={busy || (mode === "reject" && !note.trim())} onClick={decide}
-                      style={{ display: "flex", alignItems: "center", gap: 6, background: mode === "reject" ? "var(--danger)" : undefined }}>
+                      style={{ display: "flex", alignItems: "center", gap: 6,
+                               background: mode === "reject" ? "var(--danger)" : waiveLate ? "var(--hazard-dark)" : undefined }}>
                 {busy && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />}
-                {mode === "approve" ? `Setujui ${count} hari` : `Tolak ${count} hari`}
+                {mode === "approve" ? `Setujui ${count} hari${waiveLate ? " + maafkan terlambat" : ""}` : `Tolak ${count} hari`}
               </button>
             </div>
           )}
