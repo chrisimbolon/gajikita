@@ -25,6 +25,8 @@ so "NAMA PEGAWAI" and "Nama  Pegawai." are the same column.
 import csv
 import io
 
+from apps.core.legacy_excel import LegacyExcelError, is_legacy_excel, read_legacy_excel
+
 from .importer import (EMPLOYMENT, LABELS, PAY, PTKP, REQUIRED_NEW, TEMPLATE_COLUMNS, FileError, key,
                        match_columns, parse_row, to_text)
 
@@ -53,10 +55,15 @@ def fields_list():
 def read_sheets(filename, data):
     """[(sheet name, rows)] of an .xlsx (every sheet) or a CSV (one)."""
     name = (filename or "").lower()
-    if name.endswith(".xls"):
-        raise FileError("File .xls (Excel lama) belum bisa dibaca. Buka di Excel, Save As → \"Excel Workbook (.xlsx)\", "
-                        "lalu upload lagi.")
-    if name.endswith(".xlsx") or data[:2] == b"PK":
+    if is_legacy_excel(name, data):                       # G12a
+        try:
+            sheets = read_legacy_excel(data)
+        except LegacyExcelError as err:
+            raise FileError(str(err))
+        if sheets is not None:
+            return sheets
+        # text saved with an .xls name: read below like a CSV
+    elif name.endswith(".xlsx") or data[:2] == b"PK":
         from openpyxl import load_workbook
         try:
             wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
