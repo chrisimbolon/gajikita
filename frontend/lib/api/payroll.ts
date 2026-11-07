@@ -4,17 +4,28 @@
 // =============================================================================
 import api from "@/lib/api";
 
+// G12e: "until" "01:59" (empty = any later time, last row only); "start" "10:00" (empty = day off)
+export interface NightRule { until: string; start: string }
+export const DKCB_NIGHT_RULES: NightRule[] = [
+  { until: "01:59", start: "10:00" }, { until: "04:00", start: "13:00" }, { until: "", start: "" },
+];
+
 export interface PayrollSettings {
   period_start_day:             number;
   pay_day:                      number;
   daily_divisor:                number;
   overtime_mode:                "pp35" | "flat";
-  overtime_rounding:            "exact" | "nearest_half" | "down_half";
+  overtime_rounding:            "exact" | "nearest_half" | "down_half" | "half_down";
   flat_overtime_hour:           string;
   flat_rest_day:                string;
   meal_rule:                    "none" | "overtime_day" | "present_day" | "late_out";
   meal_allowance:               string;
   meal_late_after:              string;   // "19:00:00" (G12d)
+  meal_midnight_extra:          boolean;  // G12e
+  breakfast_allowance:          string;
+  breakfast_before:             string;   // "07:00:00"
+  overtime_min_minutes:         number;
+  night_ot_rules:               NightRule[];
   late_fine_per_minute:         string;
   late_tolerance_minutes:       number;
   bpjs_base_includes_allowance: boolean;
