@@ -5,7 +5,7 @@
 // rates, and GajiKita then shows a warning on every slip where that pays less.
 // =============================================================================
 import { readErrors } from "@/lib/api/hr";
-import { PayrollSettings, payrollApi } from "@/lib/api/payroll";
+import { DKCB_NIGHT_RULES, NightRule, PayrollSettings, payrollApi } from "@/lib/api/payroll";
 import { ArrowLeft, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -72,6 +72,11 @@ export default function PayrollSettingsPage() {
     </label>
   );
 
+  // G12e: the night-overtime rows
+  const nightRules: NightRule[] = form.night_ot_rules ?? [];
+  const setRules = (next: NightRule[]) => set("night_ot_rules", next);
+  const setRule = (i: number, patch: Partial<NightRule>) => setRules(nightRules.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
   const save = async () => {
     setBusy(true);
     setErrors({});
@@ -122,8 +127,11 @@ export default function PayrollSettingsPage() {
             <option value="exact">Per menit</option>
             <option value="nearest_half">Ke 0,5 jam terdekat</option>
             <option value="down_half">Ke bawah per 0,5 jam</option>
+            <option value="half_down">Blok 15/45 menit (1-15 = 0, 16-45 = 0,5, 46-60 = 1)</option>
           </select>
         </label>
+        {number("overtime_min_minutes", "Lembur mulai dihitung setelah (menit)",
+                "Dari jam pulang shift. 60 = lembur dihitung jika pulang jam 18:00 untuk shift 08-17")}
         {form.overtime_mode === "flat" && money("flat_overtime_hour", "Tarif per jam")}
         {form.overtime_mode === "flat" && money("flat_rest_day", "Tarif per hari libur", "Untuk kerja di hari libur / Minggu")}
       </Section>
@@ -145,8 +153,53 @@ export default function PayrollSettingsPage() {
                  onChange={(e) => set("meal_late_after", e.target.value as never)} />
           <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>Untuk aturan &quot;Per hari pulang malam&quot;</div>
         </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+          <input type="checkbox" checked={!!form.meal_midnight_extra}
+                 onChange={(e) => set("meal_midnight_extra", e.target.checked)} />
+          Uang makan 1x lagi jika lembur lewat jam 00:00
+        </label>
+        {money("breakfast_allowance", "Uang sarapan", "0 = tidak ada")}
+        <label>
+          <div className="label">Sarapan jika masuk sebelum jam</div>
+          <input className="input" type="time" value={(form.breakfast_before ?? "07:00").slice(0, 5)} style={{ width: "100%" }}
+                 onChange={(e) => set("breakfast_before", e.target.value as never)} />
+        </label>
         {money("late_fine_per_minute", "Potongan terlambat per menit", "0 = tidak dipotong. Harus tercantum di Peraturan Perusahaan / PKB.")}
         {number("late_tolerance_minutes", "Toleransi terlambat (menit)", "Dikurangi dari menit terlambat setiap hari")}
+      </Section>
+
+      <Section title="Lembur sampai lewat tengah malam"
+               hint="Besoknya karyawan boleh masuk lebih siang tanpa dihitung terlambat. Dicek dari atas ke bawah terhadap jam pulang hari sebelumnya.">
+        <div style={{ gridColumn: "1 / -1" }}>
+          {nightRules.length === 0 && (
+            <div style={{ fontSize: 13.5, color: "var(--steel)", marginBottom: 8 }}>Tidak dipakai: semua karyawan masuk sesuai jam shift.</div>
+          )}
+          {nightRules.map((r, i) => (
+            <div key={i} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, marginBottom: 8, fontSize: 14 }}>
+              <span style={{ minWidth: 130 }}>{i === 0 ? "Pulang 00:00 sampai" : "lalu sampai"}</span>
+              <input className="input" type="time" value={r.until} style={{ width: 120 }}
+                     onChange={(e) => setRule(i, { until: e.target.value })} />
+              {r.until === "" && <span style={{ fontSize: 12.5, color: "var(--steel)" }}>(kosong = lebih dari itu)</span>}
+              <span>→</span>
+              <select className="input" value={r.start === "" ? "off" : "start"} style={{ width: 130 }}
+                      onChange={(e) => setRule(i, { start: e.target.value === "off" ? "" : "10:00" })}>
+                <option value="start">masuk jam</option>
+                <option value="off">libur</option>
+              </select>
+              {r.start !== "" && (
+                <input className="input" type="time" value={r.start} style={{ width: 120 }}
+                       onChange={(e) => setRule(i, { start: e.target.value })} />
+              )}
+              <button type="button" className="btn-ghost" onClick={() => setRules(nightRules.filter((_, j) => j !== i))}>Hapus</button>
+            </div>
+          ))}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <button type="button" className="btn-ghost" onClick={() => setRules([...nightRules, { until: "", start: "" }])}>+ Tambah baris</button>
+            <button type="button" className="btn-ghost" onClick={() => setRules(DKCB_NIGHT_RULES)}>Isi contoh (00:00-01:59 → 10:00, s/d 04:00 → 13:00, lebih → libur)</button>
+            {nightRules.length > 0 && <button type="button" className="btn-ghost" onClick={() => setRules([])}>Matikan</button>}
+          </div>
+          {err("night_ot_rules")}
+        </div>
       </Section>
 
       <Section title="BPJS Ketenagakerjaan & UMK" hint="JHT 2% dipotong dari karyawan; JHT 3,7%, JKK dan JKM ditanggung perusahaan.">
