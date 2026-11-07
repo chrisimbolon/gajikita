@@ -43,12 +43,13 @@ def day_cell(d, result, day, leave, approved_overtime):
         "ot": approved_overtime or 0, "otp": pending,
         "late": result.late_minutes if Status.LATE in result.tags else 0,
         "early": result.early_minutes if Status.EARLY_OUT in result.tags else 0,
+        "n": result.note,                                   # G12e
     }
 
 
 def outside_cell(d):
     return {"d": d.isoformat(), "c": OUTSIDE, "s": "outside", "l": "Di luar masa kerja", "fi": None, "lo": None,
-            "day": None, "rv": False, "ot": 0, "otp": 0, "late": 0, "early": 0}
+            "day": None, "rv": False, "ot": 0, "otp": 0, "late": 0, "early": 0, "n": ""}
 
 
 def summarize(nums, cells):
