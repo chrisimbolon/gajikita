@@ -128,7 +128,7 @@ export default function RekapPage() {
   };
 
   const cellTitle = (r: RekapRow, c: RekapCell) => [
-    `${r.employee.full_name} · ${c.d}`, c.l,
+    `${r.employee.full_name} · ${c.d}`, c.l, c.n ?? "",
     c.fi || c.lo ? `Masuk ${c.fi ?? "-"} · Pulang ${c.lo ?? "-"}` : "",
     c.late ? `Terlambat ${minutesText(c.late)}` : "", c.early ? `Pulang cepat ${minutesText(c.early)}` : "",
     c.ot ? `Lembur disetujui ${minutesText(c.ot)}` : "", c.otp ? `Lembur menunggu ${minutesText(c.otp)}` : "",
