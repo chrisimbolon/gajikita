@@ -34,6 +34,7 @@ class PayrollSettings(TenantScopedModel):
         EXACT        = engine.EXACT,        "Per menit"
         NEAREST_HALF = engine.NEAREST_HALF, "Dibulatkan ke 0,5 jam terdekat"
         DOWN_HALF    = engine.DOWN_HALF,    "Dibulatkan ke bawah per 0,5 jam"
+        HALF_DOWN    = engine.HALF_DOWN,    "Blok 15/45 menit (1-15 = 0, 16-45 = 0,5, 46-60 = 1)"   # G12e
 
     class MealRule(models.TextChoices):
         NONE         = "none",         "Tidak ada"
@@ -53,6 +54,14 @@ class PayrollSettings(TenantScopedModel):
     meal_rule         = models.CharField(max_length=15, choices=MealRule.choices, default=MealRule.NONE)
     meal_allowance    = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     meal_late_after   = models.TimeField(default=time(19, 0), verbose_name="Pulang malam mulai jam")   # G12d
+    # G12e: DKCB's 'Note' sheet, each one a company setting
+    meal_midnight_extra = models.BooleanField(default=False, verbose_name="Uang makan lagi jika lewat 00:00")
+    breakfast_allowance = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"),
+                                              verbose_name="Uang sarapan", help_text="0 = tidak ada")
+    breakfast_before  = models.TimeField(default=time(7, 0), verbose_name="Sarapan jika masuk sebelum jam")
+    overtime_min_minutes = models.PositiveSmallIntegerField(default=30, verbose_name="Lembur mulai dihitung (menit)")
+    night_ot_rules    = models.JSONField(default=list, blank=True, verbose_name="Masuk siang setelah lembur malam",
+                                         help_text='[{"until": "01:59", "start": "10:00"}, ...], see night_rules.py')
     late_fine_per_minute   = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
     late_tolerance_minutes = models.PositiveSmallIntegerField(default=0)
     bpjs_base_includes_allowance = models.BooleanField(default=True)
@@ -80,6 +89,7 @@ class PayrollSettings(TenantScopedModel):
             daily_divisor=self.daily_divisor, overtime_mode=self.overtime_mode,
             overtime_rounding=self.overtime_rounding, flat_overtime_hour=self.flat_overtime_hour,
             flat_rest_day=self.flat_rest_day, meal_allowance=self.meal_allowance,
+            breakfast_allowance=self.breakfast_allowance,                                  # G12e
             late_fine_per_minute=self.late_fine_per_minute, late_tolerance_minutes=self.late_tolerance_minutes,
             bpjs_base_includes_allowance=self.bpjs_base_includes_allowance, jkk=self.jkk_rate,
             minimum_wage=self.minimum_wage,
