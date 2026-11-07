@@ -87,6 +87,7 @@ class DayResult:
     review_reasons: list = field(default_factory=list)  # plain words for HR
     needs_review: bool = False
     leave: str = ""                                    # the approved leave that day, e.g. "Sakit" (G7)
+    note: str = ""                                     # G12e: "Lembur malam sampai 00:30: masuk jam 10:00"
 
     @property
     def label(self):
@@ -100,7 +101,8 @@ def _minutes(delta):
 
 
 def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision="", waive_late=False,
-                 overtime_approved=None, leave="", overtime_eligible=True):
+                 overtime_approved=None, leave="", overtime_eligible=True, night=None,
+                 overtime_min=OVERTIME_MIN_MINUTES):
     """
     day      the working date (a night shift belongs to the date it started)
     shift    ShiftInfo or None
@@ -110,6 +112,9 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     hr_in / hr_out   HR's corrected clock-in / clock-out (aware), override the taps
     decision         "" (not reviewed) | "approved" | "rejected"
     leave            the approved leave that day ("Sakit", "Cuti tahunan"...), "" if none (G7)
+    night            night_rules.NightStart: the previous day's overtime ran past midnight, so today
+                     starts later (or is a day off). None = the normal start (G12e)
+    overtime_min     overtime is proposed from this many minutes past the shift end (G12e setting)
     """
     taps = sorted(taps, key=lambda t: t.at)
     flags = list(dict.fromkeys(f for t in taps for f in t.flags))
@@ -120,6 +125,12 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
         start_dt = datetime.combine(day, shift.start, tzinfo=tz)
         end_day = day + timedelta(days=1) if shift.crosses_midnight else day
         end_dt = datetime.combine(end_day, shift.end, tzinfo=tz)
+
+    # G12e: after overtime past midnight the day starts later, or is a day off
+    night = night if (night is not None and working_day and shift is not None) else None
+    night_off = night is not None and night.day_off
+    if night is not None and not night_off:
+        start_dt = datetime.combine(day, night.start, tzinfo=tz)
 
     ins = [t.at for t in taps if t.kind == "in"]
     outs = [t.at for t in taps if t.kind == "out"]
@@ -141,6 +152,8 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
             return DayResult(status=Status.DAY_OFF, tags=[Status.DAY_OFF])
         if leave:                    # approved leave: not absent, and nothing for HR to look at
             return DayResult(status=Status.LEAVE, tags=[Status.LEAVE], leave=leave)
+        if night_off:                # G12e: worked late into the night, so no one expects them today
+            return DayResult(status=Status.DAY_OFF, tags=[Status.DAY_OFF], note=night.note)
         if start_dt is not None:
             not_started = now < start_dt + timedelta(minutes=shift.grace_minutes)
         else:
@@ -149,7 +162,8 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
         return DayResult(status=status, tags=[status])
 
     # ── somebody came ──
-    result = DayResult(status=Status.ON_TIME, first_in=first_in, last_out=last_out, flags=flags)
+    result = DayResult(status=Status.ON_TIME, first_in=first_in, last_out=last_out, flags=flags,
+                       note=night.note if night is not None else "")
     tags = []
     if not working_day:
         tags.append(Status.DAY_OFF_WORK)
@@ -157,7 +171,7 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     # HR is asked about the day instead ("Masuk padahal cuti").
     on_leave = bool(leave) and working_day
 
-    if start_dt is not None and working_day:
+    if start_dt is not None and working_day and not night_off:
         late = _minutes(first_in - start_dt)
         if late > shift.grace_minutes:
             result.late_minutes = late
@@ -175,14 +189,14 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
         result.worked_minutes = _minutes(last_out - first_in)
         if end_dt is not None and working_day:
             early = _minutes(end_dt - last_out)
-            if early > 0:
+            if early > 0 and not night_off:
                 result.early_minutes = early
                 if not on_leave:
                     tags.append(Status.EARLY_OUT)
             overtime = _minutes(last_out - end_dt)
         else:
             overtime = result.worked_minutes if not working_day else 0
-        if overtime >= OVERTIME_MIN_MINUTES and overtime_eligible:      # G12d: nothing to propose otherwise
+        if overtime >= overtime_min and overtime_eligible:      # G12d: nothing to propose otherwise
             result.overtime_proposed_minutes = overtime
 
     # minutes per site: from each in / switch to the next tap
