@@ -34,7 +34,7 @@ from apps.organizations.permissions import IsCompanyHR
 from .day_status import STATUS_LABELS
 from .geofence import FLAG_LABELS
 from .models import AttendanceDay, ClockEvent
-from .review import evaluate, evaluate_missing, leaves_between, row
+from .review import evaluate, evaluate_missing, leaves_between, night_context, row
 from apps.payroll.services import day_overtime
 from apps.leave.services import approved_leave_on
 
@@ -68,13 +68,15 @@ def daily_rows(org, day, now):
     """Every active employee's row for one date (shared by the daily page and the dashboard)."""
     days = {d.employee_id: d for d in _days_qs(org).filter(date=day)}
     leaves = approved_leave_on(org, day)          # G7: approved cuti / sakit / izin that day
+    ctx = night_context(org.id, None, day, day)   # G12e
     rows = []
     for emp in _employees_on(org, day):
         d = days.pop(emp.id, None)
         leave = leaves.get(emp.id, "")
-        rows.append(row(emp, day, d, evaluate(d, now, leave=leave) if d else evaluate_missing(emp, day, now, leave=leave)))
+        rows.append(row(emp, day, d, evaluate(d, now, leave=leave, ctx=ctx) if d
+                        else evaluate_missing(emp, day, now, leave=leave, ctx=ctx)))
     for d in days.values():            # taps from someone no longer listed (resigned since)
-        rows.append(row(d.employee, day, d, evaluate(d, now, leave=leaves.get(d.employee_id, ""))))
+        rows.append(row(d.employee, day, d, evaluate(d, now, leave=leaves.get(d.employee_id, ""), ctx=ctx)))
     return rows
 
 
@@ -90,8 +92,9 @@ def review_rows(org, n, now):
     today = timezone.localtime(now).date()
     rows = []
     leaves = leaves_between(org.id, today - timedelta(days=n - 1), today)          # G9b
+    ctx = night_context(org.id, None, today - timedelta(days=n - 1), today)       # G12e
     for d in _days_qs(org).filter(date__gte=today - timedelta(days=n - 1), date__lte=today, decision=""):
-        r = evaluate(d, now, leave=leaves.get((d.employee_id, d.date), ""))
+        r = evaluate(d, now, leave=leaves.get((d.employee_id, d.date), ""), ctx=ctx)
         if r.needs_review:
             rows.append(row(d.employee, d.date, d, r))
     rows.sort(key=lambda r: (r["date"], r["employee"]["full_name"]), reverse=True)
