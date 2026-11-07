@@ -25,6 +25,7 @@ export interface DayRow {
   overtime_approved_minutes: number | null;
   site_minutes:              Record<string, number>;
   review_reasons:            string[];
+  note?:                     string;       // G12e: "Lembur malam sampai 00:30: masuk jam 10:00"
   needs_review:              boolean;
   decision:                  "" | "approved" | "rejected";
   is_locked:                 boolean;
@@ -92,6 +93,7 @@ export const STATUS_STYLE: Record<DayStatus, { bg: string; fg: string }> = {
 export interface RekapCell {
   d: string; c: string; s: DayStatus | "outside"; l: string; fi: string | null; lo: string | null;
   day: string | null; rv: boolean; ot: number; otp: number; late: number; early: number;
+  n?: string;   // G12e note
 }
 export interface RekapSummary {
   present: number; absent: number; late_times: number; late_minutes: number; early_times: number; early_minutes: number;
