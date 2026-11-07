@@ -32,7 +32,7 @@ from apps.payroll.payrun import MONTHS
 
 from .hr_views import _days_qs, _snapshot
 from .rekap import _shift_month, period_of
-from .review import evaluate, leaves_between, row
+from .review import evaluate, leaves_between, night_context, row
 from .day_status import Status
 from .review_kinds import KINDS, LABELS, capped_overtime, kinds_of
 
@@ -43,13 +43,14 @@ MAX_BULK = 10000
 def pending_days(org, start, end, now, kind="", q=""):
     """[(day, result, kinds)] waiting for HR in [start, end], oldest first, optionally one kind / a search."""
     leaves = leaves_between(org.id, start, end)
+    ctx = night_context(org.id, None, start, end)                                   # G12e
     qs = _days_qs(org).filter(date__gte=start, date__lte=end, decision="", is_locked=False)
     q = (q or "").strip().lower()
     out = []
     for d in qs.order_by("date", "employee__full_name"):
         if q and q not in d.employee.full_name.lower() and q not in d.employee.employee_no.lower():
             continue
-        r = evaluate(d, now, leave=leaves.get((d.employee_id, d.date), ""))
+        r = evaluate(d, now, leave=leaves.get((d.employee_id, d.date), ""), ctx=ctx)
         if not r.needs_review:
             continue
         kinds = kinds_of(r.review_reasons)
@@ -128,11 +129,12 @@ class BulkDecideView(APIView):
             days = list(_days_qs(org).filter(id__in=d["ids"]))
             dates = [x.date for x in days] or [now.date()]
             leaves = leaves_between(org.id, min(dates), max(dates))
+            ctx = night_context(org.id, None, min(dates), max(dates))               # G12e
             todo = []
             for day in days:
                 if day.is_locked or day.decision:
                     continue
-                r = evaluate(day, now, leave=leaves.get((day.employee_id, day.date), ""))
+                r = evaluate(day, now, leave=leaves.get((day.employee_id, day.date), ""), ctx=ctx)
                 todo.append((day, r))
             skipped = len(d["ids"]) - len(todo)
         else:
