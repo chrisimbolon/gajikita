@@ -31,6 +31,7 @@ from apps.payroll.models import PayrollSettings
 from apps.payroll.payrun import MONTHS, _days_by_employee, _leaves_by_employee, collect_numbers, employees_in_period
 
 from .rekap_codes import LEGEND, summarize
+from .review import night_context                                                # G12e
 
 PAGE_SIZE = 100
 DOW = ["Sen", "Sel", "Rab", "Kam", "Jum", "Sab", "Min"]
@@ -74,12 +75,14 @@ def build(org, start, end, params):
     employees = list(employees)
     ids = [e.id for e in employees]
     days = _days_by_employee(org, start, end, ids)
+    ctx = night_context(org.id, ids, start, end)                                    # G12e
     leaves = _leaves_by_employee(org, start, end, ids)
     now = timezone.now()
     rows = []
     for emp in employees:
         cells = []
-        nums = collect_numbers(emp, start, end, cfg, days.get(emp.id, {}), leaves.get(emp.id, {}), now, cells=cells)
+        nums = collect_numbers(emp, start, end, cfg, days.get(emp.id, {}), leaves.get(emp.id, {}), now, cells=cells,
+                               ctx=ctx)
         summary = summarize(nums, cells)
         if params.get("problems") in ("1", "true") and not summary["problem"]:
             continue
