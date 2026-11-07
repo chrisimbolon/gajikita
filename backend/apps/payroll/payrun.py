@@ -25,7 +25,7 @@ from django.utils import timezone
 from apps.attendance.day_status import Status
 from apps.attendance.models import AttendanceDay
 from apps.attendance.rekap_codes import day_cell, outside_cell
-from apps.attendance.review import evaluate, evaluate_missing
+from apps.attendance.review import evaluate, evaluate_missing, night_context
 from apps.core.audit import record_audit
 from apps.employees.models import Employee
 from . import meals                                                     # G12d
@@ -41,6 +41,7 @@ MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agust
 OVERRIDE_FIELDS = {
     "overtime_hours": "Jam lembur", "rest_days_worked": "Hari lembur libur", "meal_days": "Hari uang makan",
     "late_minutes": "Menit terlambat", "unpaid_days": "Hari potong gaji",
+    "breakfast_days": "Hari uang sarapan",                                       # G12e
 }
 
 
@@ -82,14 +83,19 @@ def _leaves_by_employee(org, start, end, employee_ids):
     return out
 
 
-def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None):
-    """The month's numbers for one employee. With cells=[], also one Rekap Absensi cell per day (G10)."""
+def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=None):
+    """
+    The month's numbers for one employee. With cells=[], also one Rekap Absensi cell per day (G10).
+    ctx: review.night_context() for the whole screen (G12e); None = load it for this one person.
+    """
+    ctx = ctx or night_context(emp.organization_id, [emp.id], start, end)
     shift = emp.default_shift
     nums = {"working_days": 0, "present_days": 0, "absent_days": 0, "unpaid_leave_days": 0, "outside_days": 0, "paid_leave_days": 0,
-            "overtime": [], "late_raw": [], "meal_days": 0, "review_days": 0, "leave": {}}
+            "overtime": [], "late_raw": [], "meal_days": 0, "breakfast_days": 0, "review_days": 0, "leave": {}}
     leave_count = Counter()
     meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
     tz = timezone.get_current_timezone()
+    breakfast = bool(cfg.breakfast_allowance) and meal_rule != meals.NONE           # G12e
     for d in _dates(start, end):
         if d < emp.join_date or (emp.end_date and d > emp.end_date):
             nums["outside_days"] += 1
@@ -101,7 +107,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None):
             nums["working_days"] += 1
         day, leave = days.get(d), leaves.get(d)
         label = leave[1] if leave else ""
-        r = evaluate(day, now, leave=label) if day else evaluate_missing(emp, d, now, leave=label)
+        r = evaluate(day, now, leave=label, ctx=ctx) if day else evaluate_missing(emp, d, now, leave=label, ctx=ctx)
         if r.status == Status.LEAVE:
             leave_count[label] += 1
             if leave[0] == UNPAID:
@@ -121,9 +127,11 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None):
         ot = day.overtime_approved_minutes if (day is not None and day.decision == "approved") else 0
         if ot:
             nums["overtime"].append({"date": d.isoformat(), "minutes": ot, "rest_day": not working})
-        if meals.earns_meal(meal_rule, d, r.first_in, r.last_out, r.status == Status.REJECTED, ot,
-                            cfg.meal_late_after, tz):
-            nums["meal_days"] += 1
+        rejected = r.status == Status.REJECTED
+        nums["meal_days"] += meals.meal_count(meal_rule, d, r.first_in, r.last_out, rejected, ot,
+                                             cfg.meal_late_after, tz, midnight_extra=cfg.meal_midnight_extra)
+        if breakfast and meals.earns_breakfast(d, r.first_in, rejected, cfg.breakfast_before, tz):
+            nums["breakfast_days"] += 1
         if cells is not None:
             cells.append(day_cell(d, r, day, leave, ot))
     nums["leave"] = dict(leave_count)
@@ -171,7 +179,8 @@ def calculate_line(line, cfg):
         ot_hours = rest_days = None
     period = engine.PeriodInput(
         overtime_days=ot_days, overtime_hours=ot_hours, rest_days_worked=rest_days,
-        meal_days=pick("meal_days"), late_minutes=pick("late_minutes"), unpaid_days=unpaid,
+        meal_days=pick("meal_days"), breakfast_days=pick("breakfast_days"),               # G12e
+        late_minutes=pick("late_minutes"), unpaid_days=unpaid,
         additions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.EARNING),
         deductions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.DEDUCTION),
     )
@@ -212,10 +221,12 @@ def calculate_run(run, now=None, refresh=True):
         ids = list(existing)
         days = _days_by_employee(run.organization, run.period_start, run.period_end, ids) if refresh else {}
         leaves = _leaves_by_employee(run.organization, run.period_start, run.period_end, ids) if refresh else {}
+        ctx = night_context(run.organization_id, ids, run.period_start, run.period_end) if refresh else None
         for line in existing.values():
             if refresh:
                 line.auto = collect_numbers(line.employee, run.period_start, run.period_end, cfg,
-                                            days.get(line.employee_id, {}), leaves.get(line.employee_id, {}), now)
+                                            days.get(line.employee_id, {}), leaves.get(line.employee_id, {}), now,
+                                            ctx=ctx)
             calculate_line(line, cfg)
             line.save()
         run.calculated_at = now
