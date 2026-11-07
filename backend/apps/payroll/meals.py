@@ -8,7 +8,7 @@ Each employee can have their own rule (Karyawan → Uang makan); empty = the com
 (Payroll → Pengaturan). DKCB, for example: a pump helper gets it every present day, drivers
 only on days they come home after 19:00, office staff never.
 """
-from datetime import datetime
+from datetime import datetime, time, timedelta
 
 NONE, OVERTIME_DAY, PRESENT_DAY, LATE_OUT = "none", "overtime_day", "present_day", "late_out"
 
@@ -37,3 +37,23 @@ def earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_a
     if rule == LATE_OUT:
         return last_out is not None and last_out >= datetime.combine(day, late_after, tzinfo=tz)
     return False
+
+
+def meal_count(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz, midnight_extra=False):
+    """
+    G12e: how many meals that day (0, 1 or 2). With midnight_extra, overtime that runs PAST 00:00
+    (00:01 or later; exactly 00:00 is not past it) earns a second meal. Only for the evening rules
+    (per overtime day / per day home late): a per-present-day meal is one meal a day.
+    """
+    if not earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz):
+        return 0
+    if midnight_extra and rule in (OVERTIME_DAY, LATE_OUT) and last_out is not None:
+        midnight = datetime.combine(day + timedelta(days=1), time(0), tzinfo=tz)
+        if last_out.astimezone(tz).replace(second=0, microsecond=0) > midnight:
+            return 2
+    return 1
+
+
+def earns_breakfast(day, first_in, rejected, before, tz):
+    """G12e: came in before `before` (DKCB: 07:00)."""
+    return not rejected and first_in is not None and first_in < datetime.combine(day, before, tzinfo=tz)
