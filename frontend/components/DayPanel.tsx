@@ -114,6 +114,11 @@ export default function DayPanel({ row, onChanged, onClose }: Props) {
         {view.hr_fixed && <span className="pill soon">Jam dikoreksi HR</span>}
         {locked && <span className="pill" style={{ background: "var(--paper-2)" }}>Terkunci</span>}
       </div>
+      {view.note && (
+        <div style={{ background: "var(--paper)", borderRadius: 6, padding: "8px 12px", fontSize: 13.5, marginBottom: 12 }}>
+          {view.note}
+        </div>
+      )}
 
       {loading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : (
         <>
