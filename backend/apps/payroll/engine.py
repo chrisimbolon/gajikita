@@ -24,7 +24,7 @@ BPJS Kesehatan and Jaminan Pensiun via payroll; THR; final pay on resignation.
 """
 from dataclasses import dataclass, field
 from datetime import date as Date
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_HALF_DOWN, ROUND_HALF_UP, Decimal
 
 from .overtime import hourly_rate, overtime_pay, week_pattern, week_warnings
 
@@ -38,6 +38,7 @@ FLAT = "flat"            # a fixed rupiah per hour (and per rest day) set by the
 EXACT = "exact"          # minute by minute
 NEAREST_HALF = "nearest_half"   # to the nearest half hour (15 minutes rounds up)
 DOWN_HALF = "down_half"  # down to the last full half hour
+HALF_DOWN = "half_down"  # G12e, DKCB: blocks of 15/45 minutes (1-15 -> 0, 16-45 -> 0.5, 46-60 -> 1)
 
 
 def rupiah(value):
@@ -60,6 +61,7 @@ class PayrollRules:
     flat_overtime_hour: Decimal = ZERO      # FLAT mode: rupiah per overtime hour on a working day
     flat_rest_day: Decimal = ZERO           # FLAT mode: rupiah per rest day / holiday worked
     meal_allowance: Decimal = ZERO          # rupiah per meal day
+    breakfast_allowance: Decimal = ZERO     # rupiah per breakfast (G12e)
     late_fine_per_minute: Decimal = ZERO    # rupiah per chargeable late / early-leave minute
     late_tolerance_minutes: int = 0         # taken off each day's late minutes
     bpjs_base_includes_allowance: bool = True   # BPJS TK wage = gaji pokok + tunjangan tetap
@@ -105,6 +107,7 @@ class PeriodInput:
     overtime_hours: Decimal = None           # FLAT mode only: hours HR already totalled (no daily detail)
     rest_days_worked: Decimal = None         # FLAT mode only, with overtime_hours
     meal_days: Decimal = ZERO
+    breakfast_days: Decimal = ZERO           # G12e
     late_minutes: Decimal = ZERO             # chargeable minutes (see chargeable_late_minutes)
     unpaid_days: Decimal = ZERO              # unpaid leave + days before joining / after leaving
     piece_work: tuple = ()                   # Extra: Kubikasi TM, Kubikasi CP, Bongkar Semen...
@@ -145,6 +148,8 @@ def round_overtime(minutes, mode):
         return int((Decimal(minutes) / 30).quantize(Decimal("1"), rounding=ROUND_HALF_UP)) * 30
     if mode == DOWN_HALF:
         return minutes // 30 * 30
+    if mode == HALF_DOWN:
+        return int((Decimal(minutes) / 30).quantize(Decimal("1"), rounding=ROUND_HALF_DOWN)) * 30
     return minutes
 
 
@@ -234,6 +239,8 @@ def calculate(terms, period, rules):
 
     earn("meal", "Uang makan", D(period.meal_days) * D(rules.meal_allowance), quantity=D(period.meal_days),
          unit="hari", rate=D(rules.meal_allowance))
+    earn("breakfast", "Uang sarapan", D(period.breakfast_days) * D(rules.breakfast_allowance),
+         quantity=D(period.breakfast_days), unit="hari", rate=D(rules.breakfast_allowance))
     for x in tuple(period.piece_work) + tuple(terms.monthly_extras) + tuple(period.additions):
         earn(x.code, x.label, x.amount, quantity=x.quantity, unit=x.unit, rate=x.rate)
 
