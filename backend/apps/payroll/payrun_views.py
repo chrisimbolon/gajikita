@@ -56,6 +56,19 @@ class SettingsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Pilih tanggal 1 sampai 28.")
         return v
 
+    def validate_overtime_min_minutes(self, v):                                         # G12e
+        if v > 240:
+            raise serializers.ValidationError("Paling lama 240 menit.")
+        return v
+
+    def validate_night_ot_rules(self, v):                                              # G12e
+        from apps.attendance.night_rules import RuleError, parse_rules
+        try:
+            parse_rules(v)
+        except RuleError as e:
+            raise serializers.ValidationError(str(e))
+        return v or []
+
     def validate_daily_divisor(self, v):
         if v not in (21, 25, 26, 30, 31):
             raise serializers.ValidationError("Pembagi yang umum: 21, 25, 26, 30 atau 31.")
