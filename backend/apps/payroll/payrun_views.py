@@ -61,6 +61,11 @@ class SettingsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Paling lama 240 menit.")
         return v
 
+    def validate_overtime_daily_cap_minutes(self, v):                                  # G12g
+        if v is not None and not 30 <= v <= 24 * 60:
+            raise serializers.ValidationError("Isi 30 sampai 1440 menit, atau kosongkan untuk tanpa batas.")
+        return v
+
     def validate_night_ot_rules(self, v):                                              # G12e
         from apps.attendance.night_rules import RuleError, parse_rules
         try:
