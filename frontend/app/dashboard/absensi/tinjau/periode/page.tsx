@@ -3,15 +3,18 @@
 // /dashboard/absensi/tinjau/periode — Tinjau massal per periode (G11, 4 Nov 2026).
 // A whole pay period (26 - 25) of days waiting for HR, filtered by kind (Lembur,
 // Terlambat, Tidak absen pulang ...), decided many at once:
-//   tick rows (or "pilih semua yang cocok"), then Setujui (overtime capped per day) or Tolak.
+//   tick rows (or "pilih semua yang cocok"), then Setujui or Tolak.
+// G12g (8 Nov 2026): overtime is approved as the taps propose. A cap only when HR sets one (it starts
+// from Pengaturan payroll, empty = none); every day it cuts is listed after the action, and days over
+// PP 35's 4 hours on a working day are flagged (orange) as a warning, not cut.
 // Click a row to open the day itself, as on the normal queue.
 // =============================================================================
 import DayPanel, { StatusPill } from "@/components/DayPanel";
-import { DayRow, ReviewPeriodData, attendanceApi, minutesText } from "@/lib/api/attendance";
+import { BulkTrimmed, DayRow, ReviewPeriodData, attendanceApi, minutesText } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
 import { Check, CheckCircle2, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 function periodText(start: string, end: string): string {
@@ -21,6 +24,11 @@ function periodText(start: string, end: string): string {
 }
 
 type Mode = null | "approve" | "reject";
+
+function trimmedText(list: BulkTrimmed[], total: number): string {                  // G12g
+  const shown = list.slice(0, 5).map((t) => `${t.name} ${t.date.slice(8, 10)}-${t.date.slice(5, 7)} (${t.proposed}→${t.approved})`);
+  return shown.join(", ") + (total > shown.length ? `, +${total - shown.length} lainnya` : "");
+}
 
 export default function TinjauPeriodePage() {
   const [month, setMonth] = useState<string | undefined>(undefined);
@@ -35,7 +43,9 @@ export default function TinjauPeriodePage() {
   const [allMatching, setAllMatching] = useState(false);
   const [mode, setMode] = useState<Mode>(null);
   const [note, setNote] = useState("");
-  const [cap, setCap] = useState("240");
+  const [cap, setCap] = useState("");                     // G12g: empty = no cap
+  const capTouched = useRef(false);                        // until HR types, the cap follows Pengaturan
+  const seen = useRef(new Map<string, boolean>());         // day id -> over 4 h on a working day
   const [waiveLate, setWaiveLate] = useState(false);
   const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<string | null>(null);
@@ -43,13 +53,18 @@ export default function TinjauPeriodePage() {
 
   useEffect(() => { const t = setTimeout(() => { setQuery(q.trim()); setPage(1); }, 350); return () => clearTimeout(t); }, [q]);
 
-  const clearPick = () => { setPicked(new Set()); setAllMatching(false); setMode(null); setWaiveLate(false); };
+  const clearPick = () => {
+    setPicked(new Set()); setAllMatching(false); setMode(null); setWaiveLate(false);
+    capTouched.current = false;                            // back to the company setting after each action
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const d = await attendanceApi.reviewPeriod({ month, kind: kind || undefined, q: query || undefined, page });
       setData(d); setError(null);
+      d.rows.forEach((r) => { if (r.day_id) seen.current.set(r.day_id, r.over_legal); });
+      if (!capTouched.current) setCap(d.cap_minutes == null ? "" : String(d.cap_minutes));
     } catch (err) {
       setError(readErrors(err).summary);
     } finally {
@@ -64,6 +79,8 @@ export default function TinjauPeriodePage() {
   const pageIds = rows.map((r) => r.day_id!).filter(Boolean);
   const allOnPage = pageIds.length > 0 && pageIds.every((id) => picked.has(id));
   const count = allMatching ? data?.total ?? 0 : picked.size;
+  const overCount = allMatching ? data?.over_legal ?? 0 : Array.from(picked).filter((id) => seen.current.get(id)).length;
+  const capMinutes = cap.trim() === "" ? null : Math.max(0, Math.round(Number(cap)));
 
   const toggle = (id: string) => {
     setAllMatching(false);
@@ -78,14 +95,15 @@ export default function TinjauPeriodePage() {
     if (!data || !mode) return;
     setBusy(true); setError(null);
     try {
-      const capMinutes = cap.trim() === "" ? null : Math.max(0, Math.round(Number(cap)));
-      const r = await attendanceApi.bulkDecide({
+      const r = await attendanceApi.bulkDecide({                    // the cap is always sent explicitly
         action: mode, note, waive_late: mode === "approve" ? waiveLate : false, overtime_max_minutes: capMinutes,
         ...(allMatching ? { month: data.month, kind: kind || "", q: query } : { ids: Array.from(picked) }),
       });
       setDone(`${r.decided} hari ${mode === "approve" ? "disetujui" : "ditolak"}` +
               (mode === "approve" && waiveLate ? " · terlambat dimaafkan (tanpa denda)" : "") +
               (r.overtime_minutes ? ` · lembur ${minutesText(r.overtime_minutes)}` : "") +
+              (r.trimmed_count ? ` · ${r.trimmed_count} hari DIPOTONG ke ${r.cap_minutes} menit: ${trimmedText(r.trimmed, r.trimmed_count)}` : "") +
+              (r.over_legal_days ? ` · ${r.over_legal_days} hari lembur > 4 jam (peringatan PP 35/2021)` : "") +
               (r.skipped ? ` · ${r.skipped} dilewati (terkunci / sudah diputuskan)` : ""));
       clearPick(); setNote("");
       setData(null);                      // no stale rows while the list reloads
@@ -165,8 +183,9 @@ export default function TinjauPeriodePage() {
             <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap", borderTop: "1px solid var(--line)", paddingTop: 10 }}>
               {mode === "approve" && (
                 <>
-                  <div><label className="label">Lembur maks. per hari (menit)</label>
-                    <input className="input" inputMode="numeric" value={cap} onChange={(e) => setCap(e.target.value.replace(/\D/g, ""))} style={{ width: 120 }} /></div>
+                  <div><label className="label">Batasi lembur per hari kerja (menit)</label>
+                    <input className="input" inputMode="numeric" value={cap} placeholder="tanpa batas" style={{ width: 140 }}
+                           onChange={(e) => { capTouched.current = true; setCap(e.target.value.replace(/\D/g, "").slice(0, 4)); }} /></div>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, paddingBottom: 10 }}>
                     <input type="checkbox" checked={waiveLate} onChange={(e) => setWaiveLate(e.target.checked)} /> Maafkan terlambat (tanpa denda)
                   </label>
@@ -177,17 +196,29 @@ export default function TinjauPeriodePage() {
                        placeholder={mode === "reject" ? "mis. titip absen" : "mis. sesuai SPL bulan ini"} /></div>
               <button className="btn-rust" disabled={busy || (mode === "reject" && !note.trim())} onClick={decide}
                       style={{ display: "flex", alignItems: "center", gap: 6,
-                               background: mode === "reject" ? "var(--danger)" : waiveLate ? "var(--hazard-dark)" : undefined }}>
+                               background: mode === "reject" ? "var(--danger)" : (waiveLate || capMinutes != null) ? "var(--hazard-dark)" : undefined }}>
                 {busy && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />}
-                {mode === "approve" ? `Setujui ${count} hari${waiveLate ? " + maafkan terlambat" : ""}` : `Tolak ${count} hari`}
+                {mode === "approve"
+                  ? `Setujui ${count} hari${capMinutes != null ? ` (lembur maks. ${capMinutes} menit/hari)` : ""}${waiveLate ? " + maafkan terlambat" : ""}`
+                  : `Tolak ${count} hari`}
               </button>
             </div>
           )}
           {mode === "approve" && (
             <div style={{ fontSize: 12.5, color: "var(--steel)" }}>
-              Lembur disetujui sebesar usulan dari jam absen, paling banyak {cap || "∞"} menit per hari kerja (masuk di hari libur tidak
-              dibatasi: semua jamnya lembur). Terlambat tetap didenda kecuali dimaafkan. Hari yang punya beberapa alasan
+              {capMinutes == null
+                ? "Lembur disetujui penuh, sebesar usulan dari jam absen."
+                : `Lembur disetujui sebesar usulan dari jam absen, paling banyak ${capMinutes} menit per hari kerja (masuk di hari libur tidak dibatasi). Kosongkan kolom batas untuk menyetujui penuh.`}{" "}
+              Terlambat tetap didenda kecuali dimaafkan. Hari yang punya beberapa alasan
               (mis. Terlambat + Tidak absen pulang) disetujui untuk semua alasannya.
+            </div>
+          )}
+          {mode === "approve" && overCount > 0 && (
+            <div style={{ fontSize: 13, color: "var(--hazard-dark)", fontWeight: 600 }}>
+              {overCount} hari lembur lebih dari 4 jam di hari kerja (batas PP 35/2021).{" "}
+              {capMinutes == null
+                ? "Jam yang sudah dikerjakan tetap dibayar; payroll menampilkan peringatannya."
+                : `Dengan batas ${capMinutes} menit, lembur di atas batas itu DIPOTONG (tidak dibayar).`}
             </div>
           )}
         </div>
@@ -223,7 +254,8 @@ export default function TinjauPeriodePage() {
                         <td onClick={() => setOpen(r)}><StatusPill status={r.status} label={r.status_label} /></td>
                         <td style={{ fontSize: 13, ...(open ? { maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : {}) }}
                             title={r.review_reasons.join(" · ")} onClick={() => setOpen(r)}>{r.review_reasons.join(" · ")}</td>
-                        <td style={{ fontSize: 13, whiteSpace: "nowrap", color: r.overtime_proposed_minutes > 240 ? "var(--hazard-dark)" : undefined }}
+                        <td style={{ fontSize: 13, whiteSpace: "nowrap", color: r.over_legal ? "var(--hazard-dark)" : undefined }}
+                            title={r.over_legal ? "Lebih dari 4 jam di hari kerja (batas PP 35/2021): peringatan, tetap dibayar" : undefined}
                             onClick={() => setOpen(r)}>
                           {r.overtime_proposed_minutes ? minutesText(r.overtime_proposed_minutes) : "-"}
                         </td>

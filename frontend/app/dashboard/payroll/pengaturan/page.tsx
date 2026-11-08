@@ -132,6 +132,20 @@ export default function PayrollSettingsPage() {
         </label>
         {number("overtime_min_minutes", "Lembur mulai dihitung setelah (menit)",
                 "Dari jam pulang shift. 60 = lembur dihitung jika pulang jam 18:00 untuk shift 08-17")}
+        <label>
+          <div className="label">Batas lembur per hari kerja saat setujui massal (menit)</div>
+          <input className="input" inputMode="numeric" placeholder="Tanpa batas" style={{ width: "100%" }}
+                 value={form.overtime_daily_cap_minutes ?? ""}
+                 onChange={(e) => {
+                   const v = e.target.value.replace(/\D/g, "").slice(0, 4);
+                   set("overtime_daily_cap_minutes", v === "" ? null : Number(v));
+                 }} />
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+            Kosongkan (disarankan): lembur disetujui sesuai jam absen. PP 35/2021 membatasi lembur 4 jam per hari kerja,
+            tetapi jam yang sudah dikerjakan tetap wajib dibayar. SeeGaji memberi peringatan, tidak memotong.
+          </div>
+          {err("overtime_daily_cap_minutes")}
+        </label>
         {form.overtime_mode === "flat" && money("flat_overtime_hour", "Tarif per jam")}
         {form.overtime_mode === "flat" && money("flat_rest_day", "Tarif per hari libur", "Untuk kerja di hari libur / Minggu")}
       </Section>
