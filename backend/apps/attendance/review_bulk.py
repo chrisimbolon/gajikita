@@ -14,8 +14,12 @@ period (26 - 25), filtered by kind, and decides many days at once.
         {"action": "approve" | "reject", "note": "...",
          "ids": [day ids]                                   <- the ticked rows, or
          "month": "2026-10", "kind": "overtime", "q": ""    <- everything matching the filter,
-         "overtime_max_minutes": 240, "waive_late": false}
-        approve: like "Setujui" on one day; overtime approved = what the taps propose, capped
+         "overtime_max_minutes": null, "waive_late": false}
+        approve: like "Setujui" on one day; overtime approved = what the taps propose.
+                 G12g (8 Nov 2026): no cap unless HR asks for one. "overtime_max_minutes" left out =
+                 the company setting (Pengaturan payroll, empty = no cap); null = no cap; a number =
+                 that cap on working days. Every day the cap cuts is listed in the answer ("trimmed"),
+                 and days over PP 35's 4 hours are counted ("over_legal_days") as a warning.
         reject:  like "Tolak" (a note is required)
         Locked days (in a locked payroll) and days already decided are skipped.
         Every day gets its own audit line, so the day panel still shows who decided and when.
@@ -28,13 +32,17 @@ from rest_framework.views import APIView
 
 from apps.core.models import AuditEntry
 from apps.organizations.permissions import IsCompanyHR
+from apps.core.audit import record_audit
+from apps.payroll.models import PayrollSettings
+from apps.payroll.overtime import WEEKDAY_MAX_MINUTES
 from apps.payroll.payrun import MONTHS
 
 from .hr_views import _days_qs, _snapshot
 from .rekap import _shift_month, period_of
 from .review import evaluate, leaves_between, night_context, row
 from .day_status import Status
-from .review_kinds import KINDS, LABELS, capped_overtime, kinds_of
+from .models import AttendanceDay
+from .review_kinds import KINDS, LABELS, capped_overtime, kinds_of, over_legal
 
 PAGE_SIZE = 100
 MAX_BULK = 10000
@@ -91,11 +99,19 @@ class ReviewPeriodView(APIView):
         for d, r, kinds in chosen[(page - 1) * PAGE_SIZE: page * PAGE_SIZE]:
             item = row(d.employee, d.date, d, r)
             item["kinds"] = kinds
+            item["over_legal"] = _over_legal(r)                                     # G12g
             rows.append(item)
+        over = sum(1 for _, r, _ in chosen if _over_legal(r))                       # all pages
         return Response({"success": True, **info, "kind": kind, "all": len(everything), "total": len(chosen),
                          "page": page, "pages": pages,
                          "kinds": [{"key": k, "label": l, "count": counts[k]} for k, l in KINDS if counts[k]],
+                         "over_legal": over, "legal_day_minutes": WEEKDAY_MAX_MINUTES,      # G12g
+                         "cap_minutes": PayrollSettings.for_org(request.hr_org).overtime_daily_cap_minutes,
                          "rows": rows})
+
+
+def _over_legal(r):
+    return over_legal(r.overtime_proposed_minutes, Status.DAY_OFF_WORK in r.tags)
 
 
 class BulkSerializer(serializers.Serializer):
@@ -105,8 +121,8 @@ class BulkSerializer(serializers.Serializer):
     month = serializers.CharField(required=False, allow_blank=True, default="")
     kind = serializers.ChoiceField(choices=[""] + [k for k, _ in KINDS], required=False, default="")
     q = serializers.CharField(required=False, allow_blank=True, default="")
-    overtime_max_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=24 * 60,
-                                                    default=240)
+    # G12g: left out = the company setting (empty there = no cap); null = no cap. There is no 240 default any more.
+    overtime_max_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=24 * 60)
     waive_late = serializers.BooleanField(required=False, default=False)
 
     def validate(self, attrs):
@@ -145,8 +161,10 @@ class BulkDecideView(APIView):
             return Response({"success": False, "message": f"Maksimal {MAX_BULK} hari sekali proses. Saring dulu per jenis."},
                             status=status.HTTP_400_BAD_REQUEST)
 
+        cap = (d["overtime_max_minutes"] if "overtime_max_minutes" in d                  # G12g
+               else PayrollSettings.for_org(org).overtime_daily_cap_minutes)
         note = d["note"].strip()
-        audits = []
+        audits, trimmed, over = [], [], 0
         with transaction.atomic():
             for day, r in todo:
                 before = _snapshot(day)
@@ -157,10 +175,17 @@ class BulkDecideView(APIView):
                     day.waive_late = d["waive_late"]
                     # G11b: the cap is for normal working days; on a rest day every hour worked is overtime
                     rest_day = Status.DAY_OFF_WORK in r.tags
-                    day.overtime_approved_minutes = capped_overtime(
-                        r.overtime_proposed_minutes, None if rest_day else d["overtime_max_minutes"])
+                    proposed = r.overtime_proposed_minutes or 0
+                    day.overtime_approved_minutes = capped_overtime(proposed, None if rest_day else cap)
+                    approved = day.overtime_approved_minutes or 0
+                    if approved < proposed:                       # G12g: a cut is always reported, never silent
+                        trimmed.append({"name": day.employee.full_name, "date": day.date.isoformat(),
+                                        "proposed": proposed, "approved": approved})
+                    if over_legal(approved, rest_day):
+                        over += 1
                     summary = "Disetujui massal" + (" (terlambat dimaafkan)" if day.waive_late else "") + (
-                        f", lembur {day.overtime_approved_minutes} menit" if day.overtime_approved_minutes else "")
+                        f", lembur {approved} menit" if approved else "") + (
+                        f" (usulan {proposed}, dibatasi {cap} menit/hari)" if approved < proposed else "")
                 else:
                     day.waive_late, day.overtime_approved_minutes = False, None
                     summary = (f"Ditolak massal: kembali ke {r.leave.lower()}" if r.leave
@@ -171,7 +196,65 @@ class BulkDecideView(APIView):
                     organization=org, actor=request.user, action=f"attendance.{d['action']}",
                     target_type=day._meta.label_lower, target_id=str(day.pk),
                     summary=f"{day.employee.full_name} {day.date:%d-%m-%Y}: {summary}"[:255],
-                    data={"before": before, "after": _snapshot(day), "note": note, "bulk": True}))
+                    data={"before": before, "after": _snapshot(day), "note": note, "bulk": True,
+                          "proposed": r.overtime_proposed_minutes, "cap": cap}))
             AuditEntry.objects.bulk_create(audits, batch_size=500)
         overtime = sum(day.overtime_approved_minutes or 0 for day, _ in todo) if d["action"] == "approve" else 0
-        return Response({"success": True, "decided": len(todo), "skipped": skipped, "overtime_minutes": overtime})
+        return Response({"success": True, "decided": len(todo), "skipped": skipped, "overtime_minutes": overtime,
+                         "cap_minutes": cap, "trimmed_count": len(trimmed), "trimmed": trimmed[:50],
+                         "over_legal_days": over})
+
+
+# ── G12g: repairing days the old 240-minute default cut ─────────────────────────────────────────
+DECISION_ACTIONS = ("attendance.approve", "attendance.reject", "attendance.reset", "attendance.overtime_uncap")
+
+
+def capped_bulk_days(org, start, end, now, employee_no=""):
+    """
+    Working days whose overtime a bulk approval cut: still approved, approved minutes below what the
+    taps propose, and the LAST decision on the day was a bulk approval. A day HR decided by hand
+    (Setujui with typed minutes, Batalkan keputusan, Tolak) is never returned. [(day, proposed)], oldest first.
+    """
+    leaves = leaves_between(org.id, start, end)
+    ctx = night_context(org.id, None, start, end)
+    qs = _days_qs(org).filter(date__gte=start, date__lte=end, decision="approved")
+    if employee_no:
+        qs = qs.filter(employee__employee_no=employee_no)
+    candidates = []
+    for day in qs.order_by("date", "employee__full_name"):
+        r = evaluate(day, now, leave=leaves.get((day.employee_id, day.date), ""), ctx=ctx)
+        proposed = r.overtime_proposed_minutes or 0
+        if Status.DAY_OFF_WORK not in r.tags and proposed > (day.overtime_approved_minutes or 0):
+            candidates.append((day, proposed))
+    if not candidates:
+        return []
+    last = {}
+    for a in (AuditEntry.objects.filter(organization=org, target_type=AttendanceDay._meta.label_lower,
+                                        target_id__in=[str(d.pk) for d, _ in candidates],
+                                        action__in=DECISION_ACTIONS).order_by("created_at")):
+        last[a.target_id] = a                                                   # the newest wins
+    out = []
+    for day, proposed in candidates:
+        a = last.get(str(day.pk))
+        if a is not None and a.action == "attendance.approve" and (a.data or {}).get("bulk"):
+            out.append((day, proposed))
+    return out
+
+
+def uncap(org, rows):
+    """Give each day its full proposed overtime, one audit line each (actor "Sistem"). Locked days stay."""
+    done, locked = [], []
+    with transaction.atomic():
+        for day, proposed in rows:
+            if day.is_locked:
+                locked.append(day)
+                continue
+            before, old = _snapshot(day), day.overtime_approved_minutes or 0
+            day.overtime_approved_minutes = proposed
+            day.save(update_fields=["overtime_approved_minutes"])
+            record_audit(organization=org, actor=None, action="attendance.overtime_uncap", target=day,
+                         summary=f"{day.employee.full_name} {day.date:%d-%m-%Y}: lembur {old} -> {proposed} menit "
+                                 "(batas setujui massal dihapus)",
+                         before=before, after=_snapshot(day), note="G12g: lembur dikembalikan sesuai jam absen")
+            done.append(day)
+    return done, locked

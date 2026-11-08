@@ -5,6 +5,8 @@
 The kinds of "why HR must look at this day" (G11, 4 Nov 2026). Pure Python, no Django.
 A day can have several kinds (late AND overtime). Used to filter and count the review queue.
 """
+from apps.payroll.overtime import WEEKDAY_MAX_MINUTES      # PP 35/2021: 4 hours on a working day
+
 KINDS = [
     ("overtime", "Lembur"),
     ("late", "Terlambat"),
@@ -33,3 +35,9 @@ def capped_overtime(proposed, cap):
     if not proposed:
         return None
     return min(proposed, cap) if cap is not None else proposed
+
+
+def over_legal(minutes, rest_day):
+    """G12g: more overtime than PP 35/2021 allows on a working day (4 h). Shown as a warning, never cut:
+    the limit is on what a company may ask, and hours already worked are still owed."""
+    return bool(minutes) and not rest_day and minutes > WEEKDAY_MAX_MINUTES
