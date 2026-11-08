@@ -25,6 +25,7 @@ export interface PayrollSettings {
   breakfast_allowance:          string;
   breakfast_before:             string;   // "07:00:00"
   overtime_min_minutes:         number;
+  overtime_daily_cap_minutes:   number | null;   // G12g: null = no cap in Setujui massal
   night_ot_rules:               NightRule[];
   late_fine_per_minute:         string;
   late_tolerance_minutes:       number;

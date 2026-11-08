@@ -110,12 +110,18 @@ export interface RekapData {
   total: number; page: number; pages: number; rows: RekapRow[];
 }
 // Tinjau massal per periode (G11). Mirrors backend/apps/attendance/review_bulk.py.
-export interface ReviewPeriodRow extends DayRow { kinds: string[] }
+export interface ReviewPeriodRow extends DayRow { kinds: string[]; over_legal: boolean }
 export interface ReviewPeriodData {
   month: string; label: string; start: string; end: string; prev: string; next: string; kind: string;
   all: number; total: number; page: number; pages: number;
   kinds: { key: string; label: string; count: number }[];
+  over_legal: number; legal_day_minutes: number; cap_minutes: number | null;   // G12g
   rows: ReviewPeriodRow[];
+}
+export interface BulkTrimmed { name: string; date: string; proposed: number; approved: number }
+export interface BulkDecideResult {
+  decided: number; skipped: number; overtime_minutes: number;
+  cap_minutes: number | null; trimmed_count: number; trimmed: BulkTrimmed[]; over_legal_days: number;   // G12g
 }
 export interface BulkDecideBody {
   action: "approve" | "reject"; note: string; waive_late: boolean; overtime_max_minutes: number | null;
@@ -129,7 +135,7 @@ export const attendanceApi = {
     const { data } = await api.get("/api/hr/attendance/review/period/", { params, timeout: 120000 });
     return data;
   },
-  async bulkDecide(body: BulkDecideBody): Promise<{ decided: number; skipped: number; overtime_minutes: number }> {
+  async bulkDecide(body: BulkDecideBody): Promise<BulkDecideResult> {
     const { data } = await api.post("/api/hr/attendance/review/bulk/", body, { timeout: 300000 });
     return data;
   },
