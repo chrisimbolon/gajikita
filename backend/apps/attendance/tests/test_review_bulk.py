@@ -66,7 +66,10 @@ class BulkReviewTests(APITestCase):
     def test_approve_all_overtime_of_the_period_with_a_cap(self):
         resp = self.client.post(BULK, {"action": "approve", "month": "2026-10", "kind": "overtime",
                                        "overtime_max_minutes": 240, "note": "Sesuai SPL"}, format="json")
-        self.assertEqual(resp.data, {"success": True, "decided": 3, "skipped": 0, "overtime_minutes": 540})
+        self.assertEqual({k: resp.data[k] for k in ("success", "decided", "skipped", "overtime_minutes")},
+                         {"success": True, "decided": 3, "skipped": 0, "overtime_minutes": 540})
+        self.assertEqual((resp.data["cap_minutes"], resp.data["trimmed_count"]), (240, 1))     # G12g: the cut is told
+        self.assertEqual(resp.data["trimmed"], [{"name": "Andi", "date": "2026-09-30", "proposed": 390, "approved": 240}])
         for day, minutes in ((self.ot180, 180), (self.ot390, 240), (self.ot120, 120)):
             day.refresh_from_db()
             self.assertEqual((day.decision, day.overtime_approved_minutes), ("approved", minutes))
