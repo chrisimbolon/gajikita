@@ -60,6 +60,9 @@ class PayrollSettings(TenantScopedModel):
                                               verbose_name="Uang sarapan", help_text="0 = tidak ada")
     breakfast_before  = models.TimeField(default=time(7, 0), verbose_name="Sarapan jika masuk sebelum jam")
     overtime_min_minutes = models.PositiveSmallIntegerField(default=30, verbose_name="Lembur mulai dihitung (menit)")
+    overtime_daily_cap_minutes = models.PositiveSmallIntegerField(                                      # G12g
+        null=True, blank=True, default=None, verbose_name="Batas lembur per hari kerja saat setujui massal (menit)",
+        help_text="Kosong = tanpa batas: lembur disetujui sesuai jam absen.")
     night_ot_rules    = models.JSONField(default=list, blank=True, verbose_name="Masuk siang setelah lembur malam",
                                          help_text='[{"until": "01:59", "start": "10:00"}, ...], see night_rules.py')
     late_fine_per_minute   = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
