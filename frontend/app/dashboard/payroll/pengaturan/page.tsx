@@ -162,10 +162,12 @@ export default function PayrollSettingsPage() {
         </label>
         {money("meal_allowance", "Uang makan per hari", "Juga untuk karyawan yang punya aturan uang makan sendiri (menu Karyawan)")}
         <label>
-          <div className="label">Pulang malam mulai jam</div>
+          <div className="label">Pulang malam setelah jam</div>
           <input className="input" type="time" value={(form.meal_late_after ?? "19:00").slice(0, 5)} style={{ width: "100%" }}
                  onChange={(e) => set("meal_late_after", e.target.value as never)} />
-          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>Untuk aturan &quot;Per hari pulang malam&quot;</div>
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+            Untuk aturan &quot;Per hari pulang malam&quot;: dihitung jika pulang LEWAT jam ini (19:00 belum, 19:01 sudah)
+          </div>
         </label>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
           <input type="checkbox" checked={!!form.meal_midnight_extra}
