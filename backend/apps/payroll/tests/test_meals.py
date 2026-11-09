@@ -37,9 +37,11 @@ class MealRuleTests(SimpleTestCase):
         self.assertFalse(meal(OVERTIME_DAY, last_out=at(21, 36)))       # proposed only
         self.assertTrue(meal(OVERTIME_DAY, last_out=at(21, 36), ot=270))
 
-    def test_late_out_from_seven_in_the_evening_also_after_midnight(self):
+    def test_late_out_after_seven_in_the_evening_also_after_midnight(self):
         self.assertFalse(meal(LATE_OUT, last_out=at(18, 59)))
-        self.assertTrue(meal(LATE_OUT, last_out=at(19, 0)))
+        self.assertFalse(meal(LATE_OUT, last_out=at(19, 0)))          # G12h: 'melebihi 19.00', 19:00 is not past it
+        self.assertFalse(meal(LATE_OUT, last_out=datetime(DAY.year, DAY.month, DAY.day, 19, 0, 45, tzinfo=WIB)))   # seconds don't count
+        self.assertTrue(meal(LATE_OUT, last_out=at(19, 1)))
         self.assertTrue(meal(LATE_OUT, last_out=at(2, 1, date(2026, 10, 11))))   # pump day 08:11 -> 02:01
         self.assertFalse(meal(LATE_OUT, last_out=None))
         self.assertFalse(meal(LATE_OUT, last_out=at(20, 32), rejected=True))
