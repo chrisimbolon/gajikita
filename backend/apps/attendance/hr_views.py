@@ -202,6 +202,9 @@ class DecideView(APIView):
         ser = DecideSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
+        if d["action"] == "approve" and d.get("overtime_minutes") and not day.employee.overtime_eligible:   # G12h
+            return Response({"success": False, "message": f"{day.employee.full_name} tidak berhak upah lembur "
+                             "(Karyawan → Berhak Upah Lembur). Isi 0 menit lembur."}, status=status.HTTP_400_BAD_REQUEST)
         before = _snapshot(day)
         result = evaluate(day)
         with transaction.atomic():
@@ -276,8 +279,15 @@ class FixTimesView(APIView):
             day.decision, day.decision_note = "approved", d["reason"].strip()
             day.decided_by, day.decided_at = request.user, timezone.now()
             day.save()
+            # G12h: the day is approved WITH the overtime its new times propose (none = 0). Before, the
+            # approved overtime stayed empty and payroll paid nothing for it. HR can still change the
+            # minutes afterwards with Setujui.
+            proposed = evaluate(_days_qs(request.hr_org).get(pk=day.pk)).overtime_proposed_minutes
+            day.overtime_approved_minutes = proposed or None
+            day.save(update_fields=["overtime_approved_minutes"])
             parts = [f"masuk {d['clock_in']:%H:%M}" if d.get("clock_in") else "",
-                     f"pulang {d['clock_out']:%H:%M}" if d.get("clock_out") else ""]
+                     f"pulang {d['clock_out']:%H:%M}" if d.get("clock_out") else "",
+                     f"lembur {proposed} menit" if proposed else ""]
             record_audit(organization=day.organization, actor=request.user, action="attendance.fix", target=day,
                          summary=f"{emp.full_name} {day.date:%d-%m-%Y}: jam diubah ({', '.join(p for p in parts if p)})",
                          before=before, after=_snapshot(day), note=d["reason"])
