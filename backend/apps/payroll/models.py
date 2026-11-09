@@ -53,7 +53,7 @@ class PayrollSettings(TenantScopedModel):
     flat_rest_day     = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
     meal_rule         = models.CharField(max_length=15, choices=MealRule.choices, default=MealRule.NONE)
     meal_allowance    = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"))
-    meal_late_after   = models.TimeField(default=time(19, 0), verbose_name="Pulang malam mulai jam")   # G12d
+    meal_late_after   = models.TimeField(default=time(19, 0), verbose_name="Pulang malam setelah jam")  # G12d; G12h: after
     # G12e: DKCB's 'Note' sheet, each one a company setting
     meal_midnight_extra = models.BooleanField(default=False, verbose_name="Uang makan lagi jika lewat 00:00")
     breakfast_allowance = models.DecimalField(max_digits=12, decimal_places=2, default=Decimal("0"),
