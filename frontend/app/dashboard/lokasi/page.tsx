@@ -6,6 +6,7 @@
 // the history, so past attendance is still measured against the old spot.
 // =============================================================================
 import SiteMap, { MapPoint } from "@/components/SiteMap";
+import MachinesCard from "@/components/MachinesCard";
 import { SITE_KIND_LABEL, Site, SiteKind, hrApi, readErrors } from "@/lib/api/hr";
 import { dateTimeWIB } from "@/lib/format";
 import { Crosshair, Loader2, MapPin, Plus, Save } from "lucide-react";
@@ -118,6 +119,9 @@ export default function LokasiPage() {
           <div className="card" style={{ color: "var(--steel)" }}>Tambahkan lokasi pertama di sebelah kiri.</div>
         )}
       </div>
+
+      {/* G12f.1b: the fingerprint machines of this company */}
+      <MachinesCard sites={sites} />
     </div>
   );
 }

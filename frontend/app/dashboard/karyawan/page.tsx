@@ -9,6 +9,7 @@ import {
 } from "@/lib/api/hr";
 import { hhmm, rupiah, todayISO } from "@/lib/format";
 import EmployeeImport from "@/components/EmployeeImportWizard";     // G9d: template or the company's own file
+import { MAIN_MACHINE_NAME, Machine, machineApi } from "@/lib/api/machines";   // G12f.1b
 import { FileSpreadsheet, KeyRound, Loader2, Plus, Save, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -64,11 +65,13 @@ export default function KaryawanPage() {
   const [pageError, setPageError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Employee | "new" | null>(null);
   const [importing, setImporting] = useState(false);
+  const [machines, setMachines] = useState<Machine[]>([]);       // G12f.1b: fingerprint machines besides Mesin utama
 
   const load = useCallback(async () => {
     try {
       const [e, s, sh] = await Promise.all([hrApi.employees(), hrApi.sites(), hrApi.shifts()]);
       setEmployees(e); setSites(s); setShifts(sh); setPageError(null);
+      machineApi.list().then((l) => setMachines(l.machines)).catch(() => setMachines([]));
     } catch (err) {
       setPageError(readErrors(err).summary);
     } finally {
@@ -151,7 +154,8 @@ export default function KaryawanPage() {
 
         {editing && (
           <EmployeePanel key={editing === "new" ? "new" : editing.id} employee={editing === "new" ? null : editing}
-                         employees={employees} sites={sites} shifts={shifts} onClose={() => setEditing(null)} onSaved={onSaved} />
+                         employees={employees} sites={sites} shifts={shifts} machines={machines}
+                         onClose={() => setEditing(null)} onSaved={onSaved} />
         )}
       </div>
     </div>
@@ -164,12 +168,18 @@ interface PanelProps {
   employees: Employee[];
   sites:     Site[];
   shifts:    Shift[];
+  machines:  Machine[];
   onClose:   () => void;
   onSaved:   (e: Employee) => void;
 }
 
-function EmployeePanel({ employee, employees, sites, shifts, onClose, onSaved }: PanelProps) {
+type MachineIds = Record<string, string>;      // machine id -> this employee's ID on it ("" = none)
+const toMachineIds = (rows: Employee["machine_ids"] | undefined): MachineIds =>
+  Object.fromEntries((rows ?? []).map((r) => [r.machine, r.fingerprint_id]));
+
+function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, onSaved }: PanelProps) {
   const [form, setForm] = useState<Form>(employee ? fromEmployee(employee) : blank());
+  const [mids, setMids] = useState<MachineIds>(toMachineIds(employee?.machine_ids));   // G12f.1b
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -185,7 +195,21 @@ function EmployeePanel({ employee, employees, sites, shifts, onClose, onSaved }:
     const body: Partial<EmployeeInput> = { ...form, end_date: form.end_date || null, probation_end_date: form.probation_end_date || null, base_rate: form.base_rate || "0",
                                          fixed_allowance: form.fixed_allowance || "0" };
     try {
-      const emp = employee ? await hrApi.updateEmployee(employee.id, body) : await hrApi.createEmployee(body);
+      let emp = employee ? await hrApi.updateEmployee(employee.id, body) : await hrApi.createEmployee(body);
+      if (employee && machineIdsChanged) {                       // G12f.1b: IDs on the other machines
+        try {
+          const r = await machineApi.setEmployeeIds(emp.id, shownMachines.map((m) => (
+            { machine: m.id, fingerprint_id: (mids[m.id] ?? "").trim() })));
+          emp = { ...emp, machine_ids: r.machine_ids };
+          setMids(toMachineIds(r.machine_ids));
+        } catch (err) {
+          onSaved(emp);                                            // the employee data itself is saved
+          const r = readErrors(err);
+          setErrors({ machine_ids: r.summary });
+          setSummary(`Data karyawan tersimpan, tapi ID mesin belum: ${r.summary}`);
+          return;
+        }
+      }
       onSaved(emp);
       setSaved(true);
     } catch (err) {
@@ -250,6 +274,11 @@ function EmployeePanel({ employee, employees, sites, shifts, onClose, onSaved }:
   );
 
   const activeSites = sites.filter((s) => s.is_active || form.sites.includes(s.id));
+  // G12f.1b: active machines, plus an inactive one this person still has an ID on (so it is never lost)
+  const shownMachines = machines.filter((m) => m.is_active || (employee?.machine_ids ?? []).some((x) => x.machine === m.id));
+  const savedMids = toMachineIds(employee?.machine_ids);
+  const machineIdsChanged = shownMachines.some((m) => (mids[m.id] ?? "").trim() !== (savedMids[m.id] ?? ""));
+  const setMid = (id: string, value: string) => { setMids((cur) => ({ ...cur, [id]: value })); setSaved(false); };
   const mandorOptions = employees.filter((e) => e.status === "active" && e.id !== employee?.id);
 
   return (
@@ -272,8 +301,27 @@ function EmployeePanel({ employee, employees, sites, shifts, onClose, onSaved }:
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
         {text("phone", "No. HP", { inputMode: "tel", placeholder: "0812 3456 7890" })}
-        {text("fingerprint_id", "ID mesin fingerprint", { placeholder: "mis. 15" })}
+        {text("fingerprint_id", machines.length ? `ID di ${MAIN_MACHINE_NAME}` : "ID mesin fingerprint", { placeholder: "mis. 15" })}
       </div>
+      {machines.length > 0 && (
+        <div style={{ marginBottom: 12 }}>
+          <label className="label">ID di mesin lain</label>
+          {!employee ? (
+            <div style={{ fontSize: 13, color: "var(--steel)" }}>Simpan karyawan dulu, lalu isi ID-nya di mesin lain.</div>
+          ) : shownMachines.map((m) => (
+            <div key={m.id} style={{ display: "grid", gridTemplateColumns: "1fr 130px", gap: 8, alignItems: "center", marginBottom: 6 }}>
+              <span style={{ fontSize: 13.5 }}>{m.name}{m.is_active ? "" : " (nonaktif)"}</span>
+              <input className="input" aria-label={`ID di ${m.name}`} value={mids[m.id] ?? ""} placeholder="kosong = tidak ada"
+                     onChange={(e) => setMid(m.id, e.target.value)}
+                     style={errors.machine_ids ? { borderColor: "var(--danger)" } : undefined} />
+            </div>
+          ))}
+          {errors.machine_ids && <div style={{ color: "var(--danger)", fontSize: 12.5, marginTop: 4 }}>{errors.machine_ids}</div>}
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 4 }}>
+            Nomor orang ini di mesin itu. Boleh sama dengan nomor orang lain di {MAIN_MACHINE_NAME}; disimpan dengan tombol di bawah.
+          </div>
+        </div>
+      )}
 
       {section("Pekerjaan")}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>

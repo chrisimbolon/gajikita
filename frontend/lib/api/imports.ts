@@ -67,8 +67,14 @@ export interface FingerprintImportResult {
   unreadable: number;
   period:     { start: string; end: string } | null;
   people:     { employee: { id: string; employee_no: string; full_name: string }; machine_id: string; name_in_file: string;
-                days: number; new_days: number; already_days: number; locked_days: number; no_clock_out: number }[];
-  unknown:    { machine_id: string; name: string; taps: number; first: string; last: string }[];
+                days: number; new_days: number; already_days: number; locked_days: number; no_clock_out: number;
+                machines?: { machine: string; machine_id: string }[] }[];
+  unknown:    { machine_id: string; name: string; taps: number; first: string; last: string;
+                machine?: string; machine_key?: string }[];
+  // G12f.1a: which machine the file was matched on, and (auto) where each Dept. went
+  machine?:   { mode: "main" | "auto" | "one"; id: string | null; name: string };
+  machines?:  { id: string; name: string; dept_labels: string }[];
+  depts?:     { dept: string; people: number; taps: number; machine: string; machine_key: string }[];
   not_linked: { employee_no: string; full_name: string }[];
   totals:     { people: number; unknown: number; new_days: number; already_days: number; locked_days: number };
   applied?:   { events: number; days: number };
@@ -77,6 +83,7 @@ export interface FingerprintImportResult {
 // "Hapus data import" (G9b). Mirrors backend/apps/attendance/fingerprint_delete.py.
 export interface FingerprintDeleteResult {
   start: string; end: string; keep_decided: boolean;
+  machine?: string;            // G12f.1a: "Semua mesin" / "Mesin utama" / a machine's name
   totals: { taps: number; days: number; people: number; locked_days: number; decided_kept: number; decided_removed: number };
   people: { employee: { id: string; employee_no: string; full_name: string }; taps: number; days: number }[];
   decided: { employee_no: string; full_name: string; date: string; what: string[] }[];
@@ -84,10 +91,11 @@ export interface FingerprintDeleteResult {
   applied?: { taps: number; days: number; days_removed: number };
 }
 
-function form(file: File, commit: boolean): FormData {
+function form(file: File, commit: boolean, machine?: string): FormData {
   const f = new FormData();
   f.append("file", file, file.name);
   f.append("commit", commit ? "1" : "0");
+  if (machine) f.append("machine", machine);        // G12f.1a: "main" | "auto" | a machine id
   return f;
 }
 
@@ -117,13 +125,14 @@ export const importApi = {
     link.click();
     URL.revokeObjectURL(link.href);
   },
-  async deleteFingerprint(body: { start: string; end: string; keep_decided: boolean; commit: boolean; reason: string }):
+  async deleteFingerprint(body: { start: string; end: string; keep_decided: boolean; commit: boolean; reason: string;
+                                  machine?: string }):
       Promise<FingerprintDeleteResult> {
     const { data } = await api.post("/api/hr/attendance/fingerprint/delete/", body, { timeout: 120000 });
     return data;
   },
-  async fingerprint(file: File, commit: boolean): Promise<FingerprintImportResult> {
-    const { data } = await api.post("/api/hr/attendance/fingerprint/import/", form(file, commit), { timeout: 300000 });
+  async fingerprint(file: File, commit: boolean, machine?: string): Promise<FingerprintImportResult> {
+    const { data } = await api.post("/api/hr/attendance/fingerprint/import/", form(file, commit, machine), { timeout: 300000 });
     return data;
   },
 };
