@@ -32,6 +32,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     mandor = serializers.PrimaryKeyRelatedField(queryset=Employee.objects.none(), allow_null=True, required=False)
     has_login = serializers.SerializerMethodField()
     login_locked = serializers.SerializerMethodField()
+    machine_ids = serializers.SerializerMethodField()          # G12f.1a: IDs on the other fingerprint machines
 
     class Meta:
         model = Employee
@@ -39,7 +40,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
             "id", "employee_no", "full_name", "position", "nik", "npwp", "ptkp_status", "join_date", "end_date",
             "employment_type", "pay_type", "base_rate", "fixed_allowance", "overtime_eligible", "bpjs_tk_enrolled", "meal_rule", "bank_name", "bank_account_no", "bank_account_name",
             "bpjs_kesehatan_no", "bpjs_tk_no", "phone", "fingerprint_id", "probation_end_date", "sites", "default_site", "default_shift", "mandor",
-            "status", "login_phone", "must_change_pin", "has_login", "login_locked", "created_at",
+            "status", "login_phone", "must_change_pin", "has_login", "login_locked", "machine_ids", "created_at",
         ]
         read_only_fields = ["id", "login_phone", "must_change_pin", "created_at"]
 
@@ -56,6 +57,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
     def get_login_locked(self, obj):
         return bool(obj.pin_locked_until and obj.pin_locked_until > timezone.now())
+
+    def get_machine_ids(self, obj):
+        return [{"machine": str(r.machine_id), "machine_name": r.machine.name, "fingerprint_id": r.fingerprint_id}
+                for r in obj.machine_ids.all()]
 
     def validate_employee_no(self, value):
         value = value.strip()
@@ -90,7 +95,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
 
 def _employees(org):
     return (Employee.objects.filter(organization=org)
-            .select_related("default_site", "default_shift").prefetch_related("sites"))
+            .select_related("default_site", "default_shift").prefetch_related("sites", "machine_ids__machine"))
 
 
 class EmployeeListView(APIView):

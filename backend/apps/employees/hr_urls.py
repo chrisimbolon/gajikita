@@ -15,6 +15,7 @@ from .hr_views import EmployeeDetailView, EmployeeListView, EmployeeLoginView
 from .import_views import EmployeeImportView, EmployeeTemplateView
 from apps.attendance.fingerprint_views import FingerprintImportView
 from apps.attendance.fingerprint_delete_views import FingerprintDeleteView
+from apps.attendance.machine_views import EmployeeMachineIdsView, MachineDetailView, MachineListView
 from apps.attendance.rekap import RekapExportView, RekapView
 from apps.attendance.review_bulk import BulkDecideView, ReviewPeriodView
 
@@ -27,6 +28,10 @@ urlpatterns = [
     path("employees/import/template/", EmployeeTemplateView.as_view(), name="hr-employee-template"),
     path("attendance/fingerprint/import/", FingerprintImportView.as_view(), name="hr-fingerprint-import"),
     path("attendance/fingerprint/delete/", FingerprintDeleteView.as_view(), name="hr-fingerprint-delete"),   # G9b
+    # fingerprint machines and IDs per machine (G12f.1a)
+    path("fingerprint/machines/",            MachineListView.as_view(),        name="hr-fp-machines"),
+    path("fingerprint/machines/<uuid:pk>/",  MachineDetailView.as_view(),      name="hr-fp-machine"),
+    path("employees/<uuid:pk>/machine-ids/", EmployeeMachineIdsView.as_view(), name="hr-employee-machine-ids"),
     # Rekap Absensi (G10)
     path("attendance/rekap/",        RekapView.as_view(),       name="hr-att-rekap"),
     # Tinjau massal per periode (G11)
