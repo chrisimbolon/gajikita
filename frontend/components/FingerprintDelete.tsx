@@ -5,12 +5,14 @@
 // 1. pick the dates  2. preview (nothing removed yet)  3. write a reason  4. Hapus.
 // Only taps from the machine go; phone taps, leave and locked payroll days stay.
 // Days HR already decided are kept unless HR unticks the box.
+// G12f.1b: with more than one machine, choose which machine's taps go (default: all machines).
 // =============================================================================
 import { readErrors } from "@/lib/api/hr";
 import { FingerprintDeleteResult, importApi } from "@/lib/api/imports";
+import { ALL_MACHINES, MAIN_MACHINE, MAIN_MACHINE_NAME, Machine, machineApi } from "@/lib/api/machines";
 import { todayISO } from "@/lib/format";
 import { AlertTriangle, ArrowLeft, CheckCircle2, Loader2, Trash2, X } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function minusDays(iso: string, n: number): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -34,12 +36,16 @@ export default function FingerprintDelete({ period, onBack, onClose, onDone }: {
   const [result, setResult] = useState<FingerprintDeleteResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [machines, setMachines] = useState<Machine[]>([]);     // G12f.1b: every other machine, also inactive ones
+  const [machine, setMachine] = useState<string>(ALL_MACHINES);
+  useEffect(() => { machineApi.list().then((l) => setMachines(l.machines)).catch(() => setMachines([])); }, []);
 
   const run = async (commit: boolean) => {
     setBusy(true);
     setError(null);
     try {
-      const r = await importApi.deleteFingerprint({ start, end, keep_decided: keepDecided, commit, reason });
+      const r = await importApi.deleteFingerprint({ start, end, keep_decided: keepDecided, commit, reason,
+                                                    machine: machines.length > 0 ? machine : ALL_MACHINES });
       setResult(r);
       if (commit) onDone();
     } catch (err) {
@@ -88,6 +94,14 @@ export default function FingerprintDelete({ period, onBack, onClose, onDone }: {
                 <input className="input" type="date" value={start} onChange={(e) => { setStart(e.target.value); changed(); }} style={{ width: 160 }} /></div>
               <div><label className="label">Sampai tanggal</label>
                 <input className="input" type="date" value={end} onChange={(e) => { setEnd(e.target.value); changed(); }} style={{ width: 160 }} /></div>
+              {machines.length > 0 && (
+                <div><label className="label">Mesin</label>
+                  <select className="input" value={machine} onChange={(e) => { setMachine(e.target.value); changed(); }} style={{ minWidth: 190 }}>
+                    <option value={ALL_MACHINES}>Semua mesin</option>
+                    <option value={MAIN_MACHINE}>{MAIN_MACHINE_NAME}</option>
+                    {machines.map((m) => <option key={m.id} value={m.id}>{m.name}{m.is_active ? "" : " (nonaktif)"}</option>)}
+                  </select></div>
+              )}
               <button className="btn-ghost" disabled={busy || !start || !end} onClick={() => run(false)}
                       style={{ display: "flex", alignItems: "center", gap: 6 }}>
                 {busy && !result && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />} Pratinjau
@@ -106,7 +120,7 @@ export default function FingerprintDelete({ period, onBack, onClose, onDone }: {
           <div style={{ marginTop: 16 }}>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
               <span className="pill" style={{ background: "var(--danger-light)", color: "var(--danger)", fontSize: 13 }}>
-                Akan dihapus: {t.taps} tap · {t.days} hari · {t.people} karyawan</span>
+                Akan dihapus: {t.taps} tap · {t.days} hari · {t.people} karyawan{machines.length > 0 && result.machine ? ` · ${result.machine}` : ""}</span>
               {t.locked_days > 0 && <span className="pill" style={{ background: "var(--paper-2)", color: "var(--steel)", fontSize: 13 }}>
                 {t.locked_days} hari terkunci (payroll), dilewati</span>}
               {t.decided_kept > 0 && <span className="pill" style={{ background: "var(--midnight-soft)", color: "var(--midnight)", fontSize: 13 }}>
