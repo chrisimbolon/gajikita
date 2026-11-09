@@ -33,7 +33,7 @@ class XlsFingerprintTests(SimpleTestCase):
     def test_dkcb_xls_export_is_read(self):
         with mock.patch.object(fingerprint, "read_legacy_excel", return_value=DKCB_XLS):
             punches, bad, label = read_punches("Absen 26 Sept - 25 Okt 26 DKCB Admin.xls", OLE_SIGNATURE + b"...")
-        self.assertEqual(label, "Attendance Record Report (Excel .xls)")
+        self.assertEqual(label, 'Attendance Record Report (Excel .xls, sheet "Att.log report")')   # G12f-a
         sudar = sorted(p.at for p in punches if p.machine_id == "32")
         self.assertEqual(sudar[0], datetime(2026, 9, 26, 7, 14))
         self.assertEqual(sudar[-1], datetime(2026, 9, 28, 17, 6))
