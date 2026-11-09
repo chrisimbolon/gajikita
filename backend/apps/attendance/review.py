@@ -125,7 +125,8 @@ def _t(dt):
 
 def row(employee, date, day, result):
     return {
-        "employee": {"id": str(employee.id), "employee_no": employee.employee_no, "full_name": employee.full_name},
+        "employee": {"id": str(employee.id), "employee_no": employee.employee_no, "full_name": employee.full_name,
+                     "overtime_eligible": employee.overtime_eligible},                                   # G12h
         "date": date.isoformat(),
         "day_id": str(day.id) if day else None,
         "status": result.status,
