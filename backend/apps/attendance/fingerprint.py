@@ -16,6 +16,9 @@ Three formats, recognised automatically:
                                  stacked in one cell. Also old .xls files (G12a): real Excel 97-2003,
                                  an HTML table or text saved as .xls. With several sheets (Schedule
                                  Infor., Att. Stat., Att.log report...) the one with the clock times is read.
+                                 G12f-a: taps in a cell may have no separator at all ("07:5917:03",
+                                 how DKCB's machine writes them); the grid sheet (with its row of day
+                                 numbers) is picked over an exception report; each tap keeps "Dept.:".
 
 Every format becomes the same thing: Punch(machine_id, at, name). Then make_sessions() turns
 one person's punches into working sessions: first tap = Masuk, last tap = Pulang, double
@@ -48,6 +51,7 @@ class Punch:
     machine_id: str
     at: datetime                         # naive, the machine's local time
     name: str = ""
+    dept: str = ""                       # G12f-a: "Dept.:" of the grid block (DKCB / Staf / Manager)
 
 
 @dataclass
@@ -162,9 +166,13 @@ def parse_csv(text):
     return punches, bad
 
 
-# ── 3. Attendance Record Report grid (.xlsx) ──
+# ── 3. Attendance Record Report grid (.xlsx / .xls) ──
 RANGE = re.compile(r"(\d{4}-\d{2}-\d{2})\s*~\s*(\d{4}-\d{2}-\d{2})")
-TIME_IN_CELL = re.compile(r"\b(\d{1,2}):(\d{2})\b")
+# G12f-a: one cell holds all of a day's taps. DKCB's machine writes them with NO separator
+# ("07:5917:03", double taps "07:1407:1417:0017:00"); other exports use a line break or a space.
+# So the pattern has no word boundaries: it reads one HH:MM after the other. Seconds are dropped.
+TIME_IN_CELL = re.compile(r"(\d{1,2}):([0-5]\d)(?::[0-5]\d)?")
+MIN_DAY_COLUMNS = 7                      # a real day-number row covers at least a week
 
 
 def _cell_text(v):
@@ -177,106 +185,204 @@ def _cell_text(v):
     return str(v)
 
 
-def parse_record_grid(rows):
-    """rows: a list of lists of cell values (one sheet). Returns punches."""
-    start = end = None
+def taps_in_cell(value):
+    """
+    One grid cell -> ([(hour, minute), ...], unread).
+
+    "07:5917:03", "07:59\\n17:03", "07:59 17:03" and "07:59:12 17:03:40" all give [(7, 59), (17, 3)].
+    Codes HR types instead of taps ("UL", "CT", "sdh tdk join") give no taps and are not unread.
+    unread is True when something time-like is left that we could not read ("7:5", "25:10"), so
+    the import can say so instead of losing a tap without a word.
+    """
+    text = _cell_text(value)
+    taps, unread = [], False
+    for m in TIME_IN_CELL.finditer(text):
+        hour, minute = int(m.group(1)), int(m.group(2))
+        if hour < 24:
+            taps.append((hour, minute))
+        else:
+            unread = True
+    if ":" in TIME_IN_CELL.sub(" ", text):
+        unread = True
+    return taps, unread
+
+
+def _find_period(rows):
+    """(start, end) from "Att. Time 2026-09-26 ~ 2026-10-25" in the first rows, or None."""
     for r in rows[:8]:
         m = RANGE.search(" ".join(_cell_text(c) for c in r))
         if m:
-            start, end = Date.fromisoformat(m.group(1)), Date.fromisoformat(m.group(2))
-            break
-    if start is None:
-        raise FileError("Periode laporan (mis. \"Att. Time 2026-09-26 ~ 2026-10-25\") tidak ditemukan di sheet.")
-    # the row of day numbers: walk from the start date, a new month whenever the day number drops
-    day_cols = {}
+            try:
+                start, end = Date.fromisoformat(m.group(1)), Date.fromisoformat(m.group(2))
+            except ValueError:
+                return None
+            return (start, end) if start <= end else None
+    return None
+
+
+def _day_number(c):
+    """A cell of the day-number row -> 1..31, or None. Booleans and 4.5 (overtime hours) are not days."""
+    if isinstance(c, bool):
+        return None
+    if isinstance(c, (int, float)):
+        return int(c) if float(c).is_integer() and 1 <= c <= 31 else None
+    if isinstance(c, str) and c.strip().isdigit() and 1 <= int(c.strip()) <= 31:
+        return int(c.strip())
+    return None
+
+
+def _find_day_cols(rows, start, end):
+    """
+    {column index: date} from the row of day numbers (26, 27, ... 25) under the title. The row's
+    first number must be the period's first day; walk forward a day per column, a new month
+    whenever the number drops, skipping dates whose column is missing. {} if there is no such row.
+    """
     for r in rows[:12]:
-        nums = [(i, int(float(c))) for i, c in enumerate(r) if isinstance(c, (int, float)) or (isinstance(c, str) and c.strip().isdigit())]
-        if len(nums) >= 7 and nums[0][1] == start.day:
-            current = start
-            prev = None
-            for i, n in nums:
-                if prev is not None:
-                    current = current + timedelta(days=1)
-                    if current.day != n:            # columns skipped: find the next date with this day number
-                        while current.day != n and current <= end:
-                            current += timedelta(days=1)
-                if current > end:
-                    break
-                day_cols[i] = current
-                prev = n
-            break
+        nums = [(i, n) for i, n in ((i, _day_number(c)) for i, c in enumerate(r)) if n is not None]
+        if len(nums) < MIN_DAY_COLUMNS or nums[0][1] != start.day:
+            continue
+        day_cols, current = {}, start
+        for k, (i, n) in enumerate(nums):
+            if k:
+                current += timedelta(days=1)
+                while current.day != n and current <= end:      # columns skipped: next date with this number
+                    current += timedelta(days=1)
+            if current > end:
+                break
+            day_cols[i] = current
+        if len(day_cols) >= MIN_DAY_COLUMNS:
+            return day_cols
+    return {}
+
+
+def _texts(row):
+    return [_cell_text(c).strip() for c in (row or [])]
+
+
+def _is_id_row(texts):
+    return any(re.fullmatch(r"ID\s*[:：]?", t, re.I) or re.match(r"^ID\s*[:：]\s*\S", t, re.I) for t in texts)
+
+
+def _label_value(texts, labels):
+    """
+    The value after a label in an ID row: in the same cell ("Name: Eko") or the next filled cell
+    ("Name:" | "Eko"). "" when the value is missing (the next filled cell is the next label).
+    """
+    for k, t in enumerate(texts):
+        m = re.match(rf"^(?:{labels})\s*[:：]\s*(.+)$", t, re.I)
+        value = None
+        if m:
+            value = m.group(1).strip()
+        elif re.fullmatch(rf"(?:{labels})\s*[:：]?", t, re.I):
+            value = next((x for x in texts[k + 1:] if x), "")
+        if value is not None:
+            return "" if value.endswith((":", "：")) else value
+    return ""
+
+
+def parse_record_grid(rows):
+    """
+    rows: one sheet as lists of cell values -> (punches, unread_cells).
+
+    Works for the machine's own "Att.log report" (a block = ID row + taps row) and for Anthony's
+    edited copy "ASR Edit" (ID row + taps row + his overtime row, a legend, OT/SR/UM columns).
+    Each punch carries the name and the "Dept.:" written in the block (G12f-a).
+    """
+    period = _find_period(rows)
+    if period is None:
+        raise FileError("Periode laporan (mis. \"Att. Time 2026-09-26 ~ 2026-10-25\") tidak ditemukan di sheet.")
+    day_cols = _find_day_cols(rows, *period)
     if not day_cols:
         raise FileError("Baris tanggal (26, 27, 28 ...) tidak ditemukan di bawah judul laporan.")
 
-    punches = []
+    punches, unread = [], 0
     i = 0
     while i < len(rows):
-        texts = [_cell_text(c).strip() for c in rows[i]]
-        if any(re.fullmatch(r"ID\s*[:：]?", t, re.I) or re.match(r"^ID\s*[:：]\s*\S", t, re.I) for t in texts):
-            machine_id, name = "", ""
-            for k, t in enumerate(texts):
-                m = re.match(r"^ID\s*[:：]\s*(\S+)", t, re.I)
-                if m:
-                    machine_id = m.group(1)
-                elif re.fullmatch(r"ID\s*[:：]?", t, re.I):
-                    machine_id = next((x for x in texts[k + 1:] if x), "")
-                m = re.match(r"^Name\s*[:：]\s*(.+)", t, re.I) or re.match(r"^Nama\s*[:：]\s*(.+)", t, re.I)
-                if m:
-                    name = m.group(1).strip()
-                elif re.fullmatch(r"(Name|Nama)\s*[:：]?", t, re.I):
-                    name = next((x for x in texts[k + 1:] if x), "")
-            if machine_id.endswith(":"):
-                machine_id = ""                    # the ID cell was empty; we picked up the next label
-            machine_id = clean_id(machine_id)
-            if i + 1 < len(rows) and machine_id:
-                times_row = rows[i + 1]
-                for col, day in day_cols.items():
-                    if col < len(times_row):
-                        for hh, mm in TIME_IN_CELL.findall(_cell_text(times_row[col])):
-                            if int(hh) < 24 and int(mm) < 60:
-                                punches.append(Punch(machine_id, datetime.combine(day, time(int(hh), int(mm))), name))
-            i += 2
+        texts = _texts(rows[i])
+        if not _is_id_row(texts):
+            i += 1
             continue
-        i += 1
+        raw_id = _label_value(texts, "ID")
+        machine_id = clean_id(raw_id.split()[0]) if raw_id else ""
+        name = _label_value(texts, "Name|Nama")
+        dept = _label_value(texts, r"Dept\.?|Department|Departemen|Bagian")
+        taps_row = rows[i + 1] if i + 1 < len(rows) else None
+        if taps_row is None or _is_id_row(_texts(taps_row)):
+            i += 1                               # no taps row at all: the next row is the next person
+            continue
+        if machine_id:
+            for col, day in day_cols.items():
+                if col < len(taps_row):
+                    taps, bad = taps_in_cell(taps_row[col])
+                    unread += bad
+                    for hh, mm in taps:
+                        punches.append(Punch(machine_id, datetime.combine(day, time(hh, mm)), name, dept))
+        i += 2
     if not punches:
         raise FileError("Tidak ada jam absen yang terbaca di laporan ini.")
-    return punches, 0
+    return punches, unread
 
 
-def read_xlsx_rows(data):
+def read_xlsx_sheets(data):
+    """Every sheet of an .xlsx as (name, rows)."""
     from openpyxl import load_workbook
     try:
         wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
     except Exception:
         raise FileError("File Excel tidak bisa dibuka. Pastikan formatnya .xlsx.")
-    return pick_sheet([(ws.title, [list(r) for r in ws.iter_rows(values_only=True)]) for ws in wb.worksheets])
+    return [(ws.title, [list(r) for r in ws.iter_rows(values_only=True)]) for ws in wb.worksheets]
+
+
+def read_xlsx_rows(data):
+    return pick_sheet(read_xlsx_sheets(data))
+
+
+def _sheet_score(rows):
+    """
+    Higher is better: (has the report period, has a day-number row, clock times, rows).
+
+    A machine export has several sheets that all show the period (Schedule Infor., Att. Stat.,
+    Att.log report, Exception Stat.). Only the Att.log report holds every tap, and only it (and
+    Schedule Infor.) has the row of day numbers. G12f-a: the day row comes before the count of
+    times, because an exception report can hold more times than the grid (Anthony's "ESR Edit").
+    """
+    period = _find_period(rows)
+    grid = period is not None and bool(_find_day_cols(rows, *period))
+    times = sum(len(TIME_IN_CELL.findall(c)) if isinstance(c, str) else 1
+                for r in rows[:400] for c in r if isinstance(c, (str, time)))
+    return (period is not None, grid, times, len(rows))
+
+
+def pick_named_sheet(sheets):
+    """(name, rows) of the sheet to read; ("", []) when there are none."""
+    best, best_score = ("", []), None
+    for name, rows in sheets:
+        score = _sheet_score(rows)
+        if best_score is None or score > best_score:
+            best, best_score = (name, rows), score
+    return best
 
 
 def pick_sheet(sheets):
-    """
-    The sheet to read (G12a): one with the report period and the most clock times in it. A
-    machine export often has several sheets that all show the period (Schedule Infor., Att.
-    Stat., Att.log report, Exception Stat.); only the Att.log report holds every tap.
-    """
-    best, best_score = None, None
-    for _name, rows in sheets:
-        head = " ".join(_cell_text(c) for r in rows[:8] for c in r)
-        times = sum(len(TIME_IN_CELL.findall(c)) for r in rows[:400] for c in r if isinstance(c, str))
-        score = (bool(RANGE.search(head)), times, len(rows))
-        if best_score is None or score > best_score:
-            best, best_score = rows, score
-    return best or []
+    """The rows of the sheet to read (G12a)."""
+    return pick_named_sheet(sheets)[1]
 
 
-def _from_rows(rows, label):
-    joined = " ".join(_cell_text(c) for r in rows[:8] for c in r)
-    if RANGE.search(joined):
+def _from_rows(rows, label, sheet=""):
+    if _find_period(rows) is not None:
         punches, bad = parse_record_grid(rows)
-        return punches, bad, f"Attendance Record Report ({label})"
+        where = f'{label}, sheet "{sheet}"' if sheet else label
+        return punches, bad, f"Attendance Record Report ({where})"
     text = "\n".join(";".join(_cell_text(c) if not isinstance(c, datetime) else c.strftime("%Y-%m-%d %H:%M:%S")
                               for c in r) for r in rows)
     punches, bad = parse_csv(text)
     return punches, bad, f"Tabel {label}"
+
+
+def _from_sheets(sheets, label):
+    """Read the right sheet; name it in the label when the file has several (G12f-a)."""
+    name, rows = pick_named_sheet(sheets)
+    return _from_rows(rows, label, name if len(sheets) > 1 else "")
 
 
 # ── which format? ──
@@ -289,10 +395,10 @@ def read_punches(filename, data):
         except LegacyExcelError as err:
             raise FileError(str(err))
         if sheets is not None:
-            return _from_rows(pick_sheet(sheets), "Excel .xls")
+            return _from_sheets(sheets, "Excel .xls")
         # text saved with an .xls name: read below like any text file
     elif name.endswith(".xlsx") or data[:2] == b"PK":
-        return _from_rows(read_xlsx_rows(data), "Excel")
+        return _from_sheets(read_xlsx_sheets(data), "Excel")
     for enc in ("utf-8-sig", "utf-16", "latin-1"):
         try:
             text = data.decode(enc)
