@@ -5,6 +5,7 @@
 POST /api/hr/attendance/fingerprint/delete/    (G9b, 2 Nov 2026)
   {"start": "2026-10-26", "end": "2026-11-25", "keep_decided": true, "commit": false}
       what would be removed (taps, days, people, locked days skipped, days HR already decided)
+      G12f.1a: "machine": "all" (default) / "main" / a machine id = only that machine's taps
   the same with "commit": true and "reason": "..."   removes it; the reason goes into the audit log.
 """
 from datetime import timedelta
@@ -16,6 +17,8 @@ from rest_framework.views import APIView
 from apps.organizations.permissions import IsCompanyHR
 
 from . import fingerprint_delete
+from .machine_views import resolve_machine
+from .machines import ALL, MAIN
 
 
 class DeleteSerializer(serializers.Serializer):
@@ -24,6 +27,7 @@ class DeleteSerializer(serializers.Serializer):
     keep_decided = serializers.BooleanField(required=False, default=True)
     commit = serializers.BooleanField(required=False, default=False)
     reason = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
+    machine = serializers.CharField(required=False, allow_blank=True, default=ALL, max_length=40)   # G12f.1a
 
     def validate(self, attrs):
         if attrs["end"] < attrs["start"]:
@@ -42,7 +46,11 @@ class FingerprintDeleteView(APIView):
         ser = DeleteSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
-        p = fingerprint_delete.plan(request.hr_org, d["start"], d["end"], d["keep_decided"])
+        try:
+            machine = resolve_machine(request.hr_org, d["machine"] or ALL, allowed=(ALL, MAIN))
+        except ValueError as err:
+            return Response({"success": False, "message": str(err)}, status=status.HTTP_400_BAD_REQUEST)
+        p = fingerprint_delete.plan(request.hr_org, d["start"], d["end"], d["keep_decided"], machine)
         body = {"success": True, **fingerprint_delete.public(p)}
         if d["commit"]:
             if not p["remove"]:

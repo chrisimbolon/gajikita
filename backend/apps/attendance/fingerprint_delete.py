@@ -15,13 +15,17 @@ Rules
     default. With keep_decided=False they are removed too, and HR's decision on them is reset.
   - A day left with no taps and no HR decision is removed, so it reads exactly as before the import.
   - Afterwards the same file can be imported again (the taps' fixed ids are gone with them).
+  - G12f.1a: only the chosen machine's taps (ALL = every machine, MAIN = the main machine). A day that
+    still has taps from another machine stays.
 """
 from collections import defaultdict
 
 from django.db import transaction
+from django.db.models import Q
 
 from apps.core.audit import record_audit
 
+from .machines import ALL, MAIN, MAIN_NAME
 from .models import AttendanceDay, ClockEvent
 
 MAX_LISTED = 50
@@ -41,10 +45,23 @@ def hr_touched(day):
     return out
 
 
-def plan(org, start, end, keep_decided=True):
+def machine_q(machine):
+    """Which fingerprint taps a delete touches (G12f.1a): ALL, MAIN (taps with no machine) or one machine."""
+    if machine == ALL:
+        return Q()
+    if machine == MAIN:
+        return Q(machine__isnull=True)
+    return Q(machine=machine)
+
+
+def machine_name(machine):
+    return "Semua mesin" if machine == ALL else (MAIN_NAME if machine == MAIN else machine.name)
+
+
+def plan(org, start, end, keep_decided=True, machine=ALL):
     taps = (ClockEvent.objects.filter(organization=org, source=ClockEvent.Source.FINGERPRINT,
                                       day__date__gte=start, day__date__lte=end)
-            .select_related("day", "employee"))
+            .filter(machine_q(machine)).select_related("day", "employee"))
     by_day = defaultdict(list)
     for t in taps:
         by_day[t.day_id].append(t)
@@ -74,6 +91,7 @@ def plan(org, start, end, keep_decided=True):
     runs = PayRun.objects.filter(organization=org, period_start__lte=end, period_end__gte=start)
     return {
         "start": start, "end": end, "keep_decided": keep_decided,
+        "machine": machine, "machine_name": machine_name(machine),
         "remove": remove, "by_day": by_day, "locked": locked,
         "decided_kept": decided_kept, "decided_removed": decided_removed, "people": people,
         "draft_runs": [r.name for r in runs if r.status == PayRun.Status.DRAFT],
@@ -90,6 +108,7 @@ def public(p):
     ordered = sorted(p["people"].items(), key=lambda kv: kv[0].full_name)
     return {
         "start": p["start"].isoformat(), "end": p["end"].isoformat(), "keep_decided": p["keep_decided"],
+        "machine": p["machine_name"],
         "totals": {"taps": sum(len(p["by_day"][d.id]) for d in p["remove"]), "days": len(p["remove"]),
                    "people": len(p["people"]), "locked_days": len(p["locked"]),
                    "decided_kept": len(p["decided_kept"]), "decided_removed": len(p["decided_removed"])},
@@ -108,7 +127,8 @@ def apply(org, p, actor, reason):
             day = AttendanceDay.objects.select_for_update().get(pk=day.pk)
             if day.is_locked:                       # locked in the meantime: leave it
                 continue
-            n, _ = ClockEvent.objects.filter(day=day, source=ClockEvent.Source.FINGERPRINT).delete()
+            n, _ = (ClockEvent.objects.filter(day=day, source=ClockEvent.Source.FINGERPRINT)
+                    .filter(machine_q(p["machine"])).delete())
             taps_removed += n
             if hr_touched(day) or day.decision_note:
                 day.decision, day.decision_note, day.waive_late = "", "", False
@@ -122,9 +142,11 @@ def apply(org, p, actor, reason):
         if taps_removed:
             record_audit(
                 organization=org, actor=actor, action="attendance.fingerprint_delete", target=org,
-                summary=f"Hapus import fingerprint {p['start']:%d-%m-%Y} s/d {p['end']:%d-%m-%Y}: "
+                summary=f"Hapus import fingerprint ({p['machine_name']}) {p['start']:%d-%m-%Y} s/d "
+                        f"{p['end']:%d-%m-%Y}: "
                         f"{taps_removed} tap, {len(p['remove'])} hari kerja",
                 after={"taps": taps_removed, "days": len(p["remove"]), "days_removed": days_removed,
+                       "machine": p["machine_name"],
                        "keep_decided": p["keep_decided"], "decided_reset": len(p["decided_removed"])},
                 note=reason)
     return {"taps": taps_removed, "days": len(p["remove"]), "days_removed": days_removed}
