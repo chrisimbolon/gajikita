@@ -82,8 +82,9 @@ export default function DayPanel({ row, onChanged, onClose }: Props) {
     try { done(await fn()); } catch (err) { setError(readErrors(err).summary); } finally { setBusy(false); }
   };
 
+  const canPayOvertime = view.employee.overtime_eligible !== false;          // G12h
   const approve = () => run(() => attendanceApi.decide(view.day_id!, {
-    action: "approve", note, waive_late: waiveLate, overtime_minutes: view.overtime_proposed_minutes ? overtime : null,
+    action: "approve", note, waive_late: waiveLate, overtime_minutes: canPayOvertime ? overtime : null,
   }));
   const reject = () => run(() => attendanceApi.decide(view.day_id!, { action: "reject", note }));
   const reset = () => run(() => attendanceApi.decide(view.day_id!, { action: "reset" }));
@@ -244,10 +245,23 @@ export default function DayPanel({ row, onChanged, onClose }: Props) {
                       Maafkan terlambat {view.late_minutes} menit (tidak dipotong)
                     </label>
                   )}
-                  {view.overtime_proposed_minutes > 0 && (
+                  {canPayOvertime ? (
                     <div style={{ marginBottom: 10 }}>
-                      <label className="label">Lembur disetujui (menit), usulan {view.overtime_proposed_minutes}</label>
-                      <input className="input" type="number" min={0} value={overtime} onChange={(e) => setOvertime(Number(e.target.value) || 0)} />
+                      <label className="label">
+                        Lembur disetujui (menit){view.overtime_proposed_minutes > 0 ? `, usulan ${view.overtime_proposed_minutes}` : ""}
+                      </label>
+                      <input className="input" type="number" min={0} max={1440} value={overtime}
+                             onChange={(e) => setOvertime(Math.min(1440, Math.max(0, Number(e.target.value) || 0)))} />
+                      {view.overtime_proposed_minutes === 0 && (
+                        <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 4 }}>
+                          Jam absen tidak mengusulkan lembur (mis. tidak absen pulang). Isi menitnya jika karyawan
+                          memang lembur, mis. 120 = 2 jam. Biarkan 0 jika tidak.
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12.5, color: "var(--steel)", marginBottom: 10 }}>
+                      Karyawan ini tidak berhak upah lembur (menu Karyawan), jadi tidak ada lembur yang disetujui.
                     </div>
                   )}
                   <label className="label">Catatan (opsional)</label>
@@ -281,7 +295,11 @@ export default function DayPanel({ row, onChanged, onClose }: Props) {
                   </div>
                   <label className="label" style={{ marginTop: 10 }}>Alasan (wajib)</label>
                   <input className="input" value={note} onChange={(e) => setNote(e.target.value)} placeholder="mis. lupa absen pulang, dicek mandor" />
-                  <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 6 }}>Jam dari HR menggantikan jam dari HP, dan hari ini otomatis disetujui. Tercatat di log.</div>
+                  <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 6 }}>
+                    Jam dari HR menggantikan jam dari HP / mesin, dan hari ini otomatis disetujui beserta lembur dari jam
+                    yang baru (mis. pulang 19:00 di shift 08-17 = lembur 2 jam). Menit lembur masih bisa diubah lewat
+                    Setujui. Tercatat di log.
+                  </div>
                   <button className="btn-rust" onClick={fix} disabled={busy || !note.trim() || (!clockIn && !clockOut)}
                           style={{ width: "100%", justifyContent: "center", marginTop: 10 }}>
                     {busy ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Clock size={15} />} Simpan jam
