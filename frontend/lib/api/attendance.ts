@@ -9,7 +9,7 @@ export type DayStatus =
   | "absent" | "day_off" | "day_off_work" | "rejected" | "present" | "leave";
 
 export interface DayRow {
-  employee:                  { id: string; employee_no: string; full_name: string };
+  employee:                  { id: string; employee_no: string; full_name: string; overtime_eligible?: boolean };   // G12h
   date:                      string;
   day_id:                    string | null;
   status:                    DayStatus;
