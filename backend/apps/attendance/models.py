@@ -92,6 +92,9 @@ class ClockEvent(TenantScopedModel):
     # Sent by the phone with every tap; a retry after a dropped signal sends
     # the same id again and gets the first event back instead of a duplicate.
     client_id     = models.UUIDField(null=True, blank=True, editable=False)
+    # G12f.1a: the machine a fingerprint tap came from; empty = the main machine (and every non-machine tap)
+    machine       = models.ForeignKey("FingerprintMachine", null=True, blank=True, on_delete=models.PROTECT,
+                                      related_name="+", verbose_name="Mesin fingerprint")
     created_at    = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -112,3 +115,53 @@ class ClockEvent(TenantScopedModel):
     @property
     def flag_labels(self):
         return [FLAG_LABELS.get(f, f) for f in self.flags]
+
+
+class FingerprintMachine(TenantScopedModel):
+    """
+    A fingerprint machine besides the main one (G12f.1a). The main machine has no row: its IDs are
+    Employee.fingerprint_id, so a company with one machine never needs this table.
+
+    dept_labels lists the "Dept.:" values that belong to this machine in a combined report (DKCB's
+    office machine: "Staf, Manager"). An import "Otomatis menurut Dept." sends each block there.
+    A machine that has IDs or taps is never deleted, only turned off (is_active=False).
+    """
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name        = models.CharField(max_length=80, verbose_name="Nama mesin")
+    site        = models.ForeignKey("sites.Site", null=True, blank=True, on_delete=models.SET_NULL, related_name="+",
+                                    verbose_name="Lokasi")
+    dept_labels = models.CharField(max_length=200, blank=True, default="", verbose_name="Dept. di file",
+                                   help_text="Isi kolom Dept. di laporan mesin, pisahkan dengan koma. Mis. Staf, Manager")
+    is_active   = models.BooleanField(default=True, verbose_name="Aktif")
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name        = "Mesin Fingerprint"
+        verbose_name_plural = "Mesin Fingerprint"
+        ordering            = ["name"]
+        unique_together     = [("organization", "name")]
+
+    def __str__(self):
+        return self.name
+
+
+class EmployeeMachineId(TenantScopedModel):
+    """An employee's ID on a FingerprintMachine (G12f.1a). Unique per machine; one per employee per machine."""
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee       = models.ForeignKey("employees.Employee", on_delete=models.CASCADE, related_name="machine_ids")
+    machine        = models.ForeignKey(FingerprintMachine, on_delete=models.PROTECT, related_name="employee_ids")
+    fingerprint_id = models.CharField(max_length=30, verbose_name="ID di mesin")
+    created_at     = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name        = "ID Mesin Karyawan"
+        verbose_name_plural = "ID Mesin Karyawan"
+        ordering            = ["machine__name"]
+        unique_together     = [("machine", "fingerprint_id"), ("employee", "machine")]
+
+    def __str__(self):
+        return f"{self.employee} — {self.machine} {self.fingerprint_id}"
+
+    def _resolve_organization(self):
+        return self.employee.organization if self.employee_id else None
