@@ -207,8 +207,8 @@ def parse_note_sheet(values, fills, legend=None, name=""):
     legend = legend or {}
     found = find_header(values)
     if found is None:
-        raise FileError("Kolom ID, Date dan Note tidak ditemukan. Pilih file rekap pengecualian "
-                        "(mis. sheet \"ESR Edit\" / Exception Statistic Report).")
+        raise FileError("Kolom ID, Date dan Note tidak ditemukan. File perlu kolom ID (nomor di mesin), "
+                        "Tanggal (Date) dan Keterangan (Note).")
     r0, cols = found
     by_label = {label.casefold(): label for label in legend.values()}
     stated = _find_period(values[:r0 + 1])
@@ -251,8 +251,8 @@ def read_notes(filename, data):
     sheets, colors_read = read_note_sheets(filename, data)
     sheet = pick_note_sheet(sheets)
     if sheet is None:
-        raise FileError("Kolom ID, Date dan Note tidak ditemukan di file ini. Pilih file rekap pengecualian "
-                        "(mis. sheet \"ESR Edit\" / Exception Statistic Report).")
+        raise FileError("Kolom ID, Date dan Note tidak ditemukan di file ini. File perlu kolom ID (nomor di mesin), "
+                        "Tanggal (Date) dan Keterangan (Note), satu baris per orang per tanggal.")
     result = parse_note_sheet(sheet[1], sheet[2], read_legend(sheets), sheet[0])
     result.colors_read = colors_read
     if not result.notes:
