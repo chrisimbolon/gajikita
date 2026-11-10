@@ -17,6 +17,7 @@ from apps.attendance.fingerprint_views import FingerprintImportView
 from apps.attendance.fingerprint_delete_views import FingerprintDeleteView
 from apps.attendance.machine_views import EmployeeMachineIdsView, MachineDetailView, MachineListView
 from apps.attendance.fingerprint_link import FingerprintLinkView
+from apps.attendance.day_notes_views import DayNotesDeleteView, DayNotesImportView
 from apps.attendance.rekap import RekapExportView, RekapView
 from apps.attendance.review_bulk import BulkDecideView, ReviewPeriodView
 
@@ -34,6 +35,9 @@ urlpatterns = [
     path("fingerprint/machines/<uuid:pk>/",  MachineDetailView.as_view(),      name="hr-fp-machine"),
     path("employees/<uuid:pk>/machine-ids/", EmployeeMachineIdsView.as_view(), name="hr-employee-machine-ids"),
     path("attendance/fingerprint/link/",     FingerprintLinkView.as_view(),    name="hr-fingerprint-link"),   # G12f.2
+    # HR's notes per day from the recap (G12f.3.1)
+    path("attendance/notes/import/", DayNotesImportView.as_view(), name="hr-day-notes-import"),
+    path("attendance/notes/delete/", DayNotesDeleteView.as_view(), name="hr-day-notes-delete"),
     # Rekap Absensi (G10)
     path("attendance/rekap/",        RekapView.as_view(),       name="hr-att-rekap"),
     # Tinjau massal per periode (G11)
