@@ -34,7 +34,7 @@ from .fingerprint import clean_id, make_sessions
 from .machines import (AUTO, AUTO_NAME, MAIN, MAIN_NAME, assign, dept_owner_map, depts_in_file, id_sort_key,
                        merge_by_employee)
 from .models import AttendanceDay, ClockEvent, EmployeeMachineId, FingerprintMachine
-from .name_match import best_candidate, names_match
+from .name_match import names_match, suggest_pairs
 
 NAMESPACE = uuid.UUID("4f0d6c3e-7a1b-4c55-9d3e-2b6f8a9e1c07")      # fixed forever: re-imports find the same ids
 
@@ -154,25 +154,29 @@ def plan(org, punches, machine=MAIN):
         })
     people.sort(key=lambda x: (x["name_check"] != "bad", x["sort"], x["employee"].full_name))
 
-    # G12f.2: for each unknown ID, the active employee whose name looks most like the name in the file,
-    # among those with no ID yet on that machine (each employee proposed at most once per machine)
-    active = list(Employee.objects.filter(organization=org, status=Employee.Status.ACTIVE).order_by("full_name"))
-    linked = {MAIN: {e.pk for e in main_ids.values()}}
-    for (key, _), e in other_ids.items():
-        linked.setdefault(key, set()).add(e.pk)
-    proposed = {}
-
+    # G12f.2 / G12f.2b: for each unknown ID, the active employee whose name looks most like the name in the
+    # file, among those with no ID yet on that machine. Decided for the whole file at once, best pairs
+    # first (suggest_pairs). No suggestions while the file seems to come from another machine: linking
+    # then would store this machine's numbers on the wrong machine.
     order = {MAIN: 0, **{m.pk: 1 for m in machines}}
+    missing = sorted(missing, key=lambda x: (order.get(x[0], 1), names.get(x[0], ""), id_sort_key(x[1])))
+    file_name = lambda items: next((p.name for p in items if p.name), "")
+    picks = {}
+    if suggest is None:
+        active = list(Employee.objects.filter(organization=org, status=Employee.Status.ACTIVE).order_by("full_name"))
+        linked = {MAIN: {e.pk for e in main_ids.values()}}
+        for (key, _), e in other_ids.items():
+            linked.setdefault(key, set()).add(e.pk)
+        groups_wanted = {key for key, _, _ in missing}
+        picks = suggest_pairs(
+            [(n, key, file_name(items)) for n, (key, _, items) in enumerate(missing) if file_name(items)],
+            {key: [(e, e.full_name) for e in active if e.pk not in linked.get(key, set())] for key in groups_wanted})
+
     unknown = []
-    for key, machine_id, items in sorted(missing, key=lambda x: (order.get(x[0], 1), names.get(x[0], ""),
-                                                                 id_sort_key(x[1]))):
+    for n, (key, machine_id, items) in enumerate(missing):
         t = sorted(p.at for p in items)
-        name = next((p.name for p in items if p.name), "")
-        taken = linked.get(key, set()) | proposed.setdefault(key, set())
-        pick = best_candidate(name, [(e, e.full_name) for e in active if e.pk not in taken]) if name else None
-        if pick:
-            proposed[key].add(pick[0].pk)
-        unknown.append({"machine_id": machine_id, "name": name, "taps": len(t),
+        pick = picks.get(n)
+        unknown.append({"machine_id": machine_id, "name": file_name(items), "taps": len(t),
                         "first": t[0].isoformat(sep=" ", timespec="minutes"),
                         "last": t[-1].isoformat(sep=" ", timespec="minutes"),
                         "machine": names.get(key, MAIN_NAME), "machine_key": str(key),
