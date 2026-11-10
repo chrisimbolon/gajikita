@@ -10,6 +10,7 @@ import { DayDetail, DayRow, STATUS_STYLE, attendanceApi, minutesText } from "@/l
 import { readErrors } from "@/lib/api/hr";
 import { dateTimeWIB, rupiah } from "@/lib/format";
 import { Check, Clock, ExternalLink, Fingerprint, Loader2, RotateCcw, X } from "lucide-react";
+import { HrNoteBox } from "@/components/HrNote";
 import { useEffect, useState } from "react";
 
 type Mode = null | "approve" | "reject" | "fix";
@@ -120,6 +121,7 @@ export default function DayPanel({ row, onChanged, onClose }: Props) {
           {view.note}
         </div>
       )}
+      {view.hr_note && <HrNoteBox note={view.hr_note} />}
 
       {loading ? <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> : (
         <>
