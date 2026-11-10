@@ -129,6 +129,12 @@ class LinkTests(SafetyBase):
         self.assertEqual(unknown["7"]["link_machine"], "main")
         self.assertIsNone(unknown["1"]["suggest"])                              # nobody looks like Risman
 
+    def test_no_suggestions_while_the_machine_looks_wrong(self):
+        """G12f.2b: linking under the wrong machine would store plant numbers as office IDs."""
+        d = self.upload(str(self.kantor.pk)).data
+        self.assertIsNotNone(d["suggest_machine"])
+        self.assertEqual([u["suggest"] for u in d["unknown"]], [None] * len(d["unknown"]))
+
     def test_link_from_the_preview_then_the_id_is_known(self):
         resp = self.client.post(LINK, {"links": [{"machine": "main", "fingerprint_id": "007",
                                                   "employee": str(self.amsar.pk)}]}, format="json")
