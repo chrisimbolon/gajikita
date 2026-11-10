@@ -7,9 +7,12 @@
 //   Kode view: H, T, A, C, S ... (with a dot when HR still has to review)
 //   Jam view:  clock-in / clock-out times
 // The summary columns use the same numbers as payroll.
+// G12f.3.2: a cell with HR's note (from the imported recap) has a corner in the note's colour; the
+// note is in the cell's tooltip and in the day panel.
 // =============================================================================
 import AbsensiTabs from "@/components/AbsensiTabs";
 import DayPanel from "@/components/DayPanel";
+import { noteTitle } from "@/components/HrNote";
 import { DayRow, RekapCell, RekapData, RekapRow, attendanceApi, minutesText } from "@/lib/api/attendance";
 import { Shift, Site, hrApi, readErrors } from "@/lib/api/hr";
 import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
@@ -55,7 +58,15 @@ function toDayRow(row: RekapRow, cell: RekapCell): DayRow {
     first_in: cell.fi, last_out: cell.lo, late_minutes: cell.late, early_minutes: cell.early, worked_minutes: 0,
     overtime_proposed_minutes: cell.otp, overtime_approved_minutes: cell.ot || null, site_minutes: {},
     review_reasons: [], needs_review: cell.rv, decision: "", is_locked: false, hr_fixed: false,
+    hr_note: cell.hn ?? null,                                                    // G12f.3.2
   };
+}
+
+/** G12f.3.2: the little corner that says "HR wrote a note here", in the note's own colour. */
+function NoteCorner({ color }: { color: string }) {
+  return <span style={{ position: "absolute", top: 0, left: 0, width: 0, height: 0,
+                        borderTop: `8px solid ${color ? `#${color}` : "var(--steel)"}`, borderRight: "8px solid transparent",
+                        filter: "drop-shadow(0 0 0.5px rgba(0,0,0,0.6))" }} />;
 }
 
 export default function RekapPage() {
@@ -132,7 +143,7 @@ export default function RekapPage() {
     c.fi || c.lo ? `Masuk ${c.fi ?? "-"} · Pulang ${c.lo ?? "-"}` : "",
     c.late ? `Terlambat ${minutesText(c.late)}` : "", c.early ? `Pulang cepat ${minutesText(c.early)}` : "",
     c.ot ? `Lembur disetujui ${minutesText(c.ot)}` : "", c.otp ? `Lembur menunggu ${minutesText(c.otp)}` : "",
-    c.rv ? "Perlu ditinjau HR" : "",
+    c.rv ? "Perlu ditinjau HR" : "", c.hn ? noteTitle(c.hn) : "",
   ].filter(Boolean).join("\n");
 
   const th: CSSProperties = { position: "sticky", top: 0, background: "var(--midnight)", color: "#fff", fontSize: 11.5,
@@ -263,6 +274,7 @@ export default function RekapPage() {
                                        fontFamily: view === "jam" ? "var(--font-mono, monospace)" : undefined,
                                        outline: open?.key === key ? "2px solid var(--rust)" : undefined, outlineOffset: -2 }}>
                             {cellText(c)}
+                            {c.hn && <NoteCorner color={c.hn.color} />}
                             {c.rv && <span style={{ position: "absolute", top: 1, right: 2, fontSize: 8, color: "var(--hazard-dark)" }}>●</span>}
                             {(c.ot > 0 || c.otp > 0) && (
                               <span style={{ position: "absolute", bottom: 0, right: 2, fontSize: 8.5, fontWeight: 800,
@@ -308,6 +320,11 @@ export default function RekapPage() {
             );
           })}
           <span><span style={{ color: "var(--hazard-dark)" }}>●</span> perlu ditinjau</span>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <span style={{ position: "relative", display: "inline-block", width: 14, height: 14, border: "1px solid var(--line)" }}>
+              <NoteCorner color="00B0F0" /></span>
+            ada catatan HR (warna dari file rekap)
+          </span>
           <span><b style={{ color: "var(--workshop)" }}>+</b> lembur disetujui · <b style={{ color: "var(--hazard-dark)" }}>+</b> lembur menunggu</span>
         </div>
       )}

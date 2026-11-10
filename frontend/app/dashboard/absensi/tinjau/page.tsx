@@ -6,6 +6,7 @@
 // with approve / reject / fix times.
 // =============================================================================
 import DayPanel, { StatusPill } from "@/components/DayPanel";
+import { HrNoteLine } from "@/components/HrNote";
 import { DayRow, attendanceApi } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
 import { CheckCircle2, Loader2 } from "lucide-react";
@@ -90,7 +91,9 @@ export default function TinjauPage() {
                     <td><div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{r.employee.full_name}</div>
                       <div className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{r.employee.employee_no}</div></td>
                     <td><StatusPill status={r.status} label={r.status_label} /></td>
-                    <td style={{ fontSize: 13 }}>{r.review_reasons.join(" · ")}</td>
+                    <td style={{ fontSize: 13 }}>
+                      {r.hr_note && <div><HrNoteLine note={r.hr_note} maxWidth={360} /></div>}   {/* G12f.3.2 */}
+                      {r.review_reasons.join(" · ")}</td>
                   </tr>
                 ))}
               </tbody>

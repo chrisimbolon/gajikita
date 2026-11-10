@@ -10,6 +10,7 @@ import { readErrors } from "@/lib/api/hr";
 import { todayISO } from "@/lib/format";
 import FingerprintImport from "@/components/FingerprintImport";
 import AbsensiTabs from "@/components/AbsensiTabs";
+import { HrNoteLine, NoteCode, noteTitle } from "@/components/HrNote";
 import { ChevronLeft, ChevronRight, Fingerprint, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -119,11 +120,15 @@ export default function AbsensiPage() {
                     <td><div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{r.employee.full_name}</div>
                       <div className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{r.employee.employee_no}</div></td>
                     <td><StatusPill status={r.status} label={r.status_label} />
-                      {r.needs_review && <span title="Perlu ditinjau" style={{ color: "var(--hazard-dark)", marginLeft: 6 }}>●</span>}</td>
+                      {r.needs_review && <span title="Perlu ditinjau" style={{ color: "var(--hazard-dark)", marginLeft: 6 }}>●</span>}
+                      {open && r.hr_note && <span style={{ marginLeft: 6 }}><NoteCode code={r.hr_note.code} color={r.hr_note.color}
+                                                                                        title={noteTitle(r.hr_note)} /></span>}</td>
                     <td className="mono" style={{ fontSize: 13.5 }}>{r.first_in ?? "-"}</td>
                     <td className="mono" style={{ fontSize: 13.5 }}>{r.last_out ?? "-"}</td>
                     {!open && <td style={{ fontSize: 13 }}>{r.worked_minutes ? minutesText(r.worked_minutes) : "-"}</td>}
-                    {!open && <td style={{ fontSize: 12.5, color: "var(--steel)" }}>{r.review_reasons.join(" · ")}</td>}
+                    {!open && <td style={{ fontSize: 12.5, color: "var(--steel)" }}>
+                      {r.hr_note && <div style={{ marginBottom: r.review_reasons.length ? 2 : 0 }}><HrNoteLine note={r.hr_note} maxWidth={320} /></div>}
+                      {r.review_reasons.join(" · ")}</td>}
                   </tr>
                 ))}
               </tbody>

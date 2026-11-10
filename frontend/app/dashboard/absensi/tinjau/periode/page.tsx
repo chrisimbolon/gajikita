@@ -8,8 +8,11 @@
 // from Pengaturan payroll, empty = none); every day it cuts is listed after the action, and days over
 // PP 35's 4 hours on a working day are flagged (orange) as a warning, not cut.
 // Click a row to open the day itself, as on the normal queue.
+// G12f.3.2: HR's note from the recap shows in "Kenapa"; "Ada catatan HR" / "Tanpa catatan" filter the list,
+// and "pilih semua yang cocok" sends the same filter, so a bulk decision covers exactly what is listed.
 // =============================================================================
 import DayPanel, { StatusPill } from "@/components/DayPanel";
+import { HrNoteLine } from "@/components/HrNote";
 import { BulkTrimmed, DayRow, ReviewPeriodData, attendanceApi, minutesText } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
 import { Check, CheckCircle2, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
@@ -33,6 +36,7 @@ function trimmedText(list: BulkTrimmed[], total: number): string {              
 export default function TinjauPeriodePage() {
   const [month, setMonth] = useState<string | undefined>(undefined);
   const [kind, setKind] = useState("");
+  const [hasNote, setHasNote] = useState<"" | "1" | "0">("");               // G12f.3.2
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(1);
@@ -61,7 +65,8 @@ export default function TinjauPeriodePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const d = await attendanceApi.reviewPeriod({ month, kind: kind || undefined, q: query || undefined, page });
+      const d = await attendanceApi.reviewPeriod({ month, kind: kind || undefined, q: query || undefined, page,
+                                                   has_note: hasNote || undefined });
       setData(d); setError(null);
       d.rows.forEach((r) => { if (r.day_id) seen.current.set(r.day_id, r.over_legal); });
       if (!capTouched.current) setCap(d.cap_minutes == null ? "" : String(d.cap_minutes));
@@ -70,10 +75,10 @@ export default function TinjauPeriodePage() {
     } finally {
       setLoading(false);
     }
-  }, [month, kind, query, page]);
+  }, [month, kind, query, page, hasNote]);
 
   useEffect(() => { load(); }, [load]);
-  useEffect(() => { clearPick(); }, [month, kind, query]);
+  useEffect(() => { clearPick(); }, [month, kind, query, hasNote]);
 
   const rows = data?.rows ?? [];
   const pageIds = rows.map((r) => r.day_id!).filter(Boolean);
@@ -97,7 +102,7 @@ export default function TinjauPeriodePage() {
     try {
       const r = await attendanceApi.bulkDecide({                    // the cap is always sent explicitly
         action: mode, note, waive_late: mode === "approve" ? waiveLate : false, overtime_max_minutes: capMinutes,
-        ...(allMatching ? { month: data.month, kind: kind || "", q: query } : { ids: Array.from(picked) }),
+        ...(allMatching ? { month: data.month, kind: kind || "", q: query, has_note: hasNote } : { ids: Array.from(picked) }),
       });
       setDone(`${r.decided} hari ${mode === "approve" ? "disetujui" : "ditolak"}` +
               (mode === "approve" && waiveLate ? " · terlambat dimaafkan (tanpa denda)" : "") +
@@ -147,6 +152,14 @@ export default function TinjauPeriodePage() {
                   style={{ border: "1px solid var(--line)", cursor: "pointer", padding: "6px 12px", fontSize: 13.5,
                            background: kind === k.key ? "var(--ink)" : "var(--paper-3)", color: kind === k.key ? "var(--paper)" : "var(--ink)" }}>
             {k.label} ({k.count})
+          </button>
+        ))}
+        {data && ((data.with_note ?? 0) > 0 || hasNote) && (["1", "0"] as const).map((v) => (
+          <button key={v} className="pill" onClick={() => { setHasNote(hasNote === v ? "" : v); setPage(1); }}
+                  title="Catatan HR dari file rekap yang diimport"
+                  style={{ border: "1px dashed var(--midnight)", cursor: "pointer", padding: "6px 12px", fontSize: 13.5,
+                           background: hasNote === v ? "var(--midnight)" : "transparent", color: hasNote === v ? "#fff" : "var(--midnight)" }}>
+            {v === "1" ? `Ada catatan HR (${data.with_note ?? 0})` : "Tanpa catatan HR"}
           </button>
         ))}
         <input className="input" placeholder="Cari nama atau no. karyawan" value={q} onChange={(e) => setQ(e.target.value)}
@@ -253,7 +266,9 @@ export default function TinjauPeriodePage() {
                           <div className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{r.employee.employee_no}</div></td>
                         <td onClick={() => setOpen(r)}><StatusPill status={r.status} label={r.status_label} /></td>
                         <td style={{ fontSize: 13, ...(open ? { maxWidth: 200, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" } : {}) }}
-                            title={r.review_reasons.join(" · ")} onClick={() => setOpen(r)}>{r.review_reasons.join(" · ")}</td>
+                            title={r.review_reasons.join(" · ")} onClick={() => setOpen(r)}>
+                          {r.hr_note && <div><HrNoteLine note={r.hr_note} maxWidth={open ? 200 : 360} /></div>}
+                          {r.review_reasons.join(" · ")}</td>
                         <td style={{ fontSize: 13, whiteSpace: "nowrap", color: r.over_legal ? "var(--hazard-dark)" : undefined }}
                             title={r.over_legal ? "Lebih dari 4 jam di hari kerja (batas PP 35/2021): peringatan, tetap dibayar" : undefined}
                             onClick={() => setOpen(r)}>
