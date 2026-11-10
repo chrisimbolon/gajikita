@@ -56,7 +56,8 @@ class FingerprintImportTests(APITestCase):
         d = resp.data
         self.assertEqual((d["format"], d["punches"], d["period"]),
                          ("attlog.dat (download dari mesin)", 8, {"start": "2026-09-26", "end": "2026-10-03"}))
-        self.assertEqual(d["totals"], {"people": 2, "unknown": 1, "new_days": 3, "already_days": 0, "locked_days": 0})
+        self.assertEqual(d["totals"], {"people": 2, "unknown": 1, "new_days": 3, "already_days": 0, "locked_days": 0,
+                                       "name_mismatch": 0})     # G12f.2
         self.assertEqual([u["machine_id"] for u in d["unknown"]], ["99"])
         self.assertEqual([n["employee_no"] for n in d["not_linked"]], ["DK-099"])
         self.assertFalse(ClockEvent.objects.exists())
