@@ -10,6 +10,10 @@ Fadhilah), "Vincent" (Vinsensius). Those must count as the same person. "Feny" a
 "Apriyani Fadhilah" must not: that is the plant's ID 2 read on the office machine, the mistake
 this check exists to catch.
 
+G12f.2b (10 Nov): short pieces no longer count. "Hadi" was matched to "Prayuda Adi Susanto" because
+"adi" sits inside "hadi"; now a contained part needs 4+ letters, the same-first-3-letters rule needs
+words of 4+ letters, and the overall likeness is only used for words of 5+ letters.
+
 name_score(in_file, full_name) -> 0..1, or None when the file has no usable name (.dat, CSV).
 names_match(...)               -> True / False / None (None = nothing to compare).
 """
@@ -32,13 +36,16 @@ def _subsequence(short, long):
 def _pair(a, b):
     if a == b:
         return 1.0
-    if len(b) >= 3 and (a in b or b in a):                 # Tari / Mentari, Syaifull / Syaiful
+    short, other = (a, b) if len(a) <= len(b) else (b, a)
+    if len(short) >= 4 and short in other:                 # Tari / Mentari, Yuda / Prayuda, Syaifull / Syaiful
         return 0.9
-    if a[:3] == b[:3]:                                     # Arif / Arief, Vincent / Vinsensius
+    if len(a) >= 4 and len(b) >= 4 and a[:3] == b[:3]:     # Arif / Arief, Vincent / Vinsensius
         return 0.85
     if len(a) >= 4 and _subsequence(a, b):                 # Dila / Fadhilah
         return 0.8
-    return SequenceMatcher(None, a, b).ratio()
+    if min(len(a), len(b)) >= 5:                           # Supriyadi / Supriadi; never for short words
+        return SequenceMatcher(None, a, b).ratio()
+    return 0.0
 
 
 def name_score(in_file, full_name):
@@ -50,7 +57,7 @@ def name_score(in_file, full_name):
     compact_mine, compact_theirs = "".join(mine), "".join(theirs)
     if compact_mine == compact_theirs:
         best = 1.0
-    elif len(compact_mine) >= 3 and compact_mine in compact_theirs:   # EkoH / Eko Haryanto
+    elif len(compact_mine) >= 3 and compact_theirs.startswith(compact_mine):   # EkoH / Eko Haryanto
         best = max(best, 0.95)
     return round(best, 3)
 
@@ -68,3 +75,29 @@ def best_candidate(in_file, candidates):
         if score is not None and score >= MATCH and (best is None or score > best[1]):
             best = (key, score)
     return best
+
+
+def suggest_pairs(wanted, candidates):
+    """
+    G12f.2b: who is each unknown machine name, decided for the whole file at once.
+
+    wanted:     [(item, group, name in the file)]     group = the machine the ID belongs to
+    candidates: {group: [(key, full name)]}           employees with no ID yet on that machine
+    -> {item: (key, score)}. The best-scoring pairs are taken first; an employee is proposed at most
+    once per machine and an item gets at most one. So "YUDA" (0.9) gets Prayuda before "Hadi" could,
+    and a weaker look-alike never takes someone a stronger one needs.
+    """
+    scored = []
+    for order, (item, group, name) in enumerate(wanted):
+        for key, full_name in candidates.get(group, []):
+            score = name_score(name, full_name)
+            if score is not None and score >= MATCH:
+                scored.append((-score, order, item, group, key))
+    scored.sort(key=lambda x: (x[0], x[1]))
+    out, used = {}, set()
+    for neg, _, item, group, key in scored:
+        if item in out or (group, key) in used:
+            continue
+        out[item] = (key, -neg)
+        used.add((group, key))
+    return out
