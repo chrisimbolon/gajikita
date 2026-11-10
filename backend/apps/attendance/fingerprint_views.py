@@ -54,5 +54,12 @@ class FingerprintImportView(APIView):
         body = {"success": True, "file": f.name, "format": label, "punches": len(punches), "unreadable": unreadable,
                 **fingerprint_import.public(p)}
         if str(request.data.get("commit")) in ("1", "true", "True"):
+            confirmed = str(request.data.get("confirm_names", "")).lower() in ("1", "true", "yes")
+            wrong = body["totals"]["name_mismatch"]
+            if wrong and not confirmed:                                          # G12f.2
+                return Response({"success": False, "code": "names_unconfirmed",
+                                 "message": f"{wrong} nama di mesin tidak cocok dengan nama karyawan. Periksa baris "
+                                            f"yang merah, lalu centang \"Saya sudah cek\" sebelum menyimpan."},
+                                status=status.HTTP_400_BAD_REQUEST)
             body["applied"] = fingerprint_import.apply(request.hr_org, p, request.user, f.name)
         return Response(body)
