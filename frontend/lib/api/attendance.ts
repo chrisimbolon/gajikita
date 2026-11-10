@@ -8,6 +8,9 @@ export type DayStatus =
   | "not_yet" | "working" | "on_time" | "late" | "early_out" | "no_clock_out"
   | "absent" | "day_off" | "day_off_work" | "rejected" | "present" | "leave";
 
+// G12f.3: HR's own note for a day, from the imported recap ("UL" on yellow). Shown only, never counted.
+export interface HrNote { code: string; color: string; text: string }
+
 export interface DayRow {
   employee:                  { id: string; employee_no: string; full_name: string; overtime_eligible?: boolean };   // G12h
   date:                      string;
@@ -30,6 +33,7 @@ export interface DayRow {
   decision:                  "" | "approved" | "rejected";
   is_locked:                 boolean;
   hr_fixed:                  boolean;
+  hr_note?:                  HrNote | null;   // G12f.3
 }
 
 export interface Counter { key: DayStatus | "needs_review"; label: string; count: number }
@@ -94,6 +98,7 @@ export interface RekapCell {
   d: string; c: string; s: DayStatus | "outside"; l: string; fi: string | null; lo: string | null;
   day: string | null; rv: boolean; ot: number; otp: number; late: number; early: number;
   n?: string;   // G12e note
+  hn?: HrNote | null;   // G12f.3: HR's note from the recap
 }
 export interface RekapSummary {
   present: number; absent: number; late_times: number; late_minutes: number; early_times: number; early_minutes: number;
@@ -116,6 +121,7 @@ export interface ReviewPeriodData {
   all: number; total: number; page: number; pages: number;
   kinds: { key: string; label: string; count: number }[];
   over_legal: number; legal_day_minutes: number; cap_minutes: number | null;   // G12g
+  has_note?: "" | "1" | "0"; with_note?: number;                             // G12f.3
   rows: ReviewPeriodRow[];
 }
 export interface BulkTrimmed { name: string; date: string; proposed: number; approved: number }
@@ -126,12 +132,13 @@ export interface BulkDecideResult {
 export interface BulkDecideBody {
   action: "approve" | "reject"; note: string; waive_late: boolean; overtime_max_minutes: number | null;
   ids?: string[]; month?: string; kind?: string; q?: string;
+  has_note?: "" | "1" | "0";                                                  // G12f.3: same filter as the list
 }
 
 export interface RekapParams { month?: string; q?: string; site?: string; shift?: string; problems?: string; page?: number }
 
 export const attendanceApi = {
-  async reviewPeriod(params: { month?: string; kind?: string; q?: string; page?: number }): Promise<ReviewPeriodData> {
+  async reviewPeriod(params: { month?: string; kind?: string; q?: string; page?: number; has_note?: string }): Promise<ReviewPeriodData> {
     const { data } = await api.get("/api/hr/attendance/review/period/", { params, timeout: 120000 });
     return data;
   },
