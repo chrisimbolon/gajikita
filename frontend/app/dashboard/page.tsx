@@ -3,13 +3,16 @@
 // /dashboard — Ringkasan (G6, 28 Oct 2026), the "Arah A" design made real:
 // the one thing that needs HR (Marigold), today's counts, today's list with
 // problems first, and this month's approved overtime per site (Midnight panel).
+// G12f.3.3: "Persiapan awal" (SetupCard) replaces "Mulai di sini": open at the top until the needed steps are
+// done, then one folded line. It lives here only, never in the sidebar.
 // =============================================================================
 import { StatusPill } from "@/components/DayPanel";
+import SetupCard from "@/components/SetupCard";
 import { minutesText } from "@/lib/api/attendance";
 import { Summary, dashboardApi } from "@/lib/api/dashboard";
 import { readErrors } from "@/lib/api/hr";
 import { rupiah } from "@/lib/format";
-import { CalendarOff, CheckCircle2, ChevronRight, Clock, Loader2, MapPin, Users } from "lucide-react";
+import { CalendarOff, CheckCircle2, ChevronRight, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -44,9 +47,8 @@ export default function RingkasanPage() {
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    dashboardApi.summary().then(setData).catch((err) => setError(readErrors(err).summary));
-  }, []);
+  const load = () => { dashboardApi.summary().then(setData).catch((err) => setError(readErrors(err).summary)); };
+  useEffect(() => { load(); }, []);
 
   if (error) return <div className="card" style={{ color: "var(--danger)" }}>{error}</div>;
   if (!data) return <div style={{ padding: 24, color: "var(--steel)" }}><Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /></div>;
@@ -70,21 +72,9 @@ export default function RingkasanPage() {
         </div>
       </div>
 
-      {data.employees_active === 0 ? (
-        <div style={{ ...card, padding: 24 }}>
-          <div style={{ fontSize: 18, fontWeight: 800, color: "var(--midnight)" }}>Mulai di sini</div>
-          <div style={{ color: "var(--steel)", fontSize: 14, margin: "4px 0 16px" }}>Tiga langkah sebelum karyawan bisa absen dari HP.</div>
-          {[{ href: "/dashboard/lokasi", icon: MapPin, title: "1. Tambah lokasi kerja", text: "Taruh titik di peta dan atur radiusnya." },
-            { href: "/dashboard/shift", icon: Clock, title: "2. Buat shift", text: "Jam masuk, jam pulang, toleransi terlambat." },
-            { href: "/dashboard/karyawan", icon: Users, title: "3. Tambah karyawan", text: "Lalu aktifkan login HP dan berikan PIN-nya." }].map((s) => (
-            <Link key={s.href} href={s.href} style={{ display: "flex", gap: 14, alignItems: "center", padding: "12px 0", borderTop: "1px solid #E6EDF2",
-                                                    textDecoration: "none", color: "var(--ink)" }}>
-              <s.icon size={20} style={{ color: "var(--midnight)" }} />
-              <div><div style={{ fontWeight: 700 }}>{s.title}</div><div style={{ fontSize: 13.5, color: "var(--steel)" }}>{s.text}</div></div>
-            </Link>
-          ))}
-        </div>
-      ) : (
+      <SetupCard sitesActive={data.sites_active} employeesActive={data.employees_active} onChanged={load} />
+
+      {data.employees_active === 0 ? null : (
         <>
           {/* the one thing that needs attention: the Marigold tile */}
           <div style={{ ...card, display: "flex", alignItems: "center", gap: 18, padding: "16px 18px" }}>
