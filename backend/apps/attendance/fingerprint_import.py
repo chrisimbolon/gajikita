@@ -147,8 +147,10 @@ def plan(org, punches, machine=MAIN):
             "name_check": "bad" if bad else ("ok" if any(same for _, same in checks) else "none"),   # G12f.2
             "mismatch_name": bad[0] if bad else "",
             "sessions": sessions, "events": events, "already": already, "locked": locked,
-            "days": len(dates), "new_days": len(new_sessions),
-            "already_days": sum(1 for s in sessions if s.work_date not in locked and s not in new_sessions),
+            # G12f.2c: counted per date, like "days" and like apply(); a date can hold two sessions
+            # (a lone 02:00 tap, then 12:43 -> 21:00), which must not count as two days
+            "days": len(dates), "new_days": len({s.work_date for s in new_sessions}),
+            "already_days": len(dates - locked - {s.work_date for s in new_sessions}),
             "locked_days": len(locked),
             "no_clock_out": sum(1 for s in sessions if s.clock_out is None),
         })

@@ -81,6 +81,19 @@ class FingerprintImportTests(APITestCase):
         again = self.post("1")
         self.assertEqual((again.data["applied"], again.data["totals"]["already_days"]), ({"events": 0, "days": 0}, 3))
 
+    def test_two_sessions_on_one_date_count_as_one_day(self):
+        """G12f.2c (10 Nov, YUDA 15 Oct): a lone 02:00 tap, then 12:43 -> 21:00. Preview said Baru 22 of 21."""
+        taps = (b"    32\t2026-10-15 02:00:00\t1\t0\t1\t0\n"
+                b"    32\t2026-10-15 12:43:00\t1\t0\t1\t0\n"
+                b"    32\t2026-10-15 21:00:00\t1\t1\t1\t0\n")
+        row = lambda d: next(p for p in d["people"] if p["employee"]["employee_no"] == "DK-019")
+        first = self.post("0", taps).data
+        self.assertEqual((row(first)["days"], row(first)["new_days"], row(first)["already_days"]), (1, 1, 0))
+        self.assertEqual(first["totals"]["new_days"], 1)
+        self.assertEqual(self.post("1", taps).data["applied"]["days"], 1)
+        again = self.post("0", taps).data
+        self.assertEqual((row(again)["days"], row(again)["new_days"], row(again)["already_days"]), (1, 0, 1))
+
     def test_locked_days_are_left_alone(self):
         AttendanceDay.objects.create(organization=self.org, employee=self.sudar, date=date(2026, 9, 26), is_locked=True)
         resp = self.post("1")
