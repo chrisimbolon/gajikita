@@ -68,15 +68,23 @@ export interface FingerprintImportResult {
   period:     { start: string; end: string } | null;
   people:     { employee: { id: string; employee_no: string; full_name: string }; machine_id: string; name_in_file: string;
                 days: number; new_days: number; already_days: number; locked_days: number; no_clock_out: number;
-                machines?: { machine: string; machine_id: string }[] }[];
+                machines?: { machine: string; machine_id: string }[];
+                name_check?: "ok" | "bad" | "none"; mismatch_name?: string }[];      // G12f.2
   unknown:    { machine_id: string; name: string; taps: number; first: string; last: string;
-                machine?: string; machine_key?: string }[];
+                machine?: string; machine_key?: string;
+                link_machine?: string;                                               // G12f.2: "main" | a machine id
+                suggest?: { id: string; full_name: string; employee_no: string } | null }[];
+  // G12f.2: the calendar span of the file, and a clearly better machine choice if there is one
+  file_period?: { start: string; end: string; days: number } | null;
+  suggest_machine?: { mode: "main" | "auto" | "one"; id: string | null; value: string; name: string;
+                      known: number; name_ok: number; chosen_known: number; chosen_name_bad: number } | null;
   // G12f.1a: which machine the file was matched on, and (auto) where each Dept. went
   machine?:   { mode: "main" | "auto" | "one"; id: string | null; name: string };
   machines?:  { id: string; name: string; dept_labels: string }[];
   depts?:     { dept: string; people: number; taps: number; machine: string; machine_key: string }[];
   not_linked: { employee_no: string; full_name: string }[];
-  totals:     { people: number; unknown: number; new_days: number; already_days: number; locked_days: number };
+  totals:     { people: number; unknown: number; new_days: number; already_days: number; locked_days: number;
+                name_mismatch?: number };
   applied?:   { events: number; days: number };
 }
 
@@ -131,8 +139,15 @@ export const importApi = {
     const { data } = await api.post("/api/hr/attendance/fingerprint/delete/", body, { timeout: 120000 });
     return data;
   },
-  async fingerprint(file: File, commit: boolean, machine?: string): Promise<FingerprintImportResult> {
-    const { data } = await api.post("/api/hr/attendance/fingerprint/import/", form(file, commit, machine), { timeout: 300000 });
+  async fingerprint(file: File, commit: boolean, machine?: string, confirmNames = false): Promise<FingerprintImportResult> {
+    const body = form(file, commit, machine);
+    if (confirmNames) body.append("confirm_names", "1");              // G12f.2: "Saya sudah cek"
+    const { data } = await api.post("/api/hr/attendance/fingerprint/import/", body, { timeout: 300000 });
+    return data;
+  },
+  /** G12f.2 "Ini siapa?": link machine IDs to employees. All or nothing; never overwrites. */
+  async linkFingerprint(links: { machine: string; fingerprint_id: string; employee: string }[]): Promise<{ linked: number }> {
+    const { data } = await api.post("/api/hr/attendance/fingerprint/link/", { links });
     return data;
   },
 };
