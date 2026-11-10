@@ -10,7 +10,7 @@
 // another machine better (one click to switch); a red row when the name in the machine does not
 // look like the employee, and Simpan locked until HR ticks "Saya sudah cek"; unknown IDs come with
 // "Ini siapa?" to link them right here.
-// G12f.3.2: a second tab "Catatan HR (file rekap)" imports HR's notes per day (DayNotesImport).
+// G12f.3.3: one job only, the machine's file. Notes from Excel are imported from Ringkasan → Persiapan awal.
 // =============================================================================
 import { Employee, hrApi, readErrors } from "@/lib/api/hr";
 import { FingerprintImportResult, importApi } from "@/lib/api/imports";
@@ -19,7 +19,6 @@ import { AlertTriangle, CheckCircle2, Fingerprint, Link2, Loader2, X } from "luc
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import FingerprintDelete from "@/components/FingerprintDelete";
-import DayNotesImport, { ImportKindTabs } from "@/components/DayNotesImport";
 
 function d(iso: string) {
   const [y, m, day] = iso.split("-").map(Number);
@@ -93,7 +92,6 @@ export default function FingerprintImport({ onClose, onDone }: { onClose: () => 
   };
 
   const [deleting, setDeleting] = useState(false);
-  const [kind, setKind] = useState<"taps" | "notes">("taps");              // G12f.3.2
   const t = result?.totals;
   const depts = result?.depts ?? [];
   const mismatches = t?.name_mismatch ?? 0;
@@ -102,10 +100,6 @@ export default function FingerprintImport({ onClose, onDone }: { onClose: () => 
   const chosenCount = result ? result.unknown.filter((u) => links[unknownKey(u)]).length : 0;
   const idLabel = (p: FingerprintImportResult["people"][number]) =>
     several && p.machines?.length ? p.machines.map((m) => `${m.machine_id} (${m.machine})`).join(", ") : p.machine_id;
-
-  if (kind === "notes") {
-    return <DayNotesImport onClose={onClose} onDone={onDone} onTaps={() => setKind("taps")} />;
-  }
 
   if (deleting) {
     return <FingerprintDelete period={result?.period} onBack={() => { setDeleting(false); setResult(null); setFile(null); }}
@@ -120,7 +114,6 @@ export default function FingerprintImport({ onClose, onDone }: { onClose: () => 
           <div style={{ fontSize: 19, fontWeight: 800, color: "var(--midnight)" }}>Import absensi dari mesin fingerprint</div>
           <button onClick={onClose} aria-label="Tutup" style={{ background: "none", border: "none" }}><X size={18} /></button>
         </div>
-        <ImportKindTabs active="taps" onPick={(k) => k === "notes" && setKind("notes")} />
         <div style={{ fontSize: 13.5, color: "var(--steel)", margin: "4px 0 14px" }}>
           Pilih file dari mesin (<b>attlog.dat</b>, <b>CSV</b>, atau Excel <b>Attendance Record Report</b> .xlsx / .xls)
           {several ? <>, lalu pilih <b>mesin asal file itu</b></> : null}. SeeGaji menunjukkan dulu apa yang akan disimpan.
