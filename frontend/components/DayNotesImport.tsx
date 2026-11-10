@@ -1,9 +1,9 @@
 "use client";
 // =============================================================================
-// DayNotesImport — "Catatan HR" in the import dialog on Absensi (G12f.3.2, 10 Nov 2026).
-// HR keeps a recap beside the machine export (DKCB: sheet "ESR Edit") with a reason for each
-// exception day and a colour code: Mati lampu (blue = Lain), UL (yellow), Cuti (pink = CT) ...
-// Here HR imports those notes so they show beside each day in SeeGaji.
+// DayNotesImport — "Catatan alasan dari Excel" (G12f.3.2, 10 Nov 2026; G12f.3.3: opened from Ringkasan →
+// Persiapan awal, no longer a tab of the machine import). Some HR teams keep a reason for each odd day in
+// Excel, with a colour code: Mati lampu (blue = Lain), UL (yellow), Cuti (pink = CT) ...
+// Here HR brings those notes in once, so they show beside each day in SeeGaji.
 //   1. choose the recap file (and, with several machines, where the IDs come from; default Otomatis)
 //   2. preview: what is new, changed, removed; names that don't match; IDs nobody has yet
 //   3. Simpan. Importing the same file again changes nothing; locked (paid) days are left alone.
@@ -24,22 +24,6 @@ function d(iso: string) {
 }
 const n = (x: number) => x.toLocaleString("id-ID");
 const spin = { animation: "spin 1s linear infinite" };
-
-/** The two kinds of import, shown at the top of the dialog. */
-export function ImportKindTabs({ active, onPick }: { active: "taps" | "notes"; onPick: (k: "taps" | "notes") => void }) {
-  const tab = (k: "taps" | "notes", label: string) => (
-    <button onClick={() => onPick(k)} style={{ padding: "7px 14px", fontSize: 13.5, fontWeight: 700, border: "none", cursor: "pointer",
-            background: active === k ? "var(--midnight)" : "transparent", color: active === k ? "#fff" : "var(--steel)" }}>
-      {label}
-    </button>
-  );
-  return (
-    <div style={{ display: "inline-flex", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", margin: "8px 0 4px" }}>
-      {tab("taps", "Jam absen (file mesin)")}
-      {tab("notes", "Catatan HR (file rekap)")}
-    </div>
-  );
-}
 
 const STATE_TEXT: Record<string, string> = { new: "baru", changed: "diubah", same: "sudah ada", locked: "terkunci" };
 
@@ -115,11 +99,11 @@ export default function DayNotesImport({ onClose, onDone, onTaps }: { onClose: (
         .filter(Boolean).join(", ")}`;
 
   return (
-    <Shell title="Import catatan HR dari file rekap" onClose={onClose}>
-      <ImportKindTabs active="notes" onPick={(k) => k === "taps" && onTaps()} />
+    <Shell title="Ambil catatan alasan dari Excel" onClose={onClose}>
       <div style={{ fontSize: 13.5, color: "var(--steel)", margin: "6px 0 14px" }}>
-        Pilih file rekap yang sudah diisi HR, yang punya kolom <b>ID</b>, <b>Date</b> dan <b>Note</b> (mis. sheet &quot;ESR Edit&quot;).
-        SeeGaji membaca <b>catatan dan warna kodenya</b> saja, lalu menampilkannya di samping hari itu.
+        Pilih file Excel tempat HR menulis alasan per hari. File perlu kolom <b>ID</b> (nomor di mesin), <b>Tanggal</b> dan
+        {" "}<b>Keterangan</b>; SeeGaji mencari sendiri sheet dan kolomnya.
+        SeeGaji membaca <b>catatan dan warnanya</b> saja, lalu menampilkannya di samping hari itu.
         Jam absen, status dan gaji <b>tidak berubah</b> karena catatan.
         {" "}<button onClick={() => setDeleting(true)} style={{ background: "none", border: "none", padding: 0, color: "var(--rust)",
                                                                 fontWeight: 600, cursor: "pointer", fontSize: 13.5 }}>
@@ -141,7 +125,7 @@ export default function DayNotesImport({ onClose, onDone, onTaps }: { onClose: (
       ) : (
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <label className="btn-ghost" style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
-            <FileSpreadsheet size={15} /> {file ? file.name : "Pilih file rekap (.xlsx)"}
+            <FileSpreadsheet size={15} /> {file ? file.name : "Pilih file Excel (.xlsx)"}
             <input type="file" accept=".xlsx,.xls" style={{ display: "none" }}
                    onChange={(e) => { setFile(e.target.files?.[0] ?? null); setResult(null); setError(null); }} />
           </label>
@@ -258,8 +242,8 @@ export default function DayNotesImport({ onClose, onDone, onTaps }: { onClose: (
                 {t.unknown_notes ? ` (${n(t.unknown_notes)} catatan belum ikut)` : ""}.
               </div>
               <div style={{ margin: "4px 0 6px" }}>
-                Hubungkan dulu lewat tab <button onClick={onTaps} style={{ background: "none", border: "none", padding: 0, color: "var(--rust)",
-                fontWeight: 700, cursor: "pointer", fontSize: 13.5 }}>Jam absen (file mesin)</button> → kolom <b>Ini siapa?</b>, lalu import catatan ini lagi.
+                Hubungkan dulu lewat <button onClick={onTaps} style={{ background: "none", border: "none", padding: 0, color: "var(--rust)",
+                fontWeight: 700, cursor: "pointer", fontSize: 13.5 }}>Import file mesin</button> → kolom <b>Ini siapa?</b>, lalu ambil catatan ini lagi.
                 Yang memang bukan karyawan (mis. sudah keluar) boleh dibiarkan.
               </div>
               <div style={{ color: "var(--ink-soft)" }}>
@@ -370,7 +354,7 @@ function NotesDelete({ period, onBack, onClose, onDone }: {
         <ArrowLeft size={14} /> Kembali ke import catatan
       </button>
       <div style={{ fontSize: 13.5, color: "var(--steel)", marginBottom: 14 }}>
-        Untuk file rekap yang salah: hapus catatan hasil import di tanggal ini, lalu import file yang benar. Hanya <b>catatan</b> yang
+        Untuk file yang salah: hapus catatan hasil import di tanggal ini, lalu ambil lagi dari file yang benar. Hanya <b>catatan</b> yang
         dihapus; jam absen, keputusan HR dan gaji tidak disentuh. Hari yang sudah masuk payroll terkunci tetap.
       </div>
 
