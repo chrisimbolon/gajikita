@@ -165,3 +165,44 @@ class EmployeeMachineId(TenantScopedModel):
 
     def _resolve_organization(self):
         return self.employee.organization if self.employee_id else None
+
+
+class DayNote(TenantScopedModel):
+    """
+    HR's reason for one employee's day, written outside SeeGaji (G12f.3, 10 Nov 2026): the Note column of
+    DKCB's "ESR Edit" recap with its colour code ("Mati lampu", blue = Lain). Shown beside the day in the
+    day panel, the rekap and Perlu Tinjau. It never changes status, lateness, overtime or pay.
+
+    One per employee, date and source; importing the recap again updates it, never duplicates it.
+    There is no AttendanceDay link on purpose: a note can stand on a day with no taps (UL, Libur).
+    """
+    class Source(models.TextChoices):
+        IMPORT = "import", "Import file rekap"
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee    = models.ForeignKey("employees.Employee", on_delete=models.CASCADE, related_name="day_notes")
+    date        = models.DateField()
+    code        = models.CharField(max_length=20, blank=True, default="", verbose_name="Kode",
+                                   help_text="Label warna dari legenda file, mis. UL, CT, Lain")
+    color       = models.CharField(max_length=6, blank=True, default="", verbose_name="Warna",
+                                   help_text="Warna sel di file, RRGGBB")
+    text        = models.TextField(blank=True, default="", verbose_name="Catatan")
+    source      = models.CharField(max_length=20, choices=Source.choices, default=Source.IMPORT)
+    source_file = models.CharField(max_length=255, blank=True, default="")
+    created_by  = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="+")
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name        = "Catatan HR per hari"
+        verbose_name_plural = "Catatan HR per hari"
+        ordering            = ["date"]
+        unique_together     = [("employee", "date", "source")]
+        indexes             = [models.Index(fields=["organization", "date"], name="attendance_daynote_org_date")]
+
+    def __str__(self):
+        return f"{self.employee} {self.date}: {self.code or '-'} {self.text[:40]}"
+
+    def _resolve_organization(self):
+        return self.employee.organization if self.employee_id else None

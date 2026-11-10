@@ -12,6 +12,9 @@ HR's attendance screens (G3, 28 Oct 2026). All under /api/hr/attendance/.
   GET  events/<id>/selfie/           the selfie image (HR of the same company only)
 
 Every decision and fix writes an audit entry. A locked day (paid in a pay run) can't change.
+
+G12f.3.1: every row and the day panel carry "hr_note" ({code, color, text} or null): HR's own note for
+that day from the imported recap. Shown only; it never changes a status or a number.
 """
 import re
 from collections import Counter
@@ -33,6 +36,7 @@ from apps.organizations.permissions import IsCompanyHR
 
 from .day_status import STATUS_LABELS
 from .geofence import FLAG_LABELS
+from .day_notes_import import notes_for
 from .models import AttendanceDay, ClockEvent
 from .review import evaluate, evaluate_missing, leaves_between, night_context, row
 from apps.payroll.services import day_overtime
@@ -80,6 +84,18 @@ def daily_rows(org, day, now):
     return rows
 
 
+def attach_notes(org, rows):
+    """G12f.3.1: rows from review.row() get "hr_note" = HR's note for that employee and date, or None."""
+    if not rows:
+        return rows
+    dates = [Date.fromisoformat(r["date"]) for r in rows]
+    found = notes_for(org, {r["employee"]["id"] for r in rows}, min(dates), max(dates))
+    notes = {(str(e), d): v for (e, d), v in found.items()}
+    for r, d in zip(rows, dates):
+        r["hr_note"] = notes.get((str(r["employee"]["id"]), d))
+    return rows
+
+
 def daily_counters(rows):
     counts = Counter(tag for r in rows for tag in r["tags"])
     counters = [{"key": k, "label": STATUS_LABELS[k], "count": counts.get(k, 0)} for k in COUNTERS]
@@ -112,7 +128,7 @@ class DailyView(APIView):
 
     def get(self, request):
         day = _parse_date(request.query_params.get("date"), timezone.localdate())
-        rows = daily_rows(request.hr_org, day, timezone.now())
+        rows = attach_notes(request.hr_org, daily_rows(request.hr_org, day, timezone.now()))      # G12f.3.1
         return Response({"success": True, "date": day.isoformat(), "counters": daily_counters(rows), "rows": rows})
 
 
@@ -124,7 +140,7 @@ class ReviewQueueView(APIView):
             n = max(1, min(31, int(request.query_params.get("days", 7))))
         except ValueError:
             n = 7
-        rows = review_rows(request.hr_org, n, timezone.now())
+        rows = attach_notes(request.hr_org, review_rows(request.hr_org, n, timezone.now()))     # G12f.3.1
         return Response({"success": True, "days": n, "count": len(rows), "summary": review_summary(rows), "rows": rows})
 
 
@@ -160,6 +176,7 @@ def _day_detail(request, day):
         "audit": [audit_payload(a) for a in audit],
         "overtime_pay": day_overtime(day, result.overtime_proposed_minutes),
     })
+    attach_notes(day.organization, [data])                                       # G12f.3.1
     return data
 
 

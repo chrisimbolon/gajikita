@@ -23,6 +23,9 @@ period (26 - 25), filtered by kind, and decides many days at once.
         reject:  like "Tolak" (a note is required)
         Locked days (in a locked payroll) and days already decided are skipped.
         Every day gets its own audit line, so the day panel still shows who decided and when.
+
+G12f.3.1: rows carry "hr_note"; has_note=1 / 0 keeps only the days with / without HR's note (GET and the
+bulk filter alike, so "everything matching the filter" is exactly what the screen lists).
 """
 from django.db import transaction
 from django.utils import timezone
@@ -41,6 +44,7 @@ from .hr_views import _days_qs, _snapshot
 from .rekap import _shift_month, period_of
 from .review import evaluate, leaves_between, night_context, row
 from .day_status import Status
+from .day_notes_import import notes_for
 from .models import AttendanceDay
 from .review_kinds import KINDS, LABELS, capped_overtime, kinds_of, over_legal
 
@@ -68,6 +72,15 @@ def pending_days(org, start, end, now, kind="", q=""):
     return out
 
 
+def with_note_filter(org, items, start, end, has_note, notes=None):
+    """G12f.3.1: (items, notes). has_note "1" keeps the days with HR's note, "0" those without, "" all."""
+    notes = notes_for(org, None, start, end) if notes is None else notes
+    if has_note in ("1", "0"):
+        want = has_note == "1"
+        items = [x for x in items if ((x[0].employee_id, x[0].date) in notes) == want]
+    return items, notes
+
+
 def _period(org, month):
     y, m, start, end = period_of(org, month)
     py, pm = _shift_month(y, m, -1)
@@ -83,6 +96,10 @@ class ReviewPeriodView(APIView):
         p = request.query_params
         info, start, end = _period(request.hr_org, p.get("month"))
         everything = pending_days(request.hr_org, start, end, timezone.now(), q=p.get("q", ""))
+        has_note = p.get("has_note", "")                                            # G12f.3.1
+        _, notes = with_note_filter(request.hr_org, [], start, end, "")
+        noted = sum(1 for d, _, _ in everything if (d.employee_id, d.date) in notes)
+        everything, _ = with_note_filter(request.hr_org, everything, start, end, has_note, notes)
         counts = {k: 0 for k, _ in KINDS}
         for _, _, kinds in everything:
             for k in kinds:
@@ -100,6 +117,7 @@ class ReviewPeriodView(APIView):
             item = row(d.employee, d.date, d, r)
             item["kinds"] = kinds
             item["over_legal"] = _over_legal(r)                                     # G12g
+            item["hr_note"] = notes.get((d.employee_id, d.date))                    # G12f.3.1
             rows.append(item)
         over = sum(1 for _, r, _ in chosen if _over_legal(r))                       # all pages
         return Response({"success": True, **info, "kind": kind, "all": len(everything), "total": len(chosen),
@@ -107,6 +125,7 @@ class ReviewPeriodView(APIView):
                          "kinds": [{"key": k, "label": l, "count": counts[k]} for k, l in KINDS if counts[k]],
                          "over_legal": over, "legal_day_minutes": WEEKDAY_MAX_MINUTES,      # G12g
                          "cap_minutes": PayrollSettings.for_org(request.hr_org).overtime_daily_cap_minutes,
+                         "has_note": has_note if has_note in ("1", "0") else "", "with_note": noted,   # G12f.3.1
                          "rows": rows})
 
 
@@ -124,6 +143,7 @@ class BulkSerializer(serializers.Serializer):
     # G12g: left out = the company setting (empty there = no cap); null = no cap. There is no 240 default any more.
     overtime_max_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=24 * 60)
     waive_late = serializers.BooleanField(required=False, default=False)
+    has_note = serializers.ChoiceField(choices=["", "1", "0"], required=False, default="")      # G12f.3.1
 
     def validate(self, attrs):
         if attrs["action"] == "reject" and not attrs["note"].strip():
@@ -155,7 +175,9 @@ class BulkDecideView(APIView):
             skipped = len(d["ids"]) - len(todo)
         else:
             _, start, end = _period(org, d["month"])
-            todo = [(day, r) for day, r, _ in pending_days(org, start, end, now, d["kind"], d["q"])]
+            found, _ = with_note_filter(org, pending_days(org, start, end, now, d["kind"], d["q"]), start, end,
+                                        d["has_note"])                              # G12f.3.1
+            todo = [(day, r) for day, r, _ in found]
             skipped = 0
         if len(todo) > MAX_BULK:
             return Response({"success": False, "message": f"Maksimal {MAX_BULK} hari sekali proses. Saring dulu per jenis."},

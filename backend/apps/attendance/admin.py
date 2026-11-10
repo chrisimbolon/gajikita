@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AttendanceDay, ClockEvent, EmployeeMachineId, FingerprintMachine
+from .models import AttendanceDay, ClockEvent, DayNote, EmployeeMachineId, FingerprintMachine
 
 
 class ClockEventInline(admin.TabularInline):
@@ -35,3 +35,12 @@ class FingerprintMachineAdmin(admin.ModelAdmin):
     list_display = ("name", "organization", "dept_labels", "is_active")
     list_filter = ("organization", "is_active")
     inlines = [EmployeeMachineIdInline]
+
+
+@admin.register(DayNote)                                                  # G12f.3.1
+class DayNoteAdmin(admin.ModelAdmin):
+    list_display = ("date", "employee", "code", "text", "source", "organization")
+    list_filter = ("organization", "source", "code")
+    search_fields = ("employee__full_name", "employee__employee_no", "text")
+    raw_id_fields = ("employee", "created_by")
+    date_hierarchy = "date"

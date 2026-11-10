@@ -20,6 +20,8 @@ They carry no GPS, so no location flags.
 
 G12f.2: every name in the file is checked against the matched employee (name_match), the file is tried
 on every machine choice and a clearly better one is suggested, and each unknown ID gets a proposed employee.
+
+G12f.3.1: id_lookup() and suggest_machine() are shared with the import of HR's notes (day_notes_import).
 """
 import uuid
 from collections import defaultdict
@@ -75,6 +77,48 @@ def machine_fit(punches, mode, dept_map, lookup):
 SUGGEST_MARGIN = 3                 # another machine must fit clearly better before SeeGaji says so
 
 
+def id_lookup(org):
+    """
+    (main_ids, other_ids, lookup): {machine id: employee} on the main machine, {(machine key, machine id):
+    employee} on the other machines, and lookup(machine key, machine id) -> employee or None.
+    """
+    main_ids = {clean_id(e.fingerprint_id): e
+                for e in Employee.objects.filter(organization=org).exclude(fingerprint_id="")
+                .select_related("default_shift", "default_site")}
+    other_ids = {(r.machine_id, clean_id(r.fingerprint_id)): r.employee
+                 for r in EmployeeMachineId.objects.filter(organization=org)
+                 .select_related("employee__default_shift", "employee__default_site")}
+
+    def lookup(key, machine_id):
+        return main_ids.get(machine_id) if key == MAIN else other_ids.get((key, machine_id))
+
+    return main_ids, other_ids, lookup
+
+
+def suggest_machine(items, mode, machines, dept_map, lookup, names):
+    """
+    G12f.2: would another machine choice fit this file clearly better? items: punches, or anything with
+    machine_id / name / dept (G12f.3.1: rows of HR's notes). -> the suggestion for the screen, or None.
+    """
+    candidates = [MAIN] + [m.pk for m in machines if m.is_active]
+    if dept_map and any(p.dept for p in items):
+        candidates.append(AUTO)
+    fits = {c: machine_fit(items, c, dept_map, lookup) for c in candidates}
+    chosen = fits.get(mode) or machine_fit(items, mode, dept_map, lookup)
+    best, best_score = mode, chosen["score"]
+    for c in candidates:                                   # a tie keeps HR's own choice
+        if fits[c]["score"] > best_score:
+            best, best_score = c, fits[c]["score"]
+    if best == mode or best_score < chosen["score"] + SUGGEST_MARGIN or fits[best]["known"] == 0:
+        return None
+    return {"mode": MAIN if best == MAIN else (AUTO if best == AUTO else "one"),
+            "id": None if best in (MAIN, AUTO) else str(best),
+            "value": best if best in (MAIN, AUTO) else str(best),
+            "name": names.get(best, AUTO_NAME if best == AUTO else MAIN_NAME),
+            "known": fits[best]["known"], "name_ok": fits[best]["name_ok"],
+            "chosen_known": chosen["known"], "chosen_name_bad": chosen["name_bad"]}
+
+
 def plan(org, punches, machine=MAIN):
     """
     machine: MAIN (the IDs on the employee), AUTO (each block by its Dept.; G12f.1a) or a
@@ -88,38 +132,14 @@ def plan(org, punches, machine=MAIN):
     mode = machine.pk if isinstance(machine, FingerprintMachine) else machine
     dept_map = dept_owner_map((m.pk, m.dept_labels) for m in machines if m.is_active)
 
-    main_ids = {clean_id(e.fingerprint_id): e
-                for e in Employee.objects.filter(organization=org).exclude(fingerprint_id="")
-                .select_related("default_shift", "default_site")}
-    other_ids = {(r.machine_id, clean_id(r.fingerprint_id)): r.employee
-                 for r in EmployeeMachineId.objects.filter(organization=org)
-                 .select_related("employee__default_shift", "employee__default_site")}
-
-    def lookup(key, machine_id):
-        return main_ids.get(machine_id) if key == MAIN else other_ids.get((key, machine_id))
+    main_ids, other_ids, lookup = id_lookup(org)                           # G12f.3.1: shared
 
     groups = assign(punches, mode, dept_map)
     file_names = {k: next((p.name for p in items if p.name), "") for k, items in groups.items()}
     found, missing = merge_by_employee(groups, lookup)
 
     # G12f.2: would another machine choice fit this file clearly better?
-    candidates = [MAIN] + [m.pk for m in machines if m.is_active]
-    if dept_map and any(p.dept for p in punches):
-        candidates.append(AUTO)
-    fits = {c: machine_fit(punches, c, dept_map, lookup) for c in candidates}
-    chosen = fits.get(mode) or machine_fit(punches, mode, dept_map, lookup)
-    best, best_score = mode, chosen["score"]
-    for c in candidates:                                   # a tie keeps HR's own choice
-        if fits[c]["score"] > best_score:
-            best, best_score = c, fits[c]["score"]
-    suggest = None
-    if best != mode and best_score >= chosen["score"] + SUGGEST_MARGIN and fits[best]["known"] > 0:
-        suggest = {"mode": MAIN if best == MAIN else (AUTO if best == AUTO else "one"),
-                   "id": None if best in (MAIN, AUTO) else str(best),
-                   "value": best if best in (MAIN, AUTO) else str(best),
-                   "name": names.get(best, AUTO_NAME if best == AUTO else MAIN_NAME),
-                   "known": fits[best]["known"], "name_ok": fits[best]["name_ok"],
-                   "chosen_known": chosen["known"], "chosen_name_bad": chosen["name_bad"]}
+    suggest = suggest_machine(punches, mode, machines, dept_map, lookup, names)
 
     people = []
     for emp, person in found.items():

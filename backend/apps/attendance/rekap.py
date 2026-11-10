@@ -14,6 +14,9 @@ Rekap Absensi: everyone x every day of a pay period (G10, 1 Nov 2026).
 
 Every number comes from payroll.payrun.collect_numbers(), the loop payroll uses, so the rekap
 and the payroll always agree.
+
+G12f.3.1: each cell carries "hn" = HR's note for that day ({code, color, text} or null); the export shows
+it as a comment on the cell of sheet "Rekap".
 """
 import io
 import re
@@ -30,6 +33,7 @@ from apps.payroll import engine
 from apps.payroll.models import PayrollSettings
 from apps.payroll.payrun import MONTHS, _days_by_employee, _leaves_by_employee, collect_numbers, employees_in_period
 
+from .day_notes_import import notes_for                                         # G12f.3.1
 from .rekap_codes import LEGEND, summarize
 from .review import night_context                                                # G12e
 
@@ -77,6 +81,7 @@ def build(org, start, end, params):
     days = _days_by_employee(org, start, end, ids)
     ctx = night_context(org.id, ids, start, end)                                    # G12e
     leaves = _leaves_by_employee(org, start, end, ids)
+    notes = notes_for(org, ids, start, end)                                         # G12f.3.1
     now = timezone.now()
     rows = []
     for emp in employees:
@@ -89,7 +94,8 @@ def build(org, start, end, params):
         rows.append({
             "employee": {"id": str(emp.id), "employee_no": emp.employee_no, "full_name": emp.full_name,
                          "position": emp.position, "shift": emp.default_shift.name if emp.default_shift else ""},
-            "cells": [{**c, "fi": _hhmm(c["fi"]), "lo": _hhmm(c["lo"])} for c in cells],
+            "cells": [{**c, "fi": _hhmm(c["fi"]), "lo": _hhmm(c["lo"]),
+                       "hn": notes.get((emp.id, Date.fromisoformat(c["d"])))} for c in cells],   # G12f.3.1
             "summary": summary,
         })
     return rows
@@ -143,6 +149,7 @@ class RekapExportView(APIView):
 
     def get(self, request):
         from openpyxl import Workbook
+        from openpyxl.comments import Comment
         from openpyxl.styles import Alignment, Font, PatternFill
         from openpyxl.utils import get_column_letter
 
@@ -176,6 +183,10 @@ class RekapExportView(APIView):
                     x.alignment = center
                     if cell["c"] in FILLS:
                         x.fill = PatternFill("solid", fgColor=FILLS[cell["c"]])
+                    if value_of is None and cell.get("hn"):                          # G12f.3.1
+                        hn = cell["hn"]
+                        x.comment = Comment(f"Catatan HR{' (' + hn['code'] + ')' if hn['code'] else ''}: "
+                                            f"{hn['text'] or '-'}", "SeeGaji")
                 if value_of is None:
                     for j, (_, fn) in enumerate(SUMMARY_COLS, start=4 + len(days)):
                         ws.cell(row=r, column=j, value=fn(row["summary"])).alignment = center
