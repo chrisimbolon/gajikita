@@ -67,6 +67,36 @@ def names_match(in_file, full_name):
     return None if score is None else score >= MATCH
 
 
+def distinct_names(names):
+    """G12f.3.4: names in file order, each once (case and spacing ignored), blanks left out."""
+    seen, out = set(), []
+    for name in names:
+        clean = " ".join((name or "").split())
+        if clean and clean.casefold() not in seen:
+            seen.add(clean.casefold())
+            out.append(clean)
+    return out
+
+
+def check_names(names, full_name):
+    """
+    G12f.3.4 (11 Nov 2026): every name written for one ID, against the employee.
+    -> ("bad" | "ok" | "none", [names that don't look like the employee]).
+
+    One ID can carry two people when a combined file is read with a Department that no machine claims:
+    the office's "Dila" (Staf, ID 2) landed on the plant's ID 2 together with "Feny". Checking only the
+    first name ("Feny") said all was well; any name that does not match now makes the row red.
+    """
+    bad, ok = [], False
+    for name in distinct_names(names):
+        same = names_match(name, full_name)
+        if same is False:
+            bad.append(name)
+        elif same:
+            ok = True
+    return ("bad" if bad else "ok" if ok else "none"), bad
+
+
 def best_candidate(in_file, candidates):
     """candidates: [(key, full name)] -> (key, score) of the most similar name at or above MATCH, else None."""
     best = None
