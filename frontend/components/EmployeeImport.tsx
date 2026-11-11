@@ -52,7 +52,7 @@ export default function EmployeeImport({ onClose, onDone }: { onClose: () => voi
           <button onClick={onClose} aria-label="Tutup" style={{ background: "none", border: "none" }}><X size={18} /></button>
         </div>
         <div style={{ fontSize: 13.5, color: "var(--steel)", margin: "4px 0 14px" }}>
-          Gunakan template GajiKita. Pratinjau dulu, baru simpan. Karyawan dicocokkan lewat No. Karyawan, jadi tidak ada yang dobel;
+          Gunakan template SeeGaji. Pratinjau dulu, baru simpan. Karyawan dicocokkan lewat No. Karyawan, jadi tidak ada yang dobel;
           sel kosong tidak menghapus data yang sudah ada.
         </div>
 
