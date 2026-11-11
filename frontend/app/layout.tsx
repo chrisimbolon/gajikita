@@ -13,8 +13,8 @@ const jakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "GajiKita — Absensi, Gaji & Pajak Karyawan",
-  description: "Absensi, cuti, gaji, BPJS dan PPh 21 karyawan dalam satu aplikasi.",
+  title: "SeeGaji — Absensi ke Slip Gaji",
+  description: "Dari mesin fingerprint ke slip gaji: absensi, lembur, uang makan, cuti, slip A5 dan file transfer bank dalam satu aplikasi.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
