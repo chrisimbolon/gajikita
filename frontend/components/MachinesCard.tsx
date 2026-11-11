@@ -8,6 +8,7 @@
 import { Site, readErrors } from "@/lib/api/hr";
 import { Machine, MachineInput, MachineList, machineApi } from "@/lib/api/machines";
 import { Fingerprint, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import { DeptChips } from "@/components/DeptBox";                        // G12f.3.5
 import { useCallback, useEffect, useState } from "react";
 
 const DEPT_HELP = "Isi kolom Dept. mesin ini di laporan gabungan, pisahkan dengan koma (mis. Staf, Manager). "
@@ -95,6 +96,7 @@ export default function MachinesCard({ sites }: { sites: Site[] }) {
               <input className="input" value={draft.dept_labels} placeholder="mis. Staf, Manager"
                      onChange={(e) => setDraft({ ...draft, dept_labels: e.target.value })}
                      style={addErrors.dept_labels ? { borderColor: "var(--danger)" } : undefined} />
+              {draft.dept_labels.trim() && <DeptChips text={draft.dept_labels} />}
             </div>
             <button className="btn-rust" disabled={adding || !draft.name.trim()} style={{ padding: "8px 14px" }}>
               {adding ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Plus size={15} />} Tambah mesin
@@ -161,6 +163,7 @@ function MachineRow({ machine, sites, onChanged }: { machine: Machine; sites: Si
       </td>
       <td>
         <input className="input" value={dept} placeholder="mis. Staf, Manager" onChange={(e) => { setDept(e.target.value); setMsg(null); }} />
+        <DeptChips text={dept} />
       </td>
       <td>{machine.employees}</td>
       <td>{machine.taps.toLocaleString("id-ID")}</td>

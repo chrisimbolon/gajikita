@@ -14,6 +14,7 @@ import { DayNotesDeleteResult, DayNotesImportResult, DayNotesPerson, dayNotesApi
 import { readErrors } from "@/lib/api/hr";
 import { AUTO_MACHINE, MAIN_MACHINE, MAIN_MACHINE_NAME, Machine, machineApi } from "@/lib/api/machines";
 import { NoteCode } from "@/components/HrNote";
+import DeptBox from "@/components/DeptBox";                              // G12f.3.5
 import { AlertTriangle, ArrowLeft, CheckCircle2, FileSpreadsheet, Loader2, Trash2, X } from "lucide-react";
 import { ReactNode, useEffect, useState } from "react";
 
@@ -245,17 +246,8 @@ export default function DayNotesImport({ onClose, onDone, onTaps }: { onClose: (
 
           {/* 4b. G12f.3.4: which machine each Department was read as */}
           {several && result.machine.mode === "auto" && (result.depts ?? []).length > 0 && (
-            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13.5 }}>
-              <div style={{ fontWeight: 700, marginBottom: 4 }}>Department di file → mesin</div>
-              {(result.depts ?? []).map((x) => (
-                <div key={x.dept}>{x.dept} → <b>{x.machine}</b> · {x.people} orang
-                  {!x.claimed && <span style={{ color: "var(--steel)" }}> (Department ini tidak terdaftar di mesin lain)</span>}</div>
-              ))}
-              <div style={{ color: "var(--steel)", fontSize: 12.5, marginTop: 4 }}>
-                Ada yang seharusnya mesin lain? Isi Department-nya di Lokasi → Mesin fingerprint (pisahkan dengan koma,
-                mis. &quot;Staf, Manager&quot;), lalu pratinjau lagi.
-              </div>
-            </div>
+            <DeptBox depts={result.depts ?? []} machines={machines}
+                     onChanged={(all) => { setMachines(all.filter((m) => m.is_active)); run(false); }} />
           )}
 
           {/* 5. IDs nobody has yet */}

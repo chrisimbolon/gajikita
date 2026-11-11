@@ -17,6 +17,7 @@ import { FingerprintImportResult, importApi } from "@/lib/api/imports";
 import { AUTO_MACHINE, MAIN_MACHINE, MAIN_MACHINE_NAME, Machine, machineApi } from "@/lib/api/machines";
 import { AlertTriangle, CheckCircle2, Fingerprint, Link2, Loader2, X } from "lucide-react";
 import Link from "next/link";
+import DeptBox from "@/components/DeptBox";                              // G12f.3.5
 import { badNameText } from "@/components/DayNotesImport";
 import { useEffect, useState } from "react";
 import FingerprintDelete from "@/components/FingerprintDelete";
@@ -116,7 +117,7 @@ export default function FingerprintImport({ onClose, onDone }: { onClose: () => 
           <button onClick={onClose} aria-label="Tutup" style={{ background: "none", border: "none" }}><X size={18} /></button>
         </div>
         <div style={{ fontSize: 13.5, color: "var(--steel)", margin: "4px 0 14px" }}>
-          Pilih file dari mesin (<b>attlog.dat</b>, <b>CSV</b>, atau Excel <b>Attendance Record Report</b> .xlsx / .xls)
+          Pilih file dari mesin (<b>file Excel dari mesin</b> .xls / .xlsx, <b>attlog.dat</b> atau <b>CSV</b>)
           {several ? <>, lalu pilih <b>mesin asal file itu</b></> : null}. SeeGaji menunjukkan dulu apa yang akan disimpan.
           {" "}<button onClick={() => setDeleting(true)} style={{ background: "none", border: "none", padding: 0, color: "var(--rust)",
                                                                 fontWeight: 600, cursor: "pointer", fontSize: 13.5 }}>
@@ -217,16 +218,8 @@ export default function FingerprintImport({ onClose, onDone }: { onClose: () => 
             )}
 
             {depts.length > 0 && several && result.machine?.mode === "auto" && (
-              <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13.5 }}>
-                <div style={{ fontWeight: 700, marginBottom: 4 }}>Dept. di file → mesin</div>
-                {depts.map((x) => (
-                  <div key={x.dept}>{x.dept} → <b>{x.machine}</b> · {x.people} orang · {n(x.taps)} tap
-                    {x.claimed === false && <span style={{ color: "var(--steel)" }}> (Dept. ini tidak terdaftar di mesin lain)</span>}</div>
-                ))}
-                <div style={{ color: "var(--steel)", fontSize: 12.5, marginTop: 4 }}>
-                  Salah mesin? Ubah "Dept. di file" di <Link href="/dashboard/lokasi">Lokasi → Mesin fingerprint</Link>.
-                </div>
-              </div>
+              <DeptBox depts={depts} machines={machines} unit="tap"
+                       onChanged={(all) => { setMachines(all.filter((m) => m.is_active)); run(false); }} />   /* G12f.3.5 */
             )}
 
             {/* 4. People in the file not yet linked: a to-do, not an error */}
