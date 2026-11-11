@@ -150,6 +150,7 @@ def _register(run):
             "warning_count": l.warning_count, "corrected": bool(l.override),
             "present_days": a.get("present_days", 0), "absent_days": a.get("absent_days", 0),
             "review_days": a.get("review_days", 0),
+            "exempt_days": a.get("exempt_days", 0), "exempt_reason": a.get("exempt_reason", ""),   # G12i
         })
     order = {"earnings": 0, "deductions": 1}
     return sorted(columns.values(), key=lambda c: order[c["side"]]), rows

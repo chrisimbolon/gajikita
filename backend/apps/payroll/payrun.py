@@ -91,7 +91,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
     ctx = ctx or night_context(emp.organization_id, [emp.id], start, end)
     shift = emp.default_shift
     nums = {"working_days": 0, "present_days": 0, "absent_days": 0, "unpaid_leave_days": 0, "outside_days": 0, "paid_leave_days": 0,
-            "overtime": [], "late_raw": [], "meal_days": 0, "breakfast_days": 0, "review_days": 0, "leave": {}}
+            "overtime": [], "late_raw": [], "meal_days": 0, "breakfast_days": 0, "review_days": 0, "leave": {},
+            "exempt_days": 0, "exempt_reason": ""}                                     # G12i
     leave_count = Counter()
     meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
     tz = timezone.get_current_timezone()
@@ -114,6 +115,10 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
                 nums["unpaid_leave_days"] += 1
             else:
                 nums["paid_leave_days"] += 1
+        elif r.status == Status.EXEMPT:                     # G12i: tidak wajib absen = worked
+            nums["present_days"] += 1
+            nums["exempt_days"] += 1
+            nums["exempt_reason"] = nums["exempt_reason"] or r.note.replace("Tidak wajib absen: ", "", 1)
         elif r.status == Status.ABSENT or (r.status == Status.REJECTED and working):
             nums["absent_days"] += 1
         elif r.first_in:
@@ -128,9 +133,10 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
         if ot:
             nums["overtime"].append({"date": d.isoformat(), "minutes": ot, "rest_day": not working})
         rejected = r.status == Status.REJECTED
-        nums["meal_days"] += meals.meal_count(meal_rule, d, r.first_in, r.last_out, rejected, ot,
+        no_taps = rejected or r.status == Status.EXEMPT          # G12i: taps decide nothing on an exempt day
+        nums["meal_days"] += meals.meal_count(meal_rule, d, r.first_in, r.last_out, no_taps, ot,
                                              cfg.meal_late_after, tz, midnight_extra=cfg.meal_midnight_extra)
-        if breakfast and meals.earns_breakfast(d, r.first_in, rejected, cfg.breakfast_before, tz):
+        if breakfast and meals.earns_breakfast(d, r.first_in, no_taps, cfg.breakfast_before, tz):
             nums["breakfast_days"] += 1
         if cells is not None:
             cells.append(day_cell(d, r, day, leave, ot))
@@ -187,6 +193,9 @@ def calculate_line(line, cfg):
     slip = engine.calculate(terms, period, rules)
     if nums.get("review_days"):
         slip.warnings.insert(0, f"{nums['review_days']} hari absensi belum ditinjau HR di periode ini.")
+    if nums.get("exempt_days"):                                                      # G12i: never silent
+        slip.warnings.insert(0, f"Tidak wajib absen ({nums.get('exempt_reason') or '-'}): {nums['exempt_days']} hari "
+                                f"kerja dihitung hadir tanpa tap. Pastikan masih berlaku.")
     worked_days, absent = nums.get("working_days", 0), nums.get("absent_days", 0)
     if worked_days and absent * 2 >= worked_days:
         slip.warnings.insert(0, f"Tidak hadir {absent} dari {worked_days} hari kerja di periode ini.")
