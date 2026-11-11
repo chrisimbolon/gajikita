@@ -27,9 +27,9 @@ from django.db import transaction
 from apps.core.audit import record_audit
 
 from .fingerprint_import import id_lookup, machine_names, suggest_machine
-from .machines import AUTO, AUTO_NAME, MAIN, MAIN_NAME, assign, dept_owner_map, id_sort_key
+from .machines import AUTO, AUTO_NAME, MAIN, MAIN_NAME, assign, dept_owner_map, depts_in_file, id_sort_key
 from .models import AttendanceDay, DayNote, FingerprintMachine
-from .name_match import names_match
+from .name_match import check_names, distinct_names
 
 JOIN = " · "
 MAX_LISTED = 50
@@ -77,9 +77,9 @@ def plan(org, nf, machine=MAIN):
                             "machine": names.get(key, MAIN_NAME), "machine_key": str(key),
                             "link_machine": MAIN if key == MAIN else str(key), "_sort": id_sort_key(machine_id)})
             continue
-        person = found.setdefault(emp, {"ids": [], "checks": [], "rows": []})
+        person = found.setdefault(emp, {"ids": [], "names": [], "rows": []})
         person["ids"].append((key, machine_id))
-        person["checks"].append((file_name, names_match(file_name, emp.full_name)))
+        person["names"].extend(r.name for r in items)                         # G12f.3.4: every name
         person["rows"].extend(items)
 
     emps = list(found)
@@ -117,14 +117,14 @@ def plan(org, nf, machine=MAIN):
                     locked_n += 1
                 else:
                     remove.append(old)
-        bad = [n for n, same_name in person["checks"] if same_name is False]
+        names_here = distinct_names(person["names"])
+        name_check, bad = check_names(names_here, emp.full_name)
         people.append({
             "employee": emp, "machine_id": ", ".join(i for _, i in person["ids"]),
             "machines": [{"machine": names.get(k, MAIN_NAME), "machine_id": i} for k, i in person["ids"]],
             "sort": min(id_sort_key(i) for _, i in person["ids"]),
-            "name_in_file": next((n for n, _ in person["checks"] if n), ""),
-            "name_check": "bad" if bad else ("ok" if any(s for _, s in person["checks"]) else "none"),
-            "mismatch_name": bad[0] if bad else "",
+            "name_in_file": names_here[0] if names_here else "", "names_in_file": names_here,
+            "name_check": name_check, "mismatch_name": bad[0] if bad else "",
             "codes": Counter(code for code, _, _ in wanted.values() if code),
             "lines": lines, "add": add, "change": change, "same": same, "remove": remove, "locked": locked_n,
         })
@@ -133,6 +133,8 @@ def plan(org, nf, machine=MAIN):
 
     return {
         "file": nf, "people": people, "unknown": unknown, "suggest": suggest, "start": start, "end": end,
+        "depts": [{**d, "machine": names.get(d["machine_key"], MAIN_NAME), "machine_key": str(d["machine_key"])}
+                  for d in depts_in_file(nf.rows, mode, dept_map) if d["dept"]],                # G12f.3.4
         "mode": MAIN if mode == MAIN else (AUTO if mode == AUTO else "one"),
         "machine": machine if isinstance(machine, FingerprintMachine) else None,
         "machine_name": names.get(mode, AUTO_NAME if mode == AUTO else MAIN_NAME),
@@ -150,12 +152,13 @@ def public(p):
         "unreadable": nf.unreadable, "outside": nf.outside,
         "repeated": [{"machine_id": i, "name": n, "date": d.isoformat()} for i, n, d in nf.repeated][:MAX_LISTED],
         "machine": {"mode": p["mode"], "id": str(p["machine"].pk) if p["machine"] else None, "name": p["machine_name"]},
-        "suggest_machine": p["suggest"],
+        "suggest_machine": p["suggest"], "depts": p["depts"],
         "unknown": [{k: v for k, v in u.items() if k != "_sort"} for u in p["unknown"]],
         "people": [{"employee": {"id": str(x["employee"].id), "employee_no": x["employee"].employee_no,
                                  "full_name": x["employee"].full_name},
                     "machine_id": x["machine_id"], "machines": x["machines"], "name_in_file": x["name_in_file"],
                     "name_check": x["name_check"], "mismatch_name": x["mismatch_name"],
+                    "names_in_file": x["names_in_file"],
                     "codes": [{"code": c, "count": x["codes"][c]}
                               for c in sorted(x["codes"], key=lambda c: (c not in legend_order,
                                                                        legend_order.index(c) if c in legend_order else 0, c))],
