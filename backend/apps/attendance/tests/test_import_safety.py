@@ -30,7 +30,7 @@ DAYS = [26, 27, 28, 29, 30] + list(range(1, 26))
 
 
 def plant_xlsx(blocks):
-    """The plant machine's report: [(id, name, {column: taps})], Dept. DKCB. Column 6 = 1 Okt, 7 = 2 Okt."""
+    """The machine's report: [(id, name, {column: taps}[, dept])], Dept. DKCB unless given. Column 6 = 1 Okt."""
     from openpyxl import Workbook
     wb = Workbook()
     ws = wb.active
@@ -39,10 +39,11 @@ def plant_xlsx(blocks):
     for i, d in enumerate(DAYS):
         ws.cell(row=4, column=1 + i, value=d)
     r = 5
-    for fid, name, cells in blocks:
+    for block in blocks:
+        fid, name, cells = block[:3]
         ws.cell(row=r, column=1, value="ID:"), ws.cell(row=r, column=3, value=fid)
         ws.cell(row=r, column=9, value="Name:"), ws.cell(row=r, column=11, value=name)
-        ws.cell(row=r, column=19, value="Dept.:"), ws.cell(row=r, column=21, value="DKCB")
+        ws.cell(row=r, column=19, value="Dept.:"), ws.cell(row=r, column=21, value=block[3] if len(block) > 3 else "DKCB")
         for col, text in cells.items():
             ws.cell(row=r + 1, column=col, value=text)
         r += 2
@@ -113,6 +114,27 @@ class WrongMachineTests(SafetyBase):
         resp = self.upload(str(self.kantor.pk), commit="1", confirm="1")
         self.assertEqual(resp.status_code, 200, resp.data)
         self.assertGreater(resp.data["applied"]["events"], 0)
+
+    def test_two_people_under_one_id_when_a_dept_has_no_machine(self):
+        """
+        G12f.3.4 (11 Nov): a combined file, Mesin Kantor's Dept. typed "Staf Manager" (no comma), so "Staf"
+        belongs to no machine and office ID 2 "Dila" was read as plant ID 2 with "Feny". Now the row is red.
+        """
+        both = plant_xlsx([("2", "Feny", {6: "07:4917:02"}), ("2", "Dila", {7: "07:5016:58"}, "Staf")])
+        self.kantor.dept_labels = "Staf Manager"
+        self.kantor.save()
+        d = self.upload("auto", data=both).data
+        feny = next(p for p in d["people"] if p["employee"]["full_name"] == "Feny Saputra")
+        self.assertEqual((feny["name_check"], feny["mismatch_name"], feny["names_in_file"]), ("bad", "Dila", ["Feny", "Dila"]))
+        staf = next(x for x in d["depts"] if x["dept"] == "Staf")
+        self.assertEqual((staf["machine"], staf["claimed"]), ("Mesin utama", False))
+        self.kantor.dept_labels = "Staf, Manager"                               # fixed on Lokasi
+        self.kantor.save()
+        d = self.upload("auto", data=both).data
+        self.assertEqual(d["totals"]["name_mismatch"], 0)
+        self.assertEqual({p["employee"]["full_name"]: p["name_check"] for p in d["people"]},
+                         {"Feny Saputra": "ok", "Apriyani Fadhilah": "ok"})
+        self.assertTrue(next(x for x in d["depts"] if x["dept"] == "Staf")["claimed"])
 
     def test_a_file_without_names_has_nothing_to_check(self):
         dat = b"    12\t2026-10-01 07:55:00\t1\t0\t1\t0\n    12\t2026-10-01 17:01:00\t1\t1\t1\t0\n"
