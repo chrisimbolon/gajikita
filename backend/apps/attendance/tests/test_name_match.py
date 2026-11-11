@@ -7,7 +7,8 @@ machine, where 2 = Apriyani "Dila").
 """
 from django.test import SimpleTestCase
 
-from apps.attendance.name_match import MATCH, best_candidate, name_score, names_match, suggest_pairs
+from apps.attendance.name_match import (MATCH, best_candidate, check_names, distinct_names, name_score, names_match,
+                                        suggest_pairs)
 
 SAME = [("GANDA", "Ganda Bintan Prasongko"), ("Arif", "Arief Chaniago"), ("Ridwan", "Riduan H.S"),
         ("YUDA", "Prayuda"), ("Tari", "Mentari Rezeki Anandha"), ("Dila", "Apriyani Fadhilah"),
@@ -39,6 +40,13 @@ class NameMatchTests(SimpleTestCase):
         self.assertEqual(best_candidate("Arif", people)[0], "k05")
         self.assertIsNone(best_candidate("Risman", people))
         self.assertGreaterEqual(best_candidate("Arif", people)[1], MATCH)
+
+    def test_every_name_under_one_id_is_checked(self):
+        """G12f.3.4 (11 Nov): office "Dila" (Staf, ID 2) read with plant ID 2 "Feny"; only "Feny" was checked."""
+        self.assertEqual(distinct_names(["Feny", " FENY ", "", None, "Dila"]), ["Feny", "Dila"])
+        self.assertEqual(check_names(["Feny", "Dila"], "Feny Saputra"), ("bad", ["Dila"]))
+        self.assertEqual(check_names(["Feny", "feny"], "Feny Saputra"), ("ok", []))
+        self.assertEqual(check_names(["", None], "Feny Saputra"), ("none", []))
 
     def test_suggestions_are_decided_for_the_whole_file_best_first(self):
         """G12f.2b (10 Nov): Hadi took Prayuda (via "adi") before YUDA got a look; iwan must not take Riduan."""
