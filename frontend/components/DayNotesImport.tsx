@@ -25,6 +25,15 @@ function d(iso: string) {
 const n = (x: number) => x.toLocaleString("id-ID");
 const spin = { animation: "spin 1s linear infinite" };
 
+/** G12f.3.4: the red line under a name. With two names under one ID, say both, so HR sees the second person. */
+export function badNameText(mismatch: string | undefined, names: string[] | undefined, where: "mesin" | "file"): string {
+  const all = names ?? [];
+  const m = mismatch ?? "";
+  return all.length > 1
+    ? `Di ${where}, ID ini dipakai ${all.length} nama: ${all.map((x) => `"${x}"`).join(", ")}. "${m}" tidak mirip, cek dulu.`
+    : `Nama di ${where}: "${m}". Tidak mirip, cek dulu.`;
+}
+
 const STATE_TEXT: Record<string, string> = { new: "baru", changed: "diubah", same: "sudah ada", locked: "terkunci" };
 
 function Shell({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
@@ -234,6 +243,21 @@ export default function DayNotesImport({ onClose, onDone, onTaps }: { onClose: (
             </div>
           )}
 
+          {/* 4b. G12f.3.4: which machine each Department was read as */}
+          {several && result.machine.mode === "auto" && (result.depts ?? []).length > 0 && (
+            <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13.5 }}>
+              <div style={{ fontWeight: 700, marginBottom: 4 }}>Department di file → mesin</div>
+              {(result.depts ?? []).map((x) => (
+                <div key={x.dept}>{x.dept} → <b>{x.machine}</b> · {x.people} orang
+                  {!x.claimed && <span style={{ color: "var(--steel)" }}> (Department ini tidak terdaftar di mesin lain)</span>}</div>
+              ))}
+              <div style={{ color: "var(--steel)", fontSize: 12.5, marginTop: 4 }}>
+                Ada yang seharusnya mesin lain? Isi Department-nya di Lokasi → Mesin fingerprint (pisahkan dengan koma,
+                mis. &quot;Staf, Manager&quot;), lalu pratinjau lagi.
+              </div>
+            </div>
+          )}
+
           {/* 5. IDs nobody has yet */}
           {result.unknown.length > 0 && (
             <div style={{ background: "var(--hazard-light)", borderRadius: 8, padding: "12px 14px", marginBottom: 12, fontSize: 13.5 }}>
@@ -267,7 +291,7 @@ export default function DayNotesImport({ onClose, onDone, onTaps }: { onClose: (
                       <td className="mono" style={{ fontSize: several ? 12.5 : undefined }}>{idLabel(p)}</td>
                       <td><div style={{ fontWeight: 600 }}>{isOpen ? "▾" : "▸"} {p.employee.full_name}</div>
                         <div style={{ fontSize: 12, color: bad ? "var(--danger)" : "var(--steel)", fontWeight: bad ? 700 : 400 }}>
-                          {bad ? `Nama di file: "${p.mismatch_name}". Tidak mirip, cek dulu.`
+                          {bad ? badNameText(p.mismatch_name, p.names_in_file, "file")
                                : `${p.employee.employee_no}${p.name_in_file ? ` · di file: ${p.name_in_file}` : ""}`}
                         </div></td>
                       <td><div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>

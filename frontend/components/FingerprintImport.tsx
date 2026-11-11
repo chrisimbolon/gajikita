@@ -17,6 +17,7 @@ import { FingerprintImportResult, importApi } from "@/lib/api/imports";
 import { AUTO_MACHINE, MAIN_MACHINE, MAIN_MACHINE_NAME, Machine, machineApi } from "@/lib/api/machines";
 import { AlertTriangle, CheckCircle2, Fingerprint, Link2, Loader2, X } from "lucide-react";
 import Link from "next/link";
+import { badNameText } from "@/components/DayNotesImport";
 import { useEffect, useState } from "react";
 import FingerprintDelete from "@/components/FingerprintDelete";
 
@@ -219,7 +220,8 @@ export default function FingerprintImport({ onClose, onDone }: { onClose: () => 
               <div style={{ border: "1px solid var(--line)", borderRadius: 8, padding: "8px 12px", marginBottom: 12, fontSize: 13.5 }}>
                 <div style={{ fontWeight: 700, marginBottom: 4 }}>Dept. di file → mesin</div>
                 {depts.map((x) => (
-                  <div key={x.dept}>{x.dept} → <b>{x.machine}</b> · {x.people} orang · {n(x.taps)} tap</div>
+                  <div key={x.dept}>{x.dept} → <b>{x.machine}</b> · {x.people} orang · {n(x.taps)} tap
+                    {x.claimed === false && <span style={{ color: "var(--steel)" }}> (Dept. ini tidak terdaftar di mesin lain)</span>}</div>
                 ))}
                 <div style={{ color: "var(--steel)", fontSize: 12.5, marginTop: 4 }}>
                   Salah mesin? Ubah "Dept. di file" di <Link href="/dashboard/lokasi">Lokasi → Mesin fingerprint</Link>.
@@ -298,7 +300,7 @@ export default function FingerprintImport({ onClose, onDone }: { onClose: () => 
                         <td className="mono" style={{ fontSize: several ? 12.5 : undefined }}>{idLabel(p)}</td>
                         <td><div style={{ fontWeight: 600 }}>{p.employee.full_name}</div>
                           <div style={{ fontSize: 12, color: bad ? "var(--danger)" : "var(--steel)", fontWeight: bad ? 700 : 400 }}>
-                            {bad ? `Nama di mesin: "${p.mismatch_name}". Tidak mirip, cek dulu.`
+                            {bad ? badNameText(p.mismatch_name, p.names_in_file, "mesin")
                                  : `${p.employee.employee_no}${p.name_in_file ? ` · di mesin: ${p.name_in_file}` : ""}`}
                           </div></td>
                         <td>{p.days}</td><td>{p.new_days}</td><td>{p.already_days}</td>
