@@ -17,6 +17,7 @@ export interface DayNotesPerson {
   employee: { id: string; employee_no: string; full_name: string };
   machine_id: string; machines: { machine: string; machine_id: string }[]; name_in_file: string;
   name_check: "ok" | "bad" | "none"; mismatch_name: string;
+  names_in_file?: string[];                         // G12f.3.4: every name written for this person's ID(s)
   codes: { code: string; count: number }[];
   notes: number; new: number; changed: number; same: number; removed: number; locked: number;
   lines: NoteLine[];
@@ -29,6 +30,8 @@ export interface DayNotesImportResult {
   unreadable: number; outside: number;
   repeated: { machine_id: string; name: string; date: string }[];
   machine: { mode: "main" | "auto" | "one"; id: string | null; name: string };
+  // G12f.3.4: each Department in the file and the machine it was read as; claimed = a machine lists it
+  depts?: { dept: string; people: number; taps: number; machine: string; machine_key: string; claimed: boolean }[];
   suggest_machine: { mode: "main" | "auto" | "one"; id: string | null; value: string; name: string;
                      known: number; name_ok: number; chosen_known: number; chosen_name_bad: number } | null;
   unknown: { machine_id: string; name: string; rows: number; notes: number; machine: string; machine_key: string;

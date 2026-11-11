@@ -69,7 +69,8 @@ export interface FingerprintImportResult {
   people:     { employee: { id: string; employee_no: string; full_name: string }; machine_id: string; name_in_file: string;
                 days: number; new_days: number; already_days: number; locked_days: number; no_clock_out: number;
                 machines?: { machine: string; machine_id: string }[];
-                name_check?: "ok" | "bad" | "none"; mismatch_name?: string }[];      // G12f.2
+                name_check?: "ok" | "bad" | "none"; mismatch_name?: string;          // G12f.2
+                names_in_file?: string[] }[];                                         // G12f.3.4
   unknown:    { machine_id: string; name: string; taps: number; first: string; last: string;
                 machine?: string; machine_key?: string;
                 link_machine?: string;                                               // G12f.2: "main" | a machine id
@@ -81,7 +82,8 @@ export interface FingerprintImportResult {
   // G12f.1a: which machine the file was matched on, and (auto) where each Dept. went
   machine?:   { mode: "main" | "auto" | "one"; id: string | null; name: string };
   machines?:  { id: string; name: string; dept_labels: string }[];
-  depts?:     { dept: string; people: number; taps: number; machine: string; machine_key: string }[];
+  depts?:     { dept: string; people: number; taps: number; machine: string; machine_key: string;
+                claimed?: boolean }[];                                                // G12f.3.4
   not_linked: { employee_no: string; full_name: string }[];
   totals:     { people: number; unknown: number; new_days: number; already_days: number; locked_days: number;
                 name_mismatch?: number };
