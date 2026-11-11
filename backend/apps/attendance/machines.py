@@ -83,15 +83,19 @@ def assign(punches, mode, dept_map=None):
 
 
 def depts_in_file(punches, mode, dept_map):
-    """[{dept, people, taps, machine_key}] for each Dept. label in the file ("" = none), in file order."""
+    """
+    [{dept, people, taps, machine_key, claimed}] for each Dept. label in the file ("" = none), in file order.
+    G12f.3.4: claimed = a machine lists this Dept.; unclaimed labels are read as the main machine.
+    """
     seen = OrderedDict()
     for p in punches:
         d = seen.setdefault(normalize_dept(p.dept), {"dept": p.dept.strip(), "ids": set(), "taps": 0,
-                                                     "machine_key": machine_for(p, mode, dept_map)})
+                                                     "machine_key": machine_for(p, mode, dept_map),
+                                                     "claimed": normalize_dept(p.dept) in (dept_map or {})})
         d["ids"].add(p.machine_id)
         d["taps"] += 1
-    return [{"dept": d["dept"], "people": len(d["ids"]), "taps": d["taps"], "machine_key": d["machine_key"]}
-            for d in seen.values()]
+    return [{"dept": d["dept"], "people": len(d["ids"]), "taps": d["taps"], "machine_key": d["machine_key"],
+             "claimed": d["claimed"]} for d in seen.values()]
 
 
 def merge_by_employee(groups, lookup):
