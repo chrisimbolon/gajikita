@@ -146,6 +146,18 @@ class ImportTests(NotesBase):
         ok = self.upload(commit="1", confirm_names="1")
         self.assertEqual(ok.data["applied"]["added"], 5)
 
+    def test_a_second_name_under_one_id_turns_the_row_red(self):
+        """G12f.3.4 (11 Nov): "Staf" claimed by no machine, so office "Tari" lands on plant ID 32 with SUDIRMAN."""
+        self.kantor.dept_labels = "Manager"
+        self.kantor.save()
+        rows = OKT + [("32", "Tari", "Staf", "2026-10-06", "Belanja alat", BLUE)]
+        d = self.upload(file=recap(rows)).data
+        sud = next(p for p in d["people"] if p["employee"]["full_name"] == "Sudirman")
+        self.assertEqual((sud["name_check"], sud["mismatch_name"], sud["names_in_file"]), ("bad", "Tari", ["SUDIRMAN", "Tari"]))
+        self.assertEqual({x["dept"]: (x["machine"], x["claimed"]) for x in d["depts"]},
+                         {"DKCB": ("Mesin utama", False), "Staf": ("Mesin utama", False)})
+        self.assertEqual(self.upload(file=recap(rows), commit="1").status_code, 400)       # needs "Saya sudah cek"
+
     def test_the_wrong_machine_is_pointed_out(self):
         """Read "Dari Mesin Kantor", the plant IDs find nobody (or the wrong person): Otomatis fits clearly better."""
         d = self.upload(machine=str(self.kantor.pk)).data
