@@ -131,7 +131,7 @@ export const importApi = {
     const { data } = await api.get("/api/hr/employees/import/template/", { responseType: "blob" });
     const link = document.createElement("a");
     link.href = URL.createObjectURL(data as Blob);
-    link.download = "Template_Data_Karyawan_GajiKita.xlsx";
+    link.download = "Template_Data_Karyawan_SeeGaji.xlsx";
     link.click();
     URL.revokeObjectURL(link.href);
   },
