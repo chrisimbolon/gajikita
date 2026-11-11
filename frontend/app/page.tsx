@@ -1,19 +1,11 @@
 "use client";
-// Entry point: logged in -> /dashboard, otherwise -> /login.
+// seegaji.com/ — the public landing page. Logged in: its buttons say "Buka SeeGaji" and go to the app
+// (HR → /dashboard, karyawan → /absen). Logged out: "Masuk" → /login.
+import Landing from "@/components/landing/Landing";
 import { useAuth } from "@/context/AuthContext";
-import { Loader2 } from "lucide-react";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 
 export default function Home() {
   const { user, loading } = useAuth();
-  const router = useRouter();
-  useEffect(() => {
-    if (!loading) router.replace(!user ? "/login" : user.role === "employee" ? "/absen" : "/dashboard");
-  }, [loading, user, router]);
-  return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--steel)" }}>
-      <Loader2 size={20} style={{ animation: "spin 1s linear infinite" }} />
-    </div>
-  );
+  const appHref = loading || !user ? null : user.role === "employee" ? "/absen" : "/dashboard";
+  return <Landing appHref={appHref} />;
 }
