@@ -36,7 +36,7 @@ from .fingerprint import clean_id, make_sessions
 from .machines import (AUTO, AUTO_NAME, MAIN, MAIN_NAME, assign, dept_owner_map, depts_in_file, id_sort_key,
                        merge_by_employee)
 from .models import AttendanceDay, ClockEvent, EmployeeMachineId, FingerprintMachine
-from .name_match import names_match, suggest_pairs
+from .name_match import check_names, distinct_names, suggest_pairs
 
 NAMESPACE = uuid.UUID("4f0d6c3e-7a1b-4c55-9d3e-2b6f8a9e1c07")      # fixed forever: re-imports find the same ids
 
@@ -65,10 +65,10 @@ def machine_fit(punches, mode, dept_map, lookup):
             fit["unknown"] += 1
             continue
         fit["known"] += 1
-        same = names_match(next((p.name for p in items if p.name), ""), emp.full_name)
-        if same is True:
+        same, _ = check_names([p.name for p in items], emp.full_name)         # G12f.3.4: every name
+        if same == "ok":
             fit["name_ok"] += 1
-        elif same is False:
+        elif same == "bad":
             fit["name_bad"] += 1
     fit["score"] = fit["known"] + fit["name_ok"] - 3 * fit["name_bad"]
     return fit
@@ -135,7 +135,7 @@ def plan(org, punches, machine=MAIN):
     main_ids, other_ids, lookup = id_lookup(org)                           # G12f.3.1: shared
 
     groups = assign(punches, mode, dept_map)
-    file_names = {k: next((p.name for p in items if p.name), "") for k, items in groups.items()}
+    file_names = {k: distinct_names(p.name for p in items) for k, items in groups.items()}       # G12f.3.4
     found, missing = merge_by_employee(groups, lookup)
 
     # G12f.2: would another machine choice fit this file clearly better?
@@ -157,15 +157,15 @@ def plan(org, punches, machine=MAIN):
                      .values_list("date", flat=True))
         new_sessions = [s for s in sessions if s.work_date not in locked
                         and any(tap_id(emp, at, kind) not in already for ss, kind, at in events if ss is s)]
-        checks = [(file_names.get(k, ""), names_match(file_names.get(k, ""), emp.full_name)) for k in person["ids"]]
-        bad = [n for n, same in checks if same is False]
+        names_here = distinct_names(n for k in person["ids"] for n in file_names.get(k, []))       # G12f.3.4
+        name_check, bad = check_names(names_here, emp.full_name)
         people.append({
             "employee": emp, "machine_id": ", ".join(i for _, i in person["ids"]),
             "machines": [{"machine": names.get(k, MAIN_NAME), "machine_id": i} for k, i in person["ids"]],
             "sort": min((id_sort_key(i) for _, i in person["ids"])),
             "tap_machine": person["tap_machine"], "name_in_file": person["name"],
-            "name_check": "bad" if bad else ("ok" if any(same for _, same in checks) else "none"),   # G12f.2
-            "mismatch_name": bad[0] if bad else "",
+            "name_check": name_check, "mismatch_name": bad[0] if bad else "",          # G12f.2 / G12f.3.4
+            "names_in_file": names_here,
             "sessions": sessions, "events": events, "already": already, "locked": locked,
             # G12f.2c: counted per date, like "days" and like apply(); a date can hold two sessions
             # (a lone 02:00 tap, then 12:43 -> 21:00), which must not count as two days
@@ -236,6 +236,7 @@ def public(p):
                                  "full_name": x["employee"].full_name},
                     "machine_id": x["machine_id"], "machines": x["machines"], "name_in_file": x["name_in_file"],
                     "name_check": x["name_check"], "mismatch_name": x["mismatch_name"],
+                    "names_in_file": x["names_in_file"],                                       # G12f.3.4
                     "days": x["days"], "new_days": x["new_days"], "already_days": x["already_days"],
                     "locked_days": x["locked_days"], "no_clock_out": x["no_clock_out"]} for x in p["people"]],
         "totals": {"people": len(p["people"]), "unknown": len(p["unknown"]),
