@@ -140,7 +140,7 @@ export default function RekapPage() {
   };
 
   const cellTitle = (r: RekapRow, c: RekapCell) => [
-    `${r.employee.full_name} · ${c.d}`, c.l, c.n ?? "",
+    `${r.employee.full_name} · ${c.d}`, c.n && c.l && c.n.startsWith(c.l) ? "" : c.l, c.n ?? "",   // G12f.3.5: once
     c.fi || c.lo ? `Masuk ${c.fi ?? "-"} · Pulang ${c.lo ?? "-"}` : "",
     c.late ? `Terlambat ${minutesText(c.late)}` : "", c.early ? `Pulang cepat ${minutesText(c.early)}` : "",
     c.ot ? `Lembur disetujui ${minutesText(c.ot)}` : "", c.otp ? `Lembur menunggu ${minutesText(c.otp)}` : "",
@@ -324,7 +324,7 @@ export default function RekapPage() {
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             <span style={{ position: "relative", display: "inline-block", width: 14, height: 14, border: "1px solid var(--line)" }}>
               <NoteCorner color="00B0F0" /></span>
-            ada catatan HR (warna dari file rekap)
+            ada catatan HR (warna dari file rekap; abu-abu = tanpa kode)
           </span>
           <span><b style={{ color: "var(--workshop)" }}>+</b> lembur disetujui · <b style={{ color: "var(--hazard-dark)" }}>+</b> lembur menunggu</span>
         </div>
