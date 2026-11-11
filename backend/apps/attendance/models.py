@@ -206,3 +206,33 @@ class DayNote(TenantScopedModel):
 
     def _resolve_organization(self):
         return self.employee.organization if self.employee_id else None
+
+
+class AttendanceExemption(TenantScopedModel):
+    """
+    "Tidak wajib absen" (G12i, 11 Nov 2026): from `start` to `end` (null = until further notice) this employee is
+    paid for every scheduled working day without tapping: works off-site with no machine (DKCB: Marganda,
+    "Kerja di Lobam") or in a role that doesn't tap (Kamarol, sales). Shown as DL; leave still counts; no late
+    fines, automatic overtime or meals. A dated period, never a flag, so ending it never rewrites a paid month.
+    """
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee   = models.ForeignKey("employees.Employee", on_delete=models.CASCADE, related_name="attendance_exemptions")
+    start      = models.DateField(verbose_name="Mulai")
+    end        = models.DateField(null=True, blank=True, verbose_name="Sampai", help_text="Kosong = sampai diubah")
+    reason     = models.CharField(max_length=200, verbose_name="Alasan", help_text="mis. Kerja di Lobam")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name        = "Tidak wajib absen"
+        verbose_name_plural = "Tidak wajib absen"
+        ordering            = ["employee", "start"]
+        indexes             = [models.Index(fields=["organization", "start"], name="attendance_exempt_org_start")]
+
+    def __str__(self):
+        return f"{self.employee}: {self.start} - {self.end or '...'} ({self.reason})"
+
+    def _resolve_organization(self):
+        return self.employee.organization if self.employee_id else None

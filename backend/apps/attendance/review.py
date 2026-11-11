@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from . import night_rules
 from .day_status import OVERTIME_MIN_MINUTES, STATUS_LABELS, ShiftInfo, Tap, evaluate_day
+from .exemptions import covering
 
 
 def shift_info(shift):
@@ -45,8 +46,13 @@ class NightContext:
     G12e: what evaluate() needs from the company and from the day before, loaded once per screen:
     the night-overtime rows, the overtime minimum, and every previous day's last clock-out.
     """
-    def __init__(self, rules=(), overtime_min=OVERTIME_MIN_MINUTES, prev=None):
+    def __init__(self, rules=(), overtime_min=OVERTIME_MIN_MINUTES, prev=None, exempt=None):
         self.rules, self.overtime_min, self._prev = rules, overtime_min, prev or {}
+        self._exempt = exempt or {}                         # G12i: {employee_id: [(start, end, reason)]}
+
+    def exempt_for(self, employee_id, date):
+        """G12i: why this employee needn't tap on this date ("Kerja di Lobam"), or ""."""
+        return covering(self._exempt.get(employee_id, ()), date)
 
     def night_for(self, employee_id, date):
         info = self._prev.get((employee_id, date - timedelta(days=1)))
@@ -59,10 +65,17 @@ class NightContext:
 def night_context(organization_id, employee_ids, start, end):
     """For the days start..end. employee_ids=None = everyone in the company. At most two queries."""
     from apps.payroll.models import PayrollSettings
-    from .models import AttendanceDay
+    from .models import AttendanceDay, AttendanceExemption
+    exempt = {}                                                  # G12i: one query, whatever the settings
+    qs = AttendanceExemption.objects.filter(organization_id=organization_id, start__lte=end).filter(
+        Q(end__isnull=True) | Q(end__gte=start))
+    if employee_ids is not None:
+        qs = qs.filter(employee_id__in=list(employee_ids))
+    for x in qs.order_by("start"):
+        exempt.setdefault(x.employee_id, []).append((x.start, x.end, x.reason))
     cfg = PayrollSettings.objects.filter(organization_id=organization_id).first()
     if cfg is None:
-        return NightContext()
+        return NightContext(exempt=exempt)
     try:
         rules = night_rules.parse_rules(cfg.night_ot_rules)
     except night_rules.RuleError:
@@ -88,7 +101,7 @@ def night_context(organization_id, employee_ids, start, end):
                 st, et = v["employee__default_shift__start_time"], v["employee__default_shift__end_time"]
             crosses = st is not None and et is not None and et <= st
             prev[(v["employee_id"], v["date"])] = (last_out, crosses)
-    return NightContext(rules, cfg.overtime_min_minutes, prev)
+    return NightContext(rules, cfg.overtime_min_minutes, prev, exempt=exempt)
 
 
 def evaluate(day, now=None, shift=None, leave=None, ctx=None):
@@ -107,6 +120,7 @@ def evaluate(day, now=None, shift=None, leave=None, ctx=None):
         overtime_approved=day.overtime_approved_minutes, leave=leave,
         overtime_eligible=day.employee.overtime_eligible,                # G12d
         night=ctx.night_for(day.employee_id, day.date), overtime_min=ctx.overtime_min,   # G12e
+        exempt=ctx.exempt_for(day.employee_id, day.date),                                 # G12i
     )
 
 
@@ -116,7 +130,7 @@ def evaluate_missing(employee, date, now=None, leave="", ctx=None):
         ctx = night_context(employee.organization_id, [employee.id], date, date)
     return evaluate_day(date, shift_info(employee.default_shift), [], now or timezone.now(),
                         timezone.get_current_timezone(), leave=leave,
-                        night=ctx.night_for(employee.id, date))
+                        night=ctx.night_for(employee.id, date), exempt=ctx.exempt_for(employee.id, date))   # G12i
 
 
 def _t(dt):

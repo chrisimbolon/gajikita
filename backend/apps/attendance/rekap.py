@@ -134,7 +134,8 @@ class RekapView(APIView):
 
 
 FILLS = {"H": "E3F2EA", "T": "FDF0D9", "PC": "FDF0D9", "TP": "FBE4E2", "A": "FBE4E2", "X": "FBE4E2", "K": "E3F2EA",
-         "C": "DCE8F0", "S": "DCE8F0", "CK": "DCE8F0", "I": "DCE8F0", "L": "E3EAF0", "LK": "FDF0D9", "-": "F4F6F8"}
+         "C": "DCE8F0", "S": "DCE8F0", "CK": "DCE8F0", "I": "DCE8F0", "L": "E3EAF0", "LK": "FDF0D9", "-": "F4F6F8",
+         "DL": "E7F1FB"}                                                                   # G12i
 SUMMARY_COLS = [("Hadir", lambda s: s["present"]), ("Terlambat (kali)", lambda s: s["late_times"]),
                 ("Terlambat (menit)", lambda s: s["late_minutes"]), ("Pulang cepat (menit)", lambda s: s["early_minutes"]),
                 ("Tidak absen pulang", lambda s: s["no_clock_out"]), ("Tidak hadir", lambda s: s["absent"]),

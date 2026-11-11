@@ -39,6 +39,7 @@ class Status:
     REJECTED     = "rejected"       # HR rejected the day: counts as not worked
     PRESENT      = "present"        # came in, no shift to measure against
     LEAVE        = "leave"          # approved cuti / sakit / izin (G7)
+    EXEMPT       = "exempt"         # G12i: tidak wajib absen (off-site, no machine): counts as worked
 
 
 STATUS_LABELS = {
@@ -46,6 +47,7 @@ STATUS_LABELS = {
     Status.LATE: "Terlambat", Status.EARLY_OUT: "Pulang cepat", Status.NO_CLOCK_OUT: "Tidak absen pulang",
     Status.ABSENT: "Tidak hadir", Status.DAY_OFF: "Libur", Status.DAY_OFF_WORK: "Masuk di hari libur",
     Status.REJECTED: "Ditolak HR", Status.PRESENT: "Hadir", Status.LEAVE: "Cuti / izin",
+    Status.EXEMPT: "Tidak wajib absen",
 }
 
 # Which status is shown first when a day has several (late AND early out, say).
@@ -102,7 +104,7 @@ def _minutes(delta):
 
 def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision="", waive_late=False,
                  overtime_approved=None, leave="", overtime_eligible=True, night=None,
-                 overtime_min=OVERTIME_MIN_MINUTES):
+                 overtime_min=OVERTIME_MIN_MINUTES, exempt=""):
     """
     day      the working date (a night shift belongs to the date it started)
     shift    ShiftInfo or None
@@ -115,6 +117,9 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     night            night_rules.NightStart: the previous day's overtime ran past midnight, so today
                      starts later (or is a day off). None = the normal start (G12e)
     overtime_min     overtime is proposed from this many minutes past the shift end (G12e setting)
+    exempt           G12i: the reason this person needn't tap today ("Kerja di Lobam"), "" if they must. A working
+                     day is then EXEMPT (counted as worked, nothing to review, no late / overtime / meal from taps);
+                     leave still wins, HR can still reject the day, and a day off stays a day off
     """
     taps = sorted(taps, key=lambda t: t.at)
     flags = list(dict.fromkeys(f for t in taps for f in t.flags))
@@ -145,6 +150,15 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     if decision == "rejected":
         return DayResult(status=Status.REJECTED, tags=[Status.REJECTED], first_in=first_in, last_out=last_out,
                          flags=flags)
+
+    # G12i: not required to tap. Taps, if any, are shown but decide nothing.
+    if exempt:
+        if not working_day:
+            return DayResult(status=Status.DAY_OFF, tags=[Status.DAY_OFF], flags=flags)
+        if leave:
+            return DayResult(status=Status.LEAVE, tags=[Status.LEAVE], leave=leave)
+        return DayResult(status=Status.EXEMPT, tags=[Status.EXEMPT], first_in=first_in, last_out=last_out,
+                         flags=flags, note=f"Tidak wajib absen: {exempt}")
 
     # ── nobody came ──
     if first_in is None:
