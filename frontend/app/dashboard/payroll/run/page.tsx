@@ -378,6 +378,16 @@ export default function PayRunPage() {
           Klik barisnya untuk melihat. Peringatan tidak menghalangi payroll.
         </div>
       )}
+      {data.rows.some((r) => (r.exempt_days ?? 0) > 0) && (
+        <div style={{ background: "#E7F1FB", color: "var(--midnight)", borderRadius: 8, padding: "10px 14px", fontSize: 13.5, marginBottom: 12 }}>
+          <b>Dibayar tanpa absen (tidak wajib absen):</b>{" "}
+          {data.rows.filter((r) => (r.exempt_days ?? 0) > 0)
+            .map((r) => `${r.employee.full_name} (${r.exempt_days} hari, ${r.exempt_reason || "-"})`).join(" · ")}.
+          <div style={{ fontSize: 12.5, marginTop: 2 }}>
+            Hari kerja mereka dihitung hadir tanpa tap. Pastikan masih benar sebelum mengunci; ubah di Karyawan → Tidak wajib absen.
+          </div>
+        </div>
+      )}
 
       <div className="card" style={{ padding: 0, overflowX: "auto" }}>
         <table className="data-table" style={{ minWidth: 900 }}>

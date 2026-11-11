@@ -71,6 +71,8 @@ export interface RegisterRow {
   present_days:  number;
   absent_days:   number;
   review_days:   number;
+  exempt_days?:  number;                  // G12i: days counted as worked without tapping
+  exempt_reason?: string;
 }
 
 export interface RunDetail { run: RunSummary; columns: RegisterColumn[]; rows: RegisterRow[] }

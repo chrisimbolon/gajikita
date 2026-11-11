@@ -82,6 +82,7 @@ export interface Employee {
   has_login:         boolean;
   login_locked:      boolean;
   machine_ids:       { machine: string; machine_name: string; fingerprint_id: string }[];   // G12f.1a, read-only
+  attendance_exempt?: { id: string; start: string; end: string | null; reason: string } | null;  // G12i, read-only
 }
 
 // G12d: uang makan per employee; "" = follow Payroll → Pengaturan
@@ -91,7 +92,7 @@ export const MEAL_RULE_OPTIONS: [string, string][] = [
 ];
 
 export type EmployeeInput = Omit<Employee, "id" | "login_phone" | "must_change_pin" | "has_login" | "login_locked"
-                                  | "machine_ids">;   // machine IDs are saved through machineApi (G12f.1b)
+                                  | "machine_ids" | "attendance_exempt">;   // saved through machineApi / exemptionApi
 
 export const hrApi = {
   // employees

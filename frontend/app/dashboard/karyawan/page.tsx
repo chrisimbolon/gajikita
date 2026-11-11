@@ -10,6 +10,7 @@ import {
 import { hhmm, rupiah, todayISO } from "@/lib/format";
 import EmployeeImport from "@/components/EmployeeImportWizard";     // G9d: template or the company's own file
 import { MAIN_MACHINE_NAME, Machine, machineApi } from "@/lib/api/machines";   // G12f.1b
+import ExemptionCard from "@/components/ExemptionCard";                         // G12i
 import { FileSpreadsheet, KeyRound, Loader2, Plus, Save, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -141,7 +142,14 @@ export default function KaryawanPage() {
                       background: editing !== "new" && editing?.id === e.id ? "var(--paper)" : undefined,
                       opacity: e.status === "resigned" ? 0.55 : 1 }}>
                     <td className="mono" style={{ fontSize: 13, whiteSpace: "nowrap" }}>{e.employee_no}</td>
-                    <td style={{ fontWeight: 600 }}>{e.full_name}{e.status === "resigned" ? " (keluar)" : ""}</td>
+                    <td style={{ fontWeight: 600 }}>{e.full_name}{e.status === "resigned" ? " (keluar)" : ""}
+                      {e.attendance_exempt && (
+                        <span title={`Tidak wajib absen: ${e.attendance_exempt.reason}`}
+                              style={{ marginLeft: 8, fontSize: 11.5, fontWeight: 700, padding: "1px 7px", borderRadius: 999,
+                                       background: "#E7F1FB", color: "var(--midnight)", whiteSpace: "nowrap" }}>
+                          DL · {e.attendance_exempt.reason}
+                        </span>
+                      )}</td>
                     {!editing && <td style={{ fontSize: 13, whiteSpace: "nowrap" }}>{PAY_TYPE_LABEL[e.pay_type]} · {rupiah(e.base_rate)}</td>}
                     {!editing && <td style={{ fontSize: 13 }}>{e.default_site ? siteName[e.default_site] ?? "-" : "-"}</td>}
                     <td style={{ whiteSpace: "nowrap" }}>{loginPill(e)}</td>
@@ -321,6 +329,10 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
             Nomor orang ini di mesin itu. Boleh sama dengan nomor orang lain di {MAIN_MACHINE_NAME}; disimpan dengan tombol di bawah.
           </div>
         </div>
+      )}
+      {employee && (
+        <ExemptionCard employeeId={employee.id}
+                       onChanged={(current) => onSaved({ ...employee, attendance_exempt: current })} />
       )}
 
       {section("Pekerjaan")}

@@ -6,7 +6,8 @@ import api from "@/lib/api";
 
 export type DayStatus =
   | "not_yet" | "working" | "on_time" | "late" | "early_out" | "no_clock_out"
-  | "absent" | "day_off" | "day_off_work" | "rejected" | "present" | "leave";
+  | "absent" | "day_off" | "day_off_work" | "rejected" | "present" | "leave"
+  | "exempt";                                                   // G12i: tidak wajib absen, counted as worked
 
 // G12f.3: HR's own note for a day, from the imported recap ("UL" on yellow). Shown only, never counted.
 export interface HrNote { code: string; color: string; text: string }
@@ -91,6 +92,7 @@ export const STATUS_STYLE: Record<DayStatus, { bg: string; fg: string }> = {
   not_yet:      { bg: "var(--paper-2)", fg: "var(--steel)" },
   day_off:      { bg: "var(--paper-2)", fg: "var(--steel)" },      // grey, never red: a day off is not a problem
   leave:        { bg: "var(--midnight-soft)", fg: "var(--midnight)" },  // approved cuti / sakit / izin (G7)
+  exempt:       { bg: "#E7F1FB", fg: "var(--midnight)" },           // G12i: tidak wajib absen (DL)
 };
 
 // Rekap Absensi (G10): everyone x every day of a pay period. Mirrors backend/apps/attendance/rekap.py.

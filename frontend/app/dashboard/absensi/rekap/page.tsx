@@ -32,6 +32,7 @@ const CODE_STYLE: Record<string, { bg: string; fg: string }> = {
   CK: { bg: "var(--midnight-soft)", fg: "var(--midnight)" },
   I:  { bg: "var(--midnight-soft)", fg: "var(--midnight)" },
   L:  { bg: "var(--paper-2)", fg: "var(--steel)" },
+  DL: { bg: "#E7F1FB", fg: "var(--midnight)" },                    // G12i: tidak wajib absen
   "-": { bg: "transparent", fg: "var(--line)" },
 };
 const NAME_W = 210;
