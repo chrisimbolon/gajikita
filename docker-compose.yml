@@ -1,0 +1,59 @@
+# =============================================================================
+# === docker-compose.yml ===  SeeGaji, self-contained (runs on your Mac or the droplet)
+# caddy-net wiring lives in docker-compose.prod.yml, because caddy-net only
+# exists on the droplet (same split as Arthasee).
+# The database publishes NO port: only seegaji_backend can reach it.
+# =============================================================================
+services:
+  seegaji_db:
+    image: postgres:16-alpine
+    container_name: seegaji_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB:       seegaji
+      POSTGRES_USER:     seegaji
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD missing from .env}
+      TZ:                Asia/Jakarta
+    # Small on purpose: SeeGaji's data is tiny and the droplet's RAM is shared.
+    command: >
+      postgres -c shared_buffers=64MB -c effective_cache_size=192MB
+               -c work_mem=4MB -c maintenance_work_mem=32MB -c max_connections=30
+    volumes:
+      - seegaji_pgdata:/var/lib/postgresql/data
+    networks:
+      - seegaji-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U seegaji -d seegaji"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  seegaji_backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: seegaji_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DB_HOST: seegaji_db
+      DB_PORT: "5432"
+    volumes:
+      # selfies + leave attachments; served only through logged-in HR views, never by Caddy
+      - seegaji_media:/app/media
+    networks:
+      - seegaji-internal
+    depends_on:
+      seegaji_db:
+        condition: service_healthy
+
+volumes:
+  seegaji_pgdata:
+    name: seegaji_pgdata
+  seegaji_media:
+    name: seegaji_media
+
+networks:
+  seegaji-internal:
+    name: seegaji-internal
