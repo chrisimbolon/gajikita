@@ -1,0 +1,16 @@
+# =============================================================================
+# === docker-compose.prod.yml ===  droplet-only addition
+# Used as: docker compose -f docker-compose.yml -f docker-compose.prod.yml ...
+# Joins the backend to caddy-net so Caddy can reach seegaji_backend:8000.
+# The database stays on seegaji-internal only.
+# =============================================================================
+services:
+  seegaji_backend:
+    networks:
+      - seegaji-internal
+      - caddy-net
+
+networks:
+  caddy-net:
+    external: true
+    name: caddy-net
