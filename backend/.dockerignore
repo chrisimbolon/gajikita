@@ -1,0 +1,17 @@
+# Keeps the image small and keeps anything private out of it.
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+.python-version
+.env
+.env.*
+media/
+staticfiles/
+anth_files/
+**/anth_files/
+*.xls
+*.xlsx
+*.sqlite3
+.pytest_cache/
