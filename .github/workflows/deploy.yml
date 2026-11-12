@@ -6,6 +6,9 @@
 #   2. Code reaches the droplet by rsync from the runner, not `git pull` on
 #      the droplet: no deploy key, no git checkout on the server to drift.
 #   3. Health check uses SeeGaji's open /api/health/ (expects 200 + DB up).
+#   4. Droplet-side steps are real scripts (deploy/remote-*.sh), never heredocs piped
+#      over ssh: on the first deploy `docker compose run` ate the piped script after the
+#      migrations and the job still went green (12 Nov 2026).
 # Smart rebuild rules:
 #   - push:              only rebuild what changed (backend/ or frontend/)
 #   - workflow_dispatch: always rebuild EVERYTHING (emergency full deploy)
@@ -109,16 +112,34 @@ jobs:
             echo "frontend=false" >> $GITHUB_OUTPUT; echo "⏭️  Frontend unchanged"
           fi
 
-      # ── 3. Build the static frontend (only if it changed) ───
+      # ── 3. SSH + what the droplet already has ───────────────
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Check droplet state
+        id: droplet
+        run: |
+          # the static site must be (re)built when it is missing, not only when frontend/ changed
+          if ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "test -f $APP_DIR/frontend/out/index.html" </dev/null; then
+            echo "site_missing=false" >> $GITHUB_OUTPUT; echo "static site present"
+          else
+            echo "site_missing=true"  >> $GITHUB_OUTPUT; echo "⚠️  static site missing on the droplet — will build it"
+          fi
+
+      # ── 4. Build the static frontend (if it changed or is missing) ─
       - name: Setup Node
-        if: steps.changes.outputs.frontend == 'true'
+        if: steps.changes.outputs.frontend == 'true' || steps.droplet.outputs.site_missing == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
       - name: Build Next.js static export
-        if: steps.changes.outputs.frontend == 'true'
+        if: steps.changes.outputs.frontend == 'true' || steps.droplet.outputs.site_missing == 'true'
         working-directory: frontend
         env:
           NEXT_PUBLIC_API_URL: https://seegaji.com
@@ -128,7 +149,7 @@ jobs:
           npm run build
           test -f out/index.html && test -f out/login.html || { echo "❌ static export incomplete"; exit 1; }
 
-      # ── 4. Write production .env (always) ───────────────────
+      # ── 5. Write production .env (always) ───────────────────
       - name: Write .env file
         env:
           SECRET_KEY:  ${{ secrets.SECRET_KEY }}
@@ -150,14 +171,6 @@ jobs:
             "DB_PORT=5432" \
             > .env
 
-      # ── 5. SSH ──────────────────────────────────────────────
-      - name: Set up SSH
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" | tr -d '\r' > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-
       # ── 6. Ship code + .env (always) ────────────────────────
       # rsync, not git pull: the droplet needs no GitHub access. frontend/ is
       # excluded here (only its built out/ goes up, in step 7), and excluded
@@ -173,100 +186,29 @@ jobs:
           rsync -az .env ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$APP_DIR/.env
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "chmod 600 $APP_DIR/.env"
 
-      # ── 7. Upload the static site (only if frontend changed) ─
+      # ── 7. Upload the static site (if built) ───────────────
       - name: Upload static export
-        if: steps.changes.outputs.frontend == 'true'
+        if: steps.changes.outputs.frontend == 'true' || steps.droplet.outputs.site_missing == 'true'
         run: |
           rsync -az --delete frontend/out/ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:$APP_DIR/frontend/out/
 
-      # ── 8. Backend: build, migrate, recreate (if changed or never deployed)
+      # ── 8. Backend: build, backup, migrate, recreate (if changed or not running)
       - name: Deploy backend
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
-            "BACKEND_CHANGED=${{ steps.changes.outputs.backend }} APP_DIR=$APP_DIR bash -s" << 'ENDSSH'
-            set -e
-            cd "$APP_DIR"
-            COMPOSE="docker compose -p seegaji -f docker-compose.yml -f docker-compose.prod.yml"
-
-            if [ "$BACKEND_CHANGED" != "true" ] && docker ps --format '{{.Names}}' | grep -q '^seegaji_backend$'; then
-              echo "⏭️  Backend unchanged and running — skipping rebuild"; exit 0
-            fi
-
-            echo "=== Building backend image (layer cache kept: pip only reruns when requirements change) ==="
-            $COMPOSE build --pull seegaji_backend
-
-            echo "=== Starting DB ==="
-            $COMPOSE up -d seegaji_db
-            for i in $(seq 1 30); do
-              STATUS=$(docker inspect seegaji_db --format='{{.State.Health.Status}}' 2>/dev/null || echo starting)
-              echo "DB: $STATUS ($i/30)"
-              [ "$STATUS" = "healthy" ] && break
-              [ "$i" -eq 30 ] && echo "❌ DB timeout" && exit 1
-              sleep 3
-            done
-
-            echo "=== Backup before migrating (skipped on the very first deploy) ==="
-            if docker exec seegaji_db psql -U seegaji -d seegaji -tAc "select 1 from django_migrations limit 1" 2>/dev/null | grep -q 1; then
-              sh deploy/backup.sh pre-deploy
-            else
-              echo "Fresh database — nothing to back up yet"
-            fi
-
-            echo "=== Migrations ==="
-            $COMPOSE run --rm seegaji_backend python manage.py migrate --noinput
-            PENDING=$($COMPOSE run --rm seegaji_backend python manage.py showmigrations --plan | grep -c "\[ \]" || true)
-            if [ "$PENDING" != "0" ]; then echo "❌ $PENDING migration(s) still unapplied"; exit 1; fi
-            echo "✅ All migrations applied"
-
-            # collectstatic happens inside the image build (backend/Dockerfile), not here:
-            # a `compose run --rm` would collect into a throwaway container.
-
-            echo "=== Force-recreating backend ==="
-            $COMPOSE up -d --no-deps --force-recreate seegaji_backend
-            sleep 2
-
-            docker ps -a --format '{{.Names}}' | grep -q '^seegaji_backend$' || { echo "❌ container missing"; exit 1; }
-            CREATED=$(docker inspect seegaji_backend --format '{{.Created}}')
-            AGE=$(( $(date -u +%s) - $(date -u -d "$CREATED" +%s) ))
-            [ "$AGE" -le 90 ] || { echo "❌ container is ${AGE}s old — stale, not recreated"; exit 1; }
-            echo "✅ recreated ${AGE}s ago"
-            docker inspect seegaji_backend --format '{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}' \
-              | grep -q caddy-net || { echo "❌ not on caddy-net — Caddy cannot reach it"; exit 1; }
-            echo "✅ on caddy-net"
-
-            echo "=== Cleaning dangling images (keeps the disk from filling up) ==="
-            docker image prune -f
-          ENDSSH
+            "bash $APP_DIR/deploy/remote-backend.sh ${{ steps.changes.outputs.backend }}" </dev/null
 
       # ── 9. Nightly backup schedule (always; idempotent) ─────
       - name: Install backup schedule
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "
-            chmod +x $APP_DIR/deploy/backup.sh &&
+            chmod +x $APP_DIR/deploy/*.sh &&
             install -m 644 $APP_DIR/deploy/seegaji-backup.cron /etc/cron.d/seegaji-backup &&
             echo '✅ /etc/cron.d/seegaji-backup installed'"
 
-      # ── 10. Health check + Caddy reload (always) ────────────
+      # ── 10. Health check + Caddy reload (always; fails the run on any problem)
       - name: Health check and Caddy reload
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "APP_DIR=$APP_DIR SHA=${{ github.sha }} bash -s" << 'ENDSSH'
-            for i in $(seq 1 30); do
-              CODE=$(docker exec seegaji_backend curl -s -o /dev/null -w "%{http_code}" \
-                -H "X-Forwarded-Proto: https" -H "Host: seegaji.com" \
-                http://localhost:8000/api/health/ 2>/dev/null || echo 000)
-              echo "Backend /api/health/: $CODE ($i/30)"
-              [ "$CODE" = "200" ] && echo "✅ Backend healthy" && break
-              [ "$i" -eq 30 ] && echo "❌ Backend not healthy" && docker logs seegaji_backend --tail 60 && exit 1
-              sleep 3
-            done
-            CADDY=$(docker ps -qf "name=caddy-container")
-            if [ -n "$CADDY" ] && docker exec $CADDY caddy reload --config /etc/caddy/Caddyfile 2>/dev/null; then
-              echo "✅ Caddy reloaded"
-            else
-              echo "⚠️  Caddy reload skipped"
-            fi
-            echo "$(date -u '+%F %T') UTC | ${SHA:0:7} | OK" >> "$APP_DIR/deploy.log"
-            docker ps --filter name=seegaji --format 'table {{.Names}}\t{{.Status}}'
-            free -h
-          ENDSSH
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} \
+            "bash $APP_DIR/deploy/remote-health.sh ${{ github.sha }}" </dev/null
