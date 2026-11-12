@@ -1,0 +1,5 @@
+# SeeGaji nightly backup — installed by .github/workflows/deploy.yml, do not edit on the server.
+# 19:00 UTC = 02:00 WIB.
+SHELL=/bin/sh
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+0 19 * * * root /home/apps/seegaji/deploy/backup.sh nightly >> /home/apps/seegaji-backups/backup.log 2>&1
