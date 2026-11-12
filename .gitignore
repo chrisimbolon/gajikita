@@ -73,4 +73,4 @@ yarn-error.log*
 .vscode/
 .idea/
 *.swp
-*.swo
+*.swodocker-compose.override.yml
