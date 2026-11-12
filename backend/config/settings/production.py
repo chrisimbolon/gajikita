@@ -36,3 +36,15 @@ CSRF_TRUSTED_ORIGINS = config(
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 USE_X_FORWARDED_HOST    = True
+
+# Deploy kit (12 Nov 2026): with DEBUG off Django would otherwise only try to e-mail
+# errors (no mail is configured), so a 500 left no trace. Now every warning and error,
+# with its traceback, lands in `docker logs seegaji_backend`.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"plain": {"format": "{asctime} {levelname} {name}: {message}", "style": "{"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "plain"}},
+    "root": {"handlers": ["console"], "level": "WARNING"},
+    "loggers": {"django": {"handlers": ["console"], "level": "WARNING", "propagate": False}},
+}
