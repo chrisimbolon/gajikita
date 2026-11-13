@@ -29,6 +29,7 @@ export interface PayrollSettings {
   night_ot_rules:               NightRule[];
   late_fine_per_minute:         string;
   late_tolerance_minutes:       number;
+  single_tap_half_day?:         boolean;  // G17-1
   bpjs_base_includes_allowance: boolean;
   jkk_rate:                     string;
   minimum_wage:                 string;
