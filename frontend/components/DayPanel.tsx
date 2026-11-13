@@ -241,10 +241,12 @@ export default function DayPanel({ row, onChanged, onClose }: Props) {
 
               {mode === "approve" && (
                 <div style={{ marginTop: 12 }}>
-                  {view.late_minutes > 0 && (
+                  {(view.late_minutes > 0 || view.status === "no_clock_in" || view.status === "no_clock_out") && (
                     <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 14, marginBottom: 10 }}>
                       <input type="checkbox" checked={waiveLate} onChange={(e) => setWaiveLate(e.target.checked)} />
-                      Maafkan terlambat {view.late_minutes} menit (tidak dipotong)
+                      {view.late_minutes > 0
+                        ? `Maafkan terlambat ${view.late_minutes} menit (tidak dipotong)`
+                        : "Maafkan tap sekali (tidak dipotong ½ hari)"}
                     </label>
                   )}
                   {canPayOvertime ? (
