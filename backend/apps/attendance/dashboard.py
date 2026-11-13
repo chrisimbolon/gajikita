@@ -23,7 +23,7 @@ from .hr_views import daily_counters, daily_rows, review_rows, review_summary
 
 TODAY_LIMIT = 8
 # Problems first, then people still expected, then the fine ones.
-_ORDER = {"no_clock_out": 0, "absent": 1, "late": 2, "early_out": 3, "rejected": 4, "day_off_work": 5,
+_ORDER = {"no_clock_out": 0, "no_clock_in": 0, "absent": 1, "late": 2, "early_out": 3, "rejected": 4, "day_off_work": 5,
           "not_yet": 6, "working": 7, "on_time": 8, "present": 8, "leave": 9, "day_off": 9}
 
 
