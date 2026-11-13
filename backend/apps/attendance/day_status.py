@@ -33,6 +33,7 @@ class Status:
     LATE         = "late"
     EARLY_OUT    = "early_out"
     NO_CLOCK_OUT = "no_clock_out"
+    NO_CLOCK_IN  = "no_clock_in"    # G17-1: only a clock-out tap that day (a lone afternoon tap)
     ABSENT       = "absent"
     DAY_OFF      = "day_off"
     DAY_OFF_WORK = "day_off_work"   # came in on a day off
@@ -47,11 +48,11 @@ STATUS_LABELS = {
     Status.LATE: "Terlambat", Status.EARLY_OUT: "Pulang cepat", Status.NO_CLOCK_OUT: "Tidak absen pulang",
     Status.ABSENT: "Tidak hadir", Status.DAY_OFF: "Libur", Status.DAY_OFF_WORK: "Masuk di hari libur",
     Status.REJECTED: "Ditolak HR", Status.PRESENT: "Hadir", Status.LEAVE: "Cuti / izin",
-    Status.EXEMPT: "Tidak wajib absen",
+    Status.EXEMPT: "Tidak wajib absen", Status.NO_CLOCK_IN: "Tidak absen masuk",          # G17-1
 }
 
 # Which status is shown first when a day has several (late AND early out, say).
-_PRECEDENCE = (Status.NO_CLOCK_OUT, Status.LATE, Status.EARLY_OUT, Status.WORKING)
+_PRECEDENCE = (Status.NO_CLOCK_IN, Status.NO_CLOCK_OUT, Status.LATE, Status.EARLY_OUT, Status.WORKING)
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,8 @@ class DayResult:
     needs_review: bool = False
     leave: str = ""                                    # the approved leave that day, e.g. "Sakit" (G7)
     note: str = ""                                     # G12e: "Lembur malam sampai 00:30: masuk jam 10:00"
+    half_day: bool = False                             # G17-1: one tap only (no clock-in or no clock-out);
+                                                       # payroll cuts ½ day when the company's rule is on
 
     @property
     def label(self):
@@ -144,6 +147,16 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     if first_in and last_out and last_out < first_in:
         last_out = None
 
+    # G17-1 (13 Nov 2026): ONE tap on a working day with a shift. Before the middle of the shift it is the
+    # clock-in (so "no clock-out", as before); from the middle on it is the CLOCK-OUT, so "no clock-in". In R1
+    # Hadi's only tap on 14 Okt, 17:12, was read as a clock-in: 552 minutes late. HR's own times (Ubah jam) win.
+    out_only = False
+    if (hr_in is None and hr_out is None and shift is not None and working_day and len(taps) == 1
+            and taps[0].kind in ("in", "out") and start_dt is not None):
+        middle = start_dt + (end_dt - start_dt) / 2
+        if taps[0].at >= middle:
+            out_only, first_in, last_out = True, None, taps[0].at
+
     if decision == "rejected" and leave and working_day:
         # G9b: HR rejected the taps on a leave day ("salah tap"): the day goes back to the leave
         return DayResult(status=Status.LEAVE, tags=[Status.LEAVE], leave=leave)
@@ -161,7 +174,7 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
                          flags=flags, note=f"Tidak wajib absen: {exempt}")
 
     # ── nobody came ──
-    if first_in is None:
+    if first_in is None and not out_only:
         if not working_day:
             return DayResult(status=Status.DAY_OFF, tags=[Status.DAY_OFF])
         if leave:                    # approved leave: not absent, and nothing for HR to look at
@@ -185,7 +198,7 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
     # HR is asked about the day instead ("Masuk padahal cuti").
     on_leave = bool(leave) and working_day
 
-    if start_dt is not None and working_day and not night_off:
+    if start_dt is not None and working_day and not night_off and first_in is not None:
         late = _minutes(first_in - start_dt)
         if late > shift.grace_minutes:
             result.late_minutes = late
@@ -200,10 +213,10 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
         else:
             tags.append(Status.WORKING)
     else:
-        result.worked_minutes = _minutes(last_out - first_in)
+        result.worked_minutes = _minutes(last_out - first_in) if first_in is not None else 0   # G17-1
         if end_dt is not None and working_day:
             early = _minutes(end_dt - last_out)
-            if early > 0 and not night_off:
+            if early > 0 and not night_off and not out_only:      # G17-1: a lone clock-out is the ½-day rule
                 result.early_minutes = early
                 if not on_leave:
                     tags.append(Status.EARLY_OUT)
@@ -212,6 +225,9 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
             overtime = result.worked_minutes if not working_day else 0
         if overtime >= overtime_min and overtime_eligible:      # G12d: nothing to propose otherwise
             result.overtime_proposed_minutes = overtime
+
+    if out_only and not on_leave:                                                     # G17-1
+        tags.append(Status.NO_CLOCK_IN)
 
     # minutes per site: from each in / switch to the next tap
     for a, b in zip(taps, taps[1:]):
@@ -235,6 +251,9 @@ def evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision
         reasons.append(f"Pulang cepat {result.early_minutes} menit")
     if Status.NO_CLOCK_OUT in tags:
         reasons.append("Tidak absen pulang")
+    if Status.NO_CLOCK_IN in tags:                                                    # G17-1
+        reasons.append("Tidak absen masuk (hanya tap pulang)")
+    result.half_day = working_day and (Status.NO_CLOCK_OUT in tags or Status.NO_CLOCK_IN in tags)
     if result.overtime_proposed_minutes and overtime_approved is None:
         reasons.append(f"Lembur {result.overtime_proposed_minutes} menit menunggu persetujuan")
     if Status.DAY_OFF_WORK in tags:
