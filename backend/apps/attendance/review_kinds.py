@@ -11,6 +11,7 @@ KINDS = [
     ("overtime", "Lembur"),
     ("late", "Terlambat"),
     ("no_clock_out", "Tidak absen pulang"),
+    ("no_clock_in", "Tidak absen masuk"),                       # G17-1
     ("early_out", "Pulang cepat"),
     ("day_off_work", "Masuk di hari libur"),
     ("leave_work", "Masuk saat cuti"),
@@ -18,6 +19,7 @@ KINDS = [
 ]
 LABELS = dict(KINDS)
 PREFIXES = [("Lembur", "overtime"), ("Terlambat", "late"), ("Tidak absen pulang", "no_clock_out"),
+            ("Tidak absen masuk", "no_clock_in"),                                     # G17-1
             ("Pulang cepat", "early_out"), ("Masuk di hari libur", "day_off_work"), ("Masuk padahal", "leave_work")]
 
 
