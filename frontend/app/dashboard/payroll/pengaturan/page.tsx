@@ -182,6 +182,16 @@ export default function PayrollSettingsPage() {
         </label>
         {money("late_fine_per_minute", "Potongan terlambat per menit", "0 = tidak dipotong. Harus tercantum di Peraturan Perusahaan / PKB.")}
         {number("late_tolerance_minutes", "Toleransi terlambat (menit)", "Dikurangi dari menit terlambat setiap hari")}
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14 }}>
+          <input type="checkbox" checked={!!form.single_tap_half_day} style={{ marginTop: 3 }}
+                 onChange={(e) => set("single_tap_half_day", e.target.checked)} />
+          <span>
+            Tap sekali dalam sehari = potong ½ hari
+            <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+              Hanya jam masuk, atau hanya jam pulang. Tidak dipotong bila HR memaafkannya atau mengubah jamnya di Perlu Tinjau.
+            </div>
+          </span>
+        </label>
       </Section>
 
       <Section title="Lembur sampai lewat tengah malam"
