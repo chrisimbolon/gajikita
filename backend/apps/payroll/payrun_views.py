@@ -124,6 +124,7 @@ def _run_summary(run):
         "net": _money(sum((l.net for l in lines), Decimal("0"))),
         "employer_cost": _money(sum((l.employer_cost for l in lines), Decimal("0"))),
         "warnings": sum(l.warning_count for l in lines),
+        "negative": sum(1 for l in lines if l.net < 0),                              # G17-0
     }
 
 
@@ -151,6 +152,7 @@ def _register(run):
             "present_days": a.get("present_days", 0), "absent_days": a.get("absent_days", 0),
             "review_days": a.get("review_days", 0),
             "exempt_days": a.get("exempt_days", 0), "exempt_reason": a.get("exempt_reason", ""),   # G12i
+            "negative": l.net < 0,                                                   # G17-0
         })
     order = {"earnings": 0, "deductions": 1}
     return sorted(columns.values(), key=lambda c: order[c["side"]]), rows
