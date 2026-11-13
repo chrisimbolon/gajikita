@@ -104,7 +104,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
     shift = emp.default_shift
     nums = {"working_days": 0, "present_days": 0, "absent_days": 0, "unpaid_leave_days": 0, "outside_days": 0, "paid_leave_days": 0,
             "overtime": [], "late_raw": [], "meal_days": 0, "breakfast_days": 0, "review_days": 0, "leave": {},
-            "exempt_days": 0, "exempt_reason": ""}                                     # G12i
+            "exempt_days": 0, "exempt_reason": "", "half_days": 0}                     # G12i, G17-1
     leave_count = Counter()
     meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
     tz = timezone.get_current_timezone()
@@ -133,10 +133,13 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["exempt_reason"] = nums["exempt_reason"] or r.note.replace("Tidak wajib absen: ", "", 1)
         elif r.status == Status.ABSENT or (r.status == Status.REJECTED and working):
             nums["absent_days"] += 1
-        elif r.first_in:
+        elif r.first_in or r.last_out:                      # G17-1: a lone clock-out still came
             nums["present_days"] += 1
         if day is not None and r.needs_review and not day.decision:
             nums["review_days"] += 1
+        forgiven = day is not None and day.decision == "approved" and day.waive_late
+        if cfg.single_tap_half_day and r.half_day and not forgiven:        # G17-1: ½ day unpaid
+            nums["half_days"] += 1
         late = r.late_minutes if Status.LATE in r.tags else 0
         early = r.early_minutes if Status.EARLY_OUT in r.tags else 0
         if late or early:
@@ -154,7 +157,9 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             cells.append(day_cell(d, r, day, leave, ot))
     nums["leave"] = dict(leave_count)
     nums["late_minutes"] = engine.chargeable_late_minutes(nums["late_raw"], cfg.late_tolerance_minutes)
-    nums["unpaid_days"] = nums["absent_days"] + nums["unpaid_leave_days"] + nums["outside_days"]
+    half = nums["half_days"]
+    nums["unpaid_days"] = (nums["absent_days"] + nums["unpaid_leave_days"] + nums["outside_days"]
+                           + (half // 2 if half % 2 == 0 else half / 2))                # G17-1: 1 -> 0.5
     return nums
 
 
@@ -205,6 +210,9 @@ def calculate_line(line, cfg):
     slip = engine.calculate(terms, period, rules)
     if nums.get("review_days"):
         slip.warnings.insert(0, f"{nums['review_days']} hari absensi belum ditinjau HR di periode ini.")
+    if nums.get("half_days"):                                                        # G17-1: never silent
+        slip.warnings.insert(0, f"Tap sekali {nums['half_days']} hari: dipotong ½ hari per hari (aturan perusahaan). "
+                                f"Maafkan di Perlu Tinjau bila ada alasannya (mis. mati lampu).")
     if nums.get("exempt_days"):                                                      # G12i: never silent
         slip.warnings.insert(0, f"Tidak wajib absen ({nums.get('exempt_reason') or '-'}): {nums['exempt_days']} hari "
                                 f"kerja dihitung hadir tanpa tap. Pastikan masih berlaku.")
