@@ -14,18 +14,19 @@ CODES = {
     Status.ON_TIME: "H", Status.PRESENT: "H", Status.WORKING: "K", Status.LATE: "T", Status.EARLY_OUT: "PC",
     Status.NO_CLOCK_OUT: "TP", Status.ABSENT: "A", Status.NOT_YET: "", Status.DAY_OFF: "L",
     Status.DAY_OFF_WORK: "LK", Status.REJECTED: "X", Status.EXEMPT: "DL",           # G12i: dinas luar
+    Status.NO_CLOCK_IN: "TM",                                                         # G17-1
 }
 LEAVE_CODES = {"annual": "C", "sick": "S", "special": "CK", "unpaid": "I"}
 OUTSIDE = "-"
 
 LEGEND = [
-    ("H", "Hadir"), ("T", "Terlambat"), ("PC", "Pulang cepat"), ("TP", "Tidak absen pulang"), ("K", "Sedang bekerja"),
+    ("H", "Hadir"), ("T", "Terlambat"), ("PC", "Pulang cepat"), ("TP", "Tidak absen pulang"), ("TM", "Tidak absen masuk"), ("K", "Sedang bekerja"),
     ("A", "Tidak hadir"), ("C", "Cuti tahunan"), ("S", "Sakit"), ("CK", "Cuti khusus"), ("I", "Izin tanpa upah"),
     ("L", "Libur"), ("LK", "Masuk di hari libur"), ("X", "Ditolak HR"), ("DL", "Tidak wajib absen (dihitung hadir)"),
     ("-", "Belum / sudah tidak bekerja"),
 ]
 # what counts as "bermasalah" for the "hanya yang bermasalah" filter
-PROBLEM_CODES = {"T", "PC", "TP", "A", "X"}
+PROBLEM_CODES = {"T", "PC", "TP", "TM", "A", "X"}
 
 
 def day_cell(d, result, day, leave, approved_overtime):
