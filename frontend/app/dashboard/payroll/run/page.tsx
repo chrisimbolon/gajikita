@@ -372,6 +372,16 @@ export default function PayRunPage() {
           </div>
         ))}
       </div>
+      {(run.negative ?? 0) > 0 && (
+        <div style={{ background: "#FDECEC", color: "var(--danger)", borderRadius: 8, padding: "10px 14px", fontSize: 13.5, marginBottom: 12 }}>
+          <AlertTriangle size={14} style={{ verticalAlign: "-2px" }} />{" "}
+          <b>Gaji bersih minus: {data.rows.filter((r) => r.negative).map((r) => r.employee.full_name).join(", ")}.</b>{" "}
+          Payroll tidak bisa dikunci sebelum ini diperbaiki.
+          <div style={{ fontSize: 12.5, marginTop: 2 }}>
+            Klik barisnya. Biasanya absensi yang salah terbaca (terlambat atau tidak hadir), atau potongan lebih besar dari gaji.
+          </div>
+        </div>
+      )}
       {run.warnings > 0 && (
         <div style={{ background: "var(--hazard-light)", color: "var(--hazard-dark)", borderRadius: 8, padding: "10px 14px", fontSize: 13.5, marginBottom: 12 }}>
           <AlertTriangle size={14} style={{ verticalAlign: "-2px" }} /> {run.warnings} peringatan di {data.rows.filter((r) => r.warning_count > 0).length} karyawan.
@@ -413,7 +423,8 @@ export default function PayRunPage() {
                 {earnings.map((c) => <td key={c.code} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(r.amounts[c.code])}</td>)}
                 <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 600 }}>{rupiah(r.gross)}</td>
                 {deductions.map((c) => <td key={c.code} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(r.amounts[c.code])}</td>)}
-                <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 800 }}>{rupiah(r.net)}</td>
+                <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 800,
+                             color: r.negative ? "var(--danger)" : undefined }}>{rupiah(r.net)}</td>
                 <td>{r.warning_count > 0 && <AlertTriangle size={14} style={{ color: "var(--hazard-dark)" }} />}</td>
               </tr>
             ))}
