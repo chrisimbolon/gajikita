@@ -7,7 +7,8 @@ import api from "@/lib/api";
 export type DayStatus =
   | "not_yet" | "working" | "on_time" | "late" | "early_out" | "no_clock_out"
   | "absent" | "day_off" | "day_off_work" | "rejected" | "present" | "leave"
-  | "exempt";                                                   // G12i: tidak wajib absen, counted as worked
+  | "exempt"                                                    // G12i: tidak wajib absen, counted as worked
+  | "no_clock_in";                                              // G17-1: only a clock-out tap
 
 // G12f.3: HR's own note for a day, from the imported recap ("UL" on yellow). Shown only, never counted.
 export interface HrNote { code: string; color: string; text: string }
@@ -87,6 +88,7 @@ export const STATUS_STYLE: Record<DayStatus, { bg: string; fg: string }> = {
   early_out:    { bg: "var(--hazard-light)", fg: "var(--hazard-dark)" },
   day_off_work: { bg: "var(--hazard-light)", fg: "var(--hazard-dark)" },
   no_clock_out: { bg: "var(--danger-light)", fg: "#A3261C" },
+  no_clock_in:  { bg: "var(--danger-light)", fg: "#A3261C" },      // G17-1
   absent:       { bg: "var(--danger-light)", fg: "#A3261C" },
   rejected:     { bg: "var(--danger-light)", fg: "var(--danger)" },
   not_yet:      { bg: "var(--paper-2)", fg: "var(--steel)" },
