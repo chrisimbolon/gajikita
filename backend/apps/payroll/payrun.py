@@ -49,6 +49,18 @@ class PayrollError(Exception):
     pass
 
 
+def rupiah(value):
+    """-1108500 -> '-1.108.500', for messages."""
+    return f"{Decimal(value):,.0f}".replace(",", ".")
+
+
+# G17-0 (13 Nov 2026): a payslip below zero is never right. In R1 Dony's night shifts were read as day
+# shifts and his net pay came out at -1.108.500. The line keeps its numbers (HR must see why), but the run
+# can't be locked until every net pay is zero or more.
+NEGATIVE_WARNING = ("Gaji bersih minus (Rp {net}). Payroll tidak bisa dikunci sebelum ini diperbaiki: cek absensinya "
+                    "(terlambat, tidak hadir, tidak wajib absen) atau kurangi potongannya (pinjaman, potongan lain).")
+
+
 def _dates(start, end):
     d = start
     while d <= end:
@@ -199,6 +211,8 @@ def calculate_line(line, cfg):
     worked_days, absent = nums.get("working_days", 0), nums.get("absent_days", 0)
     if worked_days and absent * 2 >= worked_days:
         slip.warnings.insert(0, f"Tidak hadir {absent} dari {worked_days} hari kerja di periode ini.")
+    if slip.net < 0:                                                                 # G17-0: always first
+        slip.warnings.insert(0, NEGATIVE_WARNING.format(net=rupiah(slip.net)))
 
     as_json = lambda lines: [{"code": l.code, "label": l.label, "amount": str(l.amount),
                               "quantity": str(l.quantity) if l.quantity is not None else None, "unit": l.unit}
@@ -273,8 +287,13 @@ def create_run(org, year, month, actor, now=None):
 def lock_run(run, actor, note=""):
     if run.is_locked:
         raise PayrollError("Payroll ini sudah dikunci.")
+    calculate_run(run)                           # lock what the attendance says right now
+    minus = [l.employee.full_name for l in run.lines.filter(net__lt=0).select_related("employee")
+             .order_by("employee__full_name")]
+    if minus:                                    # G17-0: never lock a payslip below zero (the recalculation stays)
+        raise PayrollError(f"Payroll belum bisa dikunci: gaji bersih minus untuk {len(minus)} karyawan "
+                           f"({', '.join(minus)}). Perbaiki absensi atau potongannya dulu.")
     with transaction.atomic():
-        calculate_run(run)                       # lock what the attendance says right now
         run.status, run.locked_by, run.locked_at = PayRun.Status.LOCKED, actor, timezone.now()
         run.save(update_fields=["status", "locked_by", "locked_at"])
         n = AttendanceDay.objects.filter(organization=run.organization, date__gte=run.period_start,
