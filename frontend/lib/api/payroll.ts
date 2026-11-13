@@ -55,6 +55,7 @@ export interface RunSummary {
   net:           string;
   employer_cost: string;
   warnings:      number;
+  negative?:     number;                  // G17-0: people whose net pay is below zero (blocks locking)
 }
 
 export interface RegisterColumn { code: string; label: string; side: "earnings" | "deductions" }
@@ -73,6 +74,7 @@ export interface RegisterRow {
   review_days:   number;
   exempt_days?:  number;                  // G12i: days counted as worked without tapping
   exempt_reason?: string;
+  negative?:     boolean;                 // G17-0: net pay below zero
 }
 
 export interface RunDetail { run: RunSummary; columns: RegisterColumn[]; rows: RegisterRow[] }
