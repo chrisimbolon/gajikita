@@ -200,7 +200,7 @@ export default function TinjauPeriodePage() {
                     <input className="input" inputMode="numeric" value={cap} placeholder="tanpa batas" style={{ width: 140 }}
                            onChange={(e) => { capTouched.current = true; setCap(e.target.value.replace(/\D/g, "").slice(0, 4)); }} /></div>
                   <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5, paddingBottom: 10 }}>
-                    <input type="checkbox" checked={waiveLate} onChange={(e) => setWaiveLate(e.target.checked)} /> Maafkan terlambat (tanpa denda)
+                    <input type="checkbox" checked={waiveLate} onChange={(e) => setWaiveLate(e.target.checked)} /> Maafkan terlambat / tap sekali (tanpa potongan)
                   </label>
                 </>
               )}
