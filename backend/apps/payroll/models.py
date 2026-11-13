@@ -67,6 +67,8 @@ class PayrollSettings(TenantScopedModel):
                                          help_text='[{"until": "01:59", "start": "10:00"}, ...], see night_rules.py')
     late_fine_per_minute   = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal("0"))
     late_tolerance_minutes = models.PositiveSmallIntegerField(default=0)
+    # G17-1: DKCB Note sheet "tidak clock out tp ada clock in / tidak clock in tp ada clock out: potong 1/2 hari"
+    single_tap_half_day = models.BooleanField(default=False, verbose_name="Tap sekali = potong ½ hari")
     bpjs_base_includes_allowance = models.BooleanField(default=True)
     jkk_rate          = models.DecimalField(max_digits=6, decimal_places=4, default=Decimal("0.0024"),
                                             help_text="0.0024 / 0.0054 / 0.0089 / 0.0127 / 0.0174 (kelompok risiko 1-5)")
