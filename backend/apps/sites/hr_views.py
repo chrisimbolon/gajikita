@@ -138,7 +138,7 @@ class ShiftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shift
         fields = ["id", "name", "start_time", "end_time", "grace_minutes", "working_days", "is_active",
-                  "crosses_midnight"]
+                  "crosses_midnight", "saturday_end_time"]                             # G17-5
         read_only_fields = ["id"]
 
     def validate_name(self, value):
