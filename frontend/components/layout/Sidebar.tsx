@@ -3,7 +3,7 @@
 // review count in Marigold (theme "Arah A", 28 Oct 2026).
 import Wordmark from "@/components/Wordmark";
 import { useAuth } from "@/context/AuthContext";
-import { CalendarCheck, CalendarOff, ClipboardCheck, Clock, LayoutDashboard, LogOut, MapPin, Timer, Users, Wallet } from "lucide-react";
+import { CalendarCheck, CalendarOff, ClipboardCheck, Clock, LayoutDashboard, LogOut, MapPin, Timer, Users, Wallet, Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -11,6 +11,7 @@ const NAV = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Ringkasan" },
   { href: "/dashboard/absensi", icon: CalendarCheck, label: "Absensi" },
   { href: "/dashboard/absensi/tinjau", icon: ClipboardCheck, label: "Perlu Tinjau" },
+  { href: "/dashboard/absensi/kejadian", icon: Zap, label: "Kejadian" },                  // G17-2
   { href: "/dashboard/lembur", icon: Timer, label: "Lembur" },
   { href: "/dashboard/cuti", icon: CalendarOff, label: "Cuti & Izin" },
   { href: "/dashboard/payroll", icon: Wallet, label: "Payroll" },
