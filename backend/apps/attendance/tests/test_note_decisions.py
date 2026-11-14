@@ -116,6 +116,14 @@ class NoteDecisionApiTests(APITestCase):
         self.assertEqual(self.group(resp.data, UL)["rows"][0]["state"], "done")
         self.assertEqual(self.apply(UL, (self.eko, date(2026, 10, 6), "")).data["applied"], 0)   # not twice
 
+    def test_ul_on_a_day_with_taps_sets_the_taps_aside(self):
+        day = self.taps(self.eko, date(2026, 10, 6), (8, 30), (17, 0))                  # tapped, yet the note says UL
+        self.assertEqual(self.apply(UL, (self.eko, date(2026, 10, 6), "")).data["applied"], 1)
+        day.refresh_from_db()
+        self.assertEqual(day.decision, "rejected")
+        r = evaluate(day)
+        self.assertEqual((r.status, r.leave), (Status.LEAVE, "Izin tanpa upah"))
+
     def test_a_half_day_permit_is_decided(self):
         self.assertEqual(self.apply(HALF, (self.togar, date(2026, 10, 5), "")).data["applied"], 1)
         day = AttendanceDay.objects.get(employee=self.togar, date=date(2026, 10, 5))

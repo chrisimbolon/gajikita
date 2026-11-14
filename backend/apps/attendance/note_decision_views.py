@@ -169,6 +169,19 @@ def _leave(emp, d, kind, text, actor):
                      reason=f"Catatan HR: {text}", note="Dari catatan HR")
     except LeaveError as err:
         return err.message
+    # G17-4.2: the note says UL / cuti but the person tapped that day (DKCB: Eko 2 and 5 Okt, Junaidi 6 Okt).
+    # Anthony counts the leave, so the taps are set aside ("Tolak" on a leave day = back to the leave, G9b).
+    day = AttendanceDay.objects.filter(employee=emp, date=d, is_locked=False).first()
+    if day is not None and day.events.exists() and day.decision != "rejected":
+        before = {"decision": day.decision}
+        day.decision, day.waive_late, day.overtime_approved_minutes, day.half_day_leave = "rejected", False, None, ""
+        day.decision_note = f"Catatan HR: {text} (tap diabaikan, dihitung cuti / izin)"[:1000]
+        day.decided_by, day.decided_at = actor, timezone.now()
+        day.save(update_fields=["decision", "waive_late", "overtime_approved_minutes", "half_day_leave",
+                                "decision_note", "decided_by", "decided_at", "updated_at"])
+        record_audit(organization=emp.organization, actor=actor, action="attendance.note_decision", target=day,
+                     summary=f"{emp.full_name} {d:%d-%m-%Y}: tap diabaikan, dihitung cuti / izin (catatan HR: {text})"[:255],
+                     before=before, after={"decision": "rejected"})
     return None
 
 
