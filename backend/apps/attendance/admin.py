@@ -1,6 +1,7 @@
 from django.contrib import admin
 
-from .models import AttendanceDay, AttendanceExemption, ClockEvent, DayNote, EmployeeMachineId, FingerprintMachine
+from .models import (AttendanceDay, AttendanceExemption, ClockEvent, CompanyEvent, DayNote, EmployeeMachineId,
+                     FingerprintMachine)
 
 
 class ClockEventInline(admin.TabularInline):
@@ -43,6 +44,15 @@ class AttendanceExemptionAdmin(admin.ModelAdmin):
     list_filter = ("organization",)
     search_fields = ("employee__full_name", "employee__employee_no", "reason")
     raw_id_fields = ("employee", "created_by")
+
+
+@admin.register(CompanyEvent)                                             # G17-2
+class CompanyEventAdmin(admin.ModelAdmin):
+    list_display = ("kind", "start", "end", "reason", "everyone", "organization")
+    list_filter = ("organization", "kind")
+    search_fields = ("reason",)
+    filter_horizontal = ("sites", "employees")
+    raw_id_fields = ("created_by",)
 
 
 @admin.register(DayNote)                                                  # G12f.3.1
