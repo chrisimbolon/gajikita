@@ -60,11 +60,18 @@ class DisruptedDayTests(SimpleTestCase):
         self.assertEqual(r.note, "Gangguan absen: Mati lampu")
         self.assertEqual(ev(day=MON).status, Status.ABSENT)                             # without the event
 
-    def test_one_tap_is_not_cut_or_late(self):
-        afternoon = ev(Tap("in", at(WED, 17, 12)), event=CUT)                           # Hadi
-        morning = ev(Tap("in", at(WED, 8, 40)), event=CUT)
+    def test_a_missing_tap_is_forgiven(self):
+        afternoon = ev(Tap("in", at(WED, 17, 12)), event=CUT)                           # Hadi: only the clock-out
+        morning = ev(Tap("in", at(WED, 7, 55)), event=CUT)                              # only the clock-in
         for r in (afternoon, morning):
             self.assertEqual((r.late_minutes, r.half_day, r.needs_review, r.status), (0, False, False, Status.ON_TIME))
+
+    def test_a_recorded_late_arrival_still_counts(self):
+        # G17-2.1: Feny 13 Okt, in at 09:48 during the power cut: Anthony fined it
+        r = ev(Tap("in", at(WED, 9, 48)), Tap("out", at(WED, 17)), event=CUT)
+        self.assertEqual((r.status, r.late_minutes, r.needs_review), (Status.LATE, 108, True))
+        lone = ev(Tap("in", at(WED, 8, 40)), event=CUT)                                 # late, clock-out missing
+        self.assertEqual((lone.status, lone.late_minutes, lone.half_day), (Status.LATE, 40, False))
 
     def test_overtime_from_a_real_late_tap_still_counts(self):
         r = ev(Tap("out", at(WED, 22, 16)), event=CUT)                                 # Arief: 5.5 h in the book
@@ -194,7 +201,8 @@ class EventPayrollTests(APITestCase):
         self.add()
         a, warnings = self.auto()
         self.assertEqual((a["absent_days"], a["half_days"], a["disrupted_days"]), (1, 0, 3))    # only 15 Okt left
-        self.assertIn("Gangguan absen: Mati lampu (3 hari): dihitung hadir penuh, tanpa potongan terlambat atau ½ hari.",
+        self.assertIn("Gangguan absen: Mati lampu (3 hari): tap yang hilang dimaafkan (tanpa potongan ½ hari atau "
+                      "tidak hadir); terlambat yang tercatat tetap dihitung.",
                       warnings)
 
     def test_a_holiday_is_not_a_working_day(self):

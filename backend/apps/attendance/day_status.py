@@ -148,8 +148,9 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
     taps = sorted(taps, key=lambda t: t.at)
     flags = list(dict.fromkeys(f for t in taps for f in t.flags))
     working_day = shift is None or str(day.isoweekday()) in shift.working_days
-    # G17-2: a holiday makes the working day a day off; a disruption means nothing about the taps counts against
-    # anyone (no late, early-out, missing clock-in/out, ½ day; no taps = present). Overtime still counts.
+    # G17-2: a holiday makes the working day a day off. A disruption forgives MISSING taps (no missing clock-in/out,
+    # no ½ day; no taps = present). G17-2.1: a late arrival or early leave the taps DO show still counts, as in
+    # Anthony's book (Feny 13 Okt: in at 09:48 during the power cut, fined 103 minutes). Overtime still counts.
     if event and event[0] == HOLIDAY:
         working_day = False
     disrupted = bool(event) and event[0] == DISRUPTION and working_day
@@ -226,7 +227,7 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
     # HR is asked about the day instead ("Masuk padahal cuti").
     on_leave = bool(leave) and working_day
 
-    if start_dt is not None and working_day and not night_off and first_in is not None and not disrupted:
+    if start_dt is not None and working_day and not night_off and first_in is not None:
         late = _minutes(first_in - start_dt)
         if late > shift.grace_minutes:
             result.late_minutes = late
@@ -244,7 +245,7 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
         result.worked_minutes = _minutes(last_out - first_in) if first_in is not None else 0   # G17-1
         if end_dt is not None and working_day:
             early = _minutes(end_dt - last_out)
-            if early > 0 and not night_off and not out_only and not disrupted:   # G17-1, G17-2
+            if early > 0 and not night_off and not out_only:      # G17-1: a lone clock-out is the ½-day rule
                 result.early_minutes = early
                 if not on_leave:
                     tags.append(Status.EARLY_OUT)

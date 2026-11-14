@@ -19,7 +19,7 @@ const range = (e: { start: string; end: string }) => (e.start === e.end ? day(e.
 
 const KINDS: { key: EventKind; label: string; help: string }[] = [
   { key: "gangguan", label: "Gangguan absen",
-    help: "Mati lampu, mesin rusak. Hari kerja dihitung hadir penuh: tidak ada potongan terlambat, ½ hari, atau tidak hadir. Lembur dari tap tetap dihitung." },
+    help: "Mati lampu, mesin rusak. Tap yang hilang dimaafkan: tidak ada potongan ½ hari atau tidak hadir. Yang tercatat tetap dihitung: terlambat, pulang cepat, dan lembur dari tap." },
   { key: "libur", label: "Libur",
     help: "Libur perusahaan atau libur nasional. Hari kerja jadi hari libur: tidak ada yang tidak hadir, yang tetap masuk dibayar tarif hari libur." },
 ];

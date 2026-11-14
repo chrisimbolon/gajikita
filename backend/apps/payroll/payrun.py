@@ -219,8 +219,8 @@ def calculate_line(line, cfg):
     if nums.get("review_days"):
         slip.warnings.insert(0, f"{nums['review_days']} hari absensi belum ditinjau HR di periode ini.")
     if nums.get("disrupted_days"):                                                   # G17-2: never silent
-        slip.warnings.append(f"{nums['disrupted_reason']} ({nums['disrupted_days']} hari): dihitung hadir penuh, "
-                             f"tanpa potongan terlambat atau ½ hari.")
+        slip.warnings.append(f"{nums['disrupted_reason']} ({nums['disrupted_days']} hari): tap yang hilang dimaafkan "
+                             f"(tanpa potongan ½ hari atau tidak hadir); terlambat yang tercatat tetap dihitung.")
     if nums.get("holiday_days"):
         slip.warnings.append(f"{nums['holiday_reason']} ({nums['holiday_days']} hari): bukan hari kerja.")
     if nums.get("half_days"):                                                        # G17-1: never silent

@@ -8,9 +8,10 @@ DKCB, 12-14 Okt 2026: the power went out. People tapped once, twice or not at al
 a full day ("Mati lampu" in his notes). SeeGaji asked HR about it person by person, day by day, and cut ½ days.
 An event is entered ONCE for a date range and a group of people:
 
-  DISRUPTION ("gangguan")  attendance disrupted (power cut, broken machine): a working day counts as worked.
-                           No late, early-out, no-clock-in/out or ½-day cut; no taps = present. Overtime from a
-                           real late tap still counts. Leave, "tidak wajib absen" and HR's decisions still win.
+  DISRUPTION ("gangguan")  attendance disrupted (power cut, broken machine): MISSING taps are forgiven: no
+                           missing clock-in/out, no ½-day cut, no taps = present. What the taps DO show still
+                           counts (G17-2.1): a recorded late arrival or early leave, and overtime from a late tap.
+                           Leave, "tidak wajib absen" and HR's decisions still win.
   HOLIDAY ("libur")        a company or national holiday: a working day becomes a day off. Nobody is absent;
                            whoever works is paid the rest-day rate.
 
