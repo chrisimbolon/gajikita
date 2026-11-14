@@ -34,6 +34,10 @@ class AttendanceDay(TenantScopedModel):
                                      choices=[("approved", "Disetujui"), ("rejected", "Ditolak")])
     decision_note = models.TextField(blank=True, default="", verbose_name="Catatan HR")
     waive_late    = models.BooleanField(default=False, verbose_name="Terlambat dimaafkan")
+    # G17-4: a ½ day permit / leave HR decided ("Izin pulang cepat", "Cuti 1/2 hari"): no late or early minutes;
+    # "unpaid" cuts ½ day of pay, "paid" cuts nothing
+    half_day_leave = models.CharField(max_length=10, blank=True, default="", verbose_name="½ hari izin / cuti",
+                                      choices=[("unpaid", "½ hari tanpa upah"), ("paid", "½ hari cuti dibayar")])
     overtime_approved_minutes = models.PositiveIntegerField(null=True, blank=True, verbose_name="Lembur Disetujui (menit)")
     decided_by    = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                       related_name="+")

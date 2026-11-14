@@ -131,6 +131,7 @@ def evaluate(day, now=None, shift=None, leave=None, ctx=None):
         night=ctx.night_for(day.employee_id, day.date), overtime_min=ctx.overtime_min,   # G12e
         exempt=ctx.exempt_for(day.employee_id, day.date),                                 # G12i
         event=ctx.event_for(day.employee_id, day.employee.default_site_id, day.date),       # G17-2
+        half_leave=day.half_day_leave,                                                     # G17-4
     )
 
 

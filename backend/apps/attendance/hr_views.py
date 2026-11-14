@@ -192,6 +192,7 @@ def _snapshot(day):
     return {
         "decision": day.decision, "note": day.decision_note, "waive_late": day.waive_late,
         "overtime_approved_minutes": day.overtime_approved_minutes,
+        "half_day_leave": day.half_day_leave,                                         # G17-4
         "hr_in": timezone.localtime(day.hr_in).strftime("%Y-%m-%d %H:%M") if day.hr_in else None,
         "hr_out": timezone.localtime(day.hr_out).strftime("%Y-%m-%d %H:%M") if day.hr_out else None,
     }
@@ -228,6 +229,7 @@ class DecideView(APIView):
             if d["action"] == "reset":
                 day.decision, day.decision_note, day.waive_late = "", "", False
                 day.overtime_approved_minutes = None
+                day.half_day_leave = ""                                               # G17-4
                 day.decided_by = day.decided_at = None
                 summary = "Keputusan dibatalkan"
             else:
@@ -243,6 +245,7 @@ class DecideView(APIView):
                         f", lembur {day.overtime_approved_minutes} menit" if day.overtime_approved_minutes else "")
                 else:
                     day.waive_late, day.overtime_approved_minutes = False, None
+                    day.half_day_leave = ""                                           # G17-4
                     summary = (f"Ditolak: kembali ke {result.leave.lower()}" if result.leave
                                else "Ditolak: dihitung tidak hadir")
             day.save()

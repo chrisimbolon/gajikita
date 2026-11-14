@@ -97,12 +97,16 @@ class DayResult:
     event: str = ""                                    # G17-2: "Gangguan absen: Mati lampu" / "Libur: ..."
     holiday: bool = False                              # G17-2: a working day turned into a holiday
     disrupted: bool = False                            # G17-2: a working day under a disruption
+    half_leave: str = ""                               # G17-4: "unpaid" / "paid" ½ day permit or leave
 
     @property
     def label(self):
         if self.status == Status.LEAVE and self.leave:
             return self.leave
         return STATUS_LABELS.get(self.status, self.status)
+
+
+HALF_NOTE = {"unpaid": "Izin ½ hari tanpa upah", "paid": "Cuti ½ hari (dibayar)"}     # G17-4
 
 
 def _minutes(delta):
@@ -128,7 +132,7 @@ def evaluate_day(day, shift, taps, now, tz, *, event=None, **kw):
 
 def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decision="", waive_late=False,
                   overtime_approved=None, leave="", overtime_eligible=True, night=None,
-                  overtime_min=OVERTIME_MIN_MINUTES, exempt="", event=None):
+                  overtime_min=OVERTIME_MIN_MINUTES, exempt="", event=None, half_leave=""):
     """
     day      the working date (a night shift belongs to the date it started)
     shift    ShiftInfo or None
@@ -154,6 +158,8 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
     if event and event[0] == HOLIDAY:
         working_day = False
     disrupted = bool(event) and event[0] == DISRUPTION and working_day
+    # G17-4: a ½ day permit / leave HR decided: no late, early, missing clock-in/out; payroll handles the ½ day
+    permitted = bool(half_leave) and working_day
 
     start_dt = end_dt = None
     if shift is not None:
@@ -210,6 +216,9 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
             return DayResult(status=Status.DAY_OFF, tags=[Status.DAY_OFF], note=night.note)
         if disrupted:                # G17-2: power cut / broken machine: counted as worked, nothing to review
             return DayResult(status=Status.ON_TIME, tags=[Status.ON_TIME])
+        if permitted:                # G17-4: ½ day permit / leave with no taps: present for the other half
+            return DayResult(status=Status.ON_TIME, tags=[Status.ON_TIME], half_leave=half_leave,
+                             note=HALF_NOTE.get(half_leave, ""))
         if start_dt is not None:
             not_started = now < start_dt + timedelta(minutes=shift.grace_minutes)
         else:
@@ -220,6 +229,9 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
     # ── somebody came ──
     result = DayResult(status=Status.ON_TIME, first_in=first_in, last_out=last_out, flags=flags,
                        note=night.note if night is not None else "")
+    if permitted:                                                                     # G17-4
+        result.half_leave = half_leave
+        result.note = result.note or HALF_NOTE.get(half_leave, "")
     tags = []
     if not working_day:
         tags.append(Status.DAY_OFF_WORK)
@@ -231,13 +243,13 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
         late = _minutes(first_in - start_dt)
         if late > shift.grace_minutes:
             result.late_minutes = late
-            if not waive_late and not on_leave:
+            if not waive_late and not on_leave and not permitted:                    # G17-4
                 tags.append(Status.LATE)
 
     if last_out is None:
         expected_end = end_dt if (end_dt is not None and working_day) else first_in + timedelta(hours=NO_SHIFT_DAY_HOURS)
         if now > expected_end + timedelta(hours=NO_CLOCK_OUT_AFTER_HOURS):
-            if not on_leave and not disrupted:                                    # G17-2
+            if not on_leave and not disrupted and not permitted:                  # G17-2, G17-4
                 tags.append(Status.NO_CLOCK_OUT)
         else:
             tags.append(Status.WORKING)
@@ -247,7 +259,7 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
             early = _minutes(end_dt - last_out)
             if early > 0 and not night_off and not out_only:      # G17-1: a lone clock-out is the ½-day rule
                 result.early_minutes = early
-                if not on_leave:
+                if not on_leave and not permitted:                                  # G17-4
                     tags.append(Status.EARLY_OUT)
             overtime = _minutes(last_out - end_dt)
         else:
@@ -255,7 +267,7 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
         if overtime >= overtime_min and overtime_eligible:      # G12d: nothing to propose otherwise
             result.overtime_proposed_minutes = overtime
 
-    if out_only and not on_leave and not disrupted:                                   # G17-1, G17-2
+    if out_only and not on_leave and not disrupted and not permitted:                 # G17-1, G17-2, G17-4
         tags.append(Status.NO_CLOCK_IN)
 
     # minutes per site: from each in / switch to the next tap

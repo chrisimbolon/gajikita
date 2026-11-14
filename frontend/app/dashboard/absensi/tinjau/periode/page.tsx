@@ -128,6 +128,8 @@ export default function TinjauPeriodePage() {
           <p style={{ color: "var(--steel)", margin: 0, fontSize: 14 }}>
             Semua hari yang menunggu keputusan HR dalam satu periode gaji. Saring per jenis, centang, lalu putuskan sekaligus.{" "}
             <Link href="/dashboard/absensi/tinjau" style={{ color: "var(--rust)" }}>← Antrean harian</Link>
+            {" · "}
+            <Link href="/dashboard/absensi/tinjau/catatan" style={{ color: "var(--rust)", fontWeight: 700 }}>Catatan HR → keputusan</Link>
           </p>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
