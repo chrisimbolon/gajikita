@@ -70,6 +70,7 @@ class ShiftInfo:
     end: time
     grace_minutes: int = 10
     working_days: str = "12345"
+    saturday_end: time | None = None      # G17-5: an earlier end on Saturdays (office 08:00-12:00)
 
     @property
     def crosses_midnight(self):
@@ -166,6 +167,8 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
         start_dt = datetime.combine(day, shift.start, tzinfo=tz)
         end_day = day + timedelta(days=1) if shift.crosses_midnight else day
         end_dt = datetime.combine(end_day, shift.end, tzinfo=tz)
+        if shift.saturday_end and day.isoweekday() == 6 and not shift.crosses_midnight:      # G17-5
+            end_dt = datetime.combine(day, shift.saturday_end, tzinfo=tz)
 
     # G12e: after overtime past midnight the day starts later, or is a day off
     night = night if (night is not None and working_day and shift is not None) else None

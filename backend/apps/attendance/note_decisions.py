@@ -16,13 +16,16 @@ exactly (Eko 8, Syaiful 4, Edi 2.5, Taufik 1.5, Togar 2, Vinsen 2.5, Prayuda 2, 
   HALF_CUTI  "Cuti 1/2 hari ..."                     -> HR chooses each time: paid (no cut) or ½ day unpaid
   FORGIVE    "Mati lampu", "Finger ... tidak terbaca": the machine failed, not the person -> approve the day and
              forgive late / single tap (days already covered by a Kejadian show as done)
-  HANDLED    errands, works elsewhere, has left: already decided by Tugas luar, "tidak wajib absen" or the end
-             date, so nothing to do here
+  AWAY       "Belanja alat", "Standbye di office BSP", "Kerja di Lobam": company work away from the machine ->
+             each day a one-day "tidak wajib absen" (Tugas luar): counted as worked (G17-5; before that these sat
+             under HANDLED and a day without taps stayed absent: Ramawan 5-10 Okt, Feny 1 and 24 Okt)
+  HANDLED    has left ("Sudah tidak join"): the end date decides, so nothing to do here
   OTHER      anything else stays a note
 """
 import re
 
 UL, HALF, CUTI, HALF_CUTI, FORGIVE, HANDLED, OTHER = "ul", "half", "cuti", "half_cuti", "forgive", "handled", "other"
+AWAY = "away"                                                                        # G17-5
 
 GROUPS = [
     (UL, "Tidak masuk tanpa upah (UL)",
@@ -36,9 +39,11 @@ GROUPS = [
     (FORGIVE, "Mesin / listrik bermasalah",
      "Mati lampu atau sidik jari tidak terbaca: hari disetujui, terlambat dan tap sekali dimaafkan. Hari tanpa tap "
      "sama sekali: pakai Kejadian atau Ubah jam."),
-    (HANDLED, "Sudah ditangani",
-     "Belanja (Tugas luar), kerja di lokasi lain (Tidak wajib absen), sudah keluar (tanggal keluar). Tidak perlu "
-     "keputusan di sini."),
+    (AWAY, "Tugas luar",
+     "Belanja alat, standby atau kerja di lokasi lain untuk perusahaan: hari dihitung hadir penuh (Tidak wajib "
+     "absen 1 hari), tanpa potongan dan tanpa lembur / uang makan otomatis."),
+    (HANDLED, "Sudah keluar",
+     "Karyawan sudah tidak bekerja: isi Tanggal keluar di halaman Karyawan. Tidak perlu keputusan di sini."),
     (OTHER, "Catatan lain", "Tetap sebagai catatan. Putuskan di Perlu Tinjau bila perlu."),
 ]
 LABELS = {k: label for k, label, _ in GROUPS}
@@ -46,10 +51,11 @@ CHOICES = {
     CUTI: [("annual", "Cuti tahunan (dibayar)"), ("unpaid", "Tanpa upah")],
     HALF_CUTI: [("paid", "Dibayar, tanpa potongan"), ("unpaid", "½ hari tanpa upah")],
 }
-ACTIONABLE = (UL, HALF, CUTI, HALF_CUTI, FORGIVE)
+ACTIONABLE = (UL, HALF, CUTI, HALF_CUTI, FORGIVE, AWAY)
 
 FORGIVE_WORDS = ("mati lampu", "listrik", "tidak terbaca", "tdk terbaca", "mesin rusak", "mesin error")
-HANDLED_WORDS = ("belanja", "lobam", "tidak join", "sudah keluar", "resign", "standby", "standbye")
+AWAY_WORDS = ("belanja", "standby", "standbye", "lobam", "kerja di", "tugas luar", "dinas luar")
+HANDLED_WORDS = ("tidak join", "tdk join", "sudah keluar", "resign")
 _HALF = re.compile(r"1\s*/\s*2|½|setengah")
 
 
@@ -65,6 +71,8 @@ def classify(code, text):
         return FORGIVE
     if any(w in t for w in HANDLED_WORDS):
         return HANDLED
+    if any(w in t for w in AWAY_WORDS):
+        return AWAY
     half = bool(_HALF.search(t)) or t.startswith("izin masuk") or t.startswith("izin datang") or "pulang cepat" in t
     if "cuti" in t or c in ("CT", "CUTI"):
         return HALF_CUTI if half else CUTI

@@ -14,11 +14,13 @@ POST /api/hr/attendance/note-decisions/apply/
        half       -> the day: ½ day unpaid, no late / early minutes, approved
        half_cuti  -> paid (½ day, no cut) | unpaid (½ day unpaid)
        forgive    -> the day approved, late and single tap forgiven
+       away       -> G17-5: a one-day "tidak wajib absen" (Tugas luar), counted as worked
      Locked days and rows already done are skipped; every failure comes back by name and date. Audited.
 """
 from datetime import date as Date
 
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.response import Response
@@ -31,8 +33,8 @@ from apps.leave.models import LeaveRequest
 from apps.leave.services import LeaveError, annual_balance, create_leave
 from apps.organizations.permissions import IsCompanyHR
 
-from .models import AttendanceDay, DayNote
-from .note_decisions import (ACTIONABLE, CHOICES, CUTI, FORGIVE, GROUPS, HALF, HALF_CUTI, UL, classify)
+from .models import AttendanceDay, AttendanceExemption, DayNote
+from .note_decisions import (ACTIONABLE, AWAY, CHOICES, CUTI, FORGIVE, GROUPS, HALF, HALF_CUTI, UL, classify)
 from .review import evaluate, evaluate_missing, leaves_between, night_context
 from .review_bulk import _period
 
@@ -48,6 +50,8 @@ def _state(group, day, r, on_leave):
         return "locked"
     if group in (UL, CUTI):
         return "done" if on_leave else "todo"
+    if group == AWAY:                                 # G17-5: done once the day is "tidak wajib absen" (or leave)
+        return "done" if r is not None and r.status in ("exempt", "leave", "day_off") else "todo"
     if group in (HALF, HALF_CUTI):
         if day is not None and (day.half_day_leave or (group == HALF_CUTI and day.decision == "approved"
                                                        and day.waive_late)):
@@ -91,7 +95,7 @@ def build(org, month):
         key = (n.employee_id, n.date)
         day = days.get(key)
         r = None
-        if g == FORGIVE or day is not None:
+        if g in (FORGIVE, AWAY) or day is not None:
             if day is not None:
                 r = evaluate(day, now, leave=leaves.get(key, ""), ctx=ctx)
             else:
@@ -163,6 +167,21 @@ def _decide_day(org, actor, emp, d, text, half, summary):
     return None
 
 
+def _away(org, actor, emp, d, text):
+    """G17-5: a one-day "tidak wajib absen" (Tugas luar), like the bulk action in Perlu Tinjau (G17-3)."""
+    day = AttendanceDay.objects.filter(employee=emp, date=d).first()
+    if day is not None and day.is_locked:
+        return "Hari ini sudah masuk payroll yang dikunci."
+    if AttendanceExemption.objects.filter(employee=emp, start__lte=d).filter(Q(end__isnull=True) | Q(end__gte=d)).exists():
+        return None                                   # already covered: nothing to add
+    x = AttendanceExemption.objects.create(organization=org, employee=emp, start=d, end=d,
+                                           reason=f"Tugas luar: {text}"[:200], created_by=actor)
+    record_audit(organization=org, actor=actor, action="attendance.exemption_create", target=emp,
+                 summary=f"{emp.full_name}: tugas luar {d:%d-%m-%Y} (catatan HR: {text})"[:255],
+                 after={"exemption": str(x.pk), "start": d.isoformat(), "end": d.isoformat(), "reason": x.reason})
+    return None
+
+
 def _leave(emp, d, kind, text, actor):
     try:
         create_leave(employee=emp, kind=kind, start=d, end=d, actor=actor, by_worker=False, approve=True,
@@ -218,6 +237,8 @@ class NoteDecisionApplyView(APIView):
                     problem = _decide_day(org, request.user, emp, when, note.text, "unpaid", "izin ½ hari tanpa upah")
                 elif group == HALF_CUTI:
                     problem = _decide_day(org, request.user, emp, when, note.text, "paid", "cuti ½ hari dibayar")
+                elif group == AWAY:                                                   # G17-5
+                    problem = _away(org, request.user, emp, when, note.text)
                 else:
                     problem = _decide_day(org, request.user, emp, when, note.text, "", "disetujui, dimaafkan")
             if problem:
