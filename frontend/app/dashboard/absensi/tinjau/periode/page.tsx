@@ -15,7 +15,7 @@ import DayPanel, { StatusPill } from "@/components/DayPanel";
 import { HrNoteLine } from "@/components/HrNote";
 import { BulkTrimmed, DayRow, ReviewPeriodData, attendanceApi, minutesText } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
-import { Check, CheckCircle2, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
+import { Briefcase, Check, CheckCircle2, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -26,7 +26,7 @@ function periodText(start: string, end: string): string {
   return `${d1} ${MON[m1 - 1]}${y1 !== y2 ? ` ${y1}` : ""} – ${d2} ${MON[m2 - 1]} ${y2}`;
 }
 
-type Mode = null | "approve" | "reject";
+type Mode = null | "approve" | "reject" | "away";   // G17-3: away = tugas luar
 
 function trimmedText(list: BulkTrimmed[], total: number): string {                  // G12g
   const shown = list.slice(0, 5).map((t) => `${t.name} ${t.date.slice(8, 10)}-${t.date.slice(5, 7)} (${t.proposed}→${t.approved})`);
@@ -104,12 +104,12 @@ export default function TinjauPeriodePage() {
         action: mode, note, waive_late: mode === "approve" ? waiveLate : false, overtime_max_minutes: capMinutes,
         ...(allMatching ? { month: data.month, kind: kind || "", q: query, has_note: hasNote } : { ids: Array.from(picked) }),
       });
-      setDone(`${r.decided} hari ${mode === "approve" ? "disetujui" : "ditolak"}` +
+      setDone(`${r.decided} hari ${mode === "approve" ? "disetujui" : mode === "away" ? "ditandai tugas luar (dihitung hadir, tanpa potongan)" : "ditolak"}` +
               (mode === "approve" && waiveLate ? " · terlambat dimaafkan (tanpa denda)" : "") +
               (r.overtime_minutes ? ` · lembur ${minutesText(r.overtime_minutes)}` : "") +
               (r.trimmed_count ? ` · ${r.trimmed_count} hari DIPOTONG ke ${r.cap_minutes} menit: ${trimmedText(r.trimmed, r.trimmed_count)}` : "") +
               (r.over_legal_days ? ` · ${r.over_legal_days} hari lembur > 4 jam (peringatan PP 35/2021)` : "") +
-              (r.skipped ? ` · ${r.skipped} dilewati (terkunci / sudah diputuskan)` : ""));
+              (r.skipped ? ` · ${r.skipped} dilewati (terkunci / sudah diputuskan${mode === "away" ? " / sudah tidak wajib absen" : ""})` : ""));
       clearPick(); setNote("");
       setData(null);                      // no stale rows while the list reloads
       await load();
@@ -189,6 +189,7 @@ export default function TinjauPeriodePage() {
             <span style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
               <button className="btn-rust" onClick={() => setMode("approve")} style={{ display: "flex", alignItems: "center", gap: 6 }}><Check size={15} /> Setujui</button>
               <button className="btn-ghost" onClick={() => setMode("reject")} style={{ display: "flex", alignItems: "center", gap: 6 }}><X size={15} /> Tolak</button>
+              <button className="btn-ghost" onClick={() => setMode("away")} style={{ display: "flex", alignItems: "center", gap: 6 }}><Briefcase size={15} /> Tugas luar</button>
               <button className="btn-ghost" onClick={clearPick}>Batal pilih</button>
             </span>
           </div>
@@ -204,17 +205,24 @@ export default function TinjauPeriodePage() {
                   </label>
                 </>
               )}
-              <div style={{ flex: 1, minWidth: 220 }}><label className="label">{mode === "reject" ? "Alasan (wajib)" : "Catatan (opsional)"}</label>
+              <div style={{ flex: 1, minWidth: 220 }}><label className="label">{mode === "reject" ? "Alasan (wajib)" : mode === "away" ? "Tugas apa? (wajib)" : "Catatan (opsional)"}</label>
                 <input className="input" value={note} onChange={(e) => setNote(e.target.value)}
-                       placeholder={mode === "reject" ? "mis. titip absen" : "mis. sesuai SPL bulan ini"} /></div>
-              <button className="btn-rust" disabled={busy || (mode === "reject" && !note.trim())} onClick={decide}
+                       placeholder={mode === "reject" ? "mis. titip absen" : mode === "away" ? "mis. Belanja alat lori fuso" : "mis. sesuai SPL bulan ini"} /></div>
+              <button className="btn-rust" disabled={busy || ((mode === "reject" || mode === "away") && !note.trim())} onClick={decide}
                       style={{ display: "flex", alignItems: "center", gap: 6,
                                background: mode === "reject" ? "var(--danger)" : (waiveLate || capMinutes != null) ? "var(--hazard-dark)" : undefined }}>
                 {busy && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />}
                 {mode === "approve"
                   ? `Setujui ${count} hari${capMinutes != null ? ` (lembur maks. ${capMinutes} menit/hari)` : ""}${waiveLate ? " + maafkan terlambat" : ""}`
-                  : `Tolak ${count} hari`}
+                  : mode === "away" ? `Tandai ${count} hari tugas luar` : `Tolak ${count} hari`}
               </button>
+            </div>
+          )}
+          {mode === "away" && (
+            <div style={{ fontSize: 12.5, color: "var(--steel)" }}>
+              Tugas perusahaan di luar (mis. belanja alat): hari-hari ini dihitung hadir penuh, tanpa potongan terlambat
+              atau ½ hari, dan tanpa lembur atau uang makan otomatis. Tercatat sebagai &quot;Tidak wajib absen&quot; 1 hari
+              di halaman Karyawan; hapus di sana bila salah.
             </div>
           )}
           {mode === "approve" && (

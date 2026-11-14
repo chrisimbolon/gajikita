@@ -134,7 +134,7 @@ export interface BulkDecideResult {
   cap_minutes: number | null; trimmed_count: number; trimmed: BulkTrimmed[]; over_legal_days: number;   // G12g
 }
 export interface BulkDecideBody {
-  action: "approve" | "reject"; note: string; waive_late: boolean; overtime_max_minutes: number | null;
+  action: "approve" | "reject" | "away"; note: string; waive_late: boolean; overtime_max_minutes: number | null;   // G17-3
   ids?: string[]; month?: string; kind?: string; q?: string;
   has_note?: "" | "1" | "0";                                                  // G12f.3: same filter as the list
 }

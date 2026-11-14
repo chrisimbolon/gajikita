@@ -21,6 +21,10 @@ period (26 - 25), filtered by kind, and decides many days at once.
                  that cap on working days. Every day the cap cuts is listed in the answer ("trimmed"),
                  and days over PP 35's 4 hours are counted ("over_legal_days") as a warning.
         reject:  like "Tolak" (a note is required)
+        away:    G17-3 "Tandai tugas luar": each day becomes a one-day "tidak wajib absen" period with the note as
+                 the errand ("Tugas luar: Belanja alat"): counted as worked, no late / ½ day / automatic overtime
+                 or meals. A note is required; days already covered by such a period are skipped. Undo it on the
+                 employee's page (Tidak wajib absen).
         Locked days (in a locked payroll) and days already decided are skipped.
         Every day gets its own audit line, so the day panel still shows who decided and when.
 
@@ -28,6 +32,7 @@ G12f.3.1: rows carry "hr_note"; has_note=1 / 0 keeps only the days with / withou
 bulk filter alike, so "everything matching the filter" is exactly what the screen lists).
 """
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from rest_framework import serializers, status
 from rest_framework.response import Response
@@ -134,7 +139,7 @@ def _over_legal(r):
 
 
 class BulkSerializer(serializers.Serializer):
-    action = serializers.ChoiceField(choices=["approve", "reject"])
+    action = serializers.ChoiceField(choices=["approve", "reject", "away"])                 # G17-3: away
     note = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
     ids = serializers.ListField(child=serializers.UUIDField(), required=False, allow_empty=True)
     month = serializers.CharField(required=False, allow_blank=True, default="")
@@ -148,6 +153,8 @@ class BulkSerializer(serializers.Serializer):
     def validate(self, attrs):
         if attrs["action"] == "reject" and not attrs["note"].strip():
             raise serializers.ValidationError({"note": "Tulis alasan penolakan."})
+        if attrs["action"] == "away" and not attrs["note"].strip():
+            raise serializers.ValidationError({"note": "Tulis tugasnya, mis. \"Belanja alat lori fuso\"."})
         if not attrs.get("ids") and not attrs["month"]:
             raise serializers.ValidationError({"ids": "Pilih hari yang akan diputuskan."})
         return attrs
@@ -182,6 +189,9 @@ class BulkDecideView(APIView):
         if len(todo) > MAX_BULK:
             return Response({"success": False, "message": f"Maksimal {MAX_BULK} hari sekali proses. Saring dulu per jenis."},
                             status=status.HTTP_400_BAD_REQUEST)
+
+        if d["action"] == "away":                                                       # G17-3
+            return _mark_away(request, org, todo, skipped, d["note"].strip())
 
         cap = (d["overtime_max_minutes"] if "overtime_max_minutes" in d                  # G12g
                else PayrollSettings.for_org(org).overtime_daily_cap_minutes)
@@ -225,6 +235,32 @@ class BulkDecideView(APIView):
         return Response({"success": True, "decided": len(todo), "skipped": skipped, "overtime_minutes": overtime,
                          "cap_minutes": cap, "trimmed_count": len(trimmed), "trimmed": trimmed[:50],
                          "over_legal_days": over})
+
+
+def _mark_away(request, org, todo, skipped, note):
+    """G17-3: one-day "tidak wajib absen" periods for the chosen days (Feny's shopping trips for parts)."""
+    from .models import AttendanceExemption
+    reason = f"Tugas luar: {note}"[:200]
+    done, audits = 0, []
+    with transaction.atomic():
+        for day, _ in todo:
+            emp = day.employee
+            covered = AttendanceExemption.objects.filter(employee=emp, start__lte=day.date).filter(
+                Q(end__isnull=True) | Q(end__gte=day.date)).exists()
+            if covered:
+                skipped += 1
+                continue
+            x = AttendanceExemption.objects.create(organization=org, employee=emp, start=day.date, end=day.date,
+                                                   reason=reason, created_by=request.user)
+            audits.append(AuditEntry(
+                organization=org, actor=request.user, action="attendance.exemption_create",
+                target_type=emp._meta.label_lower, target_id=str(emp.pk),
+                summary=f"{emp.full_name}: tugas luar {day.date:%d-%m-%Y} ({note})"[:255],
+                data={"bulk": True, "day": str(day.pk), "exemption": str(x.pk), "reason": reason}))
+            done += 1
+        AuditEntry.objects.bulk_create(audits, batch_size=500)
+    return Response({"success": True, "decided": done, "skipped": skipped, "overtime_minutes": 0, "cap_minutes": None,
+                     "trimmed_count": 0, "trimmed": [], "over_legal_days": 0})
 
 
 # ── G12g: repairing days the old 240-minute default cut ─────────────────────────────────────────
