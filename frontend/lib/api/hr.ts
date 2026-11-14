@@ -39,6 +39,7 @@ export interface Shift {
   working_days:     string;   // "123456" (1 = Senin ... 7 = Minggu)
   is_active:        boolean;
   crosses_midnight: boolean;
+  saturday_end_time?: string | null;   // G17-5: "12:00:00" when Saturdays end earlier
 }
 
 export const EMPLOYMENT_TYPE_LABEL = {

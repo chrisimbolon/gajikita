@@ -9,9 +9,11 @@ import { DAY_NAMES, hhmm } from "@/lib/format";
 import { Loader2, Moon, Plus, Save } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-interface Form { name: string; start_time: string; end_time: string; grace_minutes: number; working_days: string; is_active: boolean }
+interface Form { name: string; start_time: string; end_time: string; grace_minutes: number; working_days: string; is_active: boolean;
+                 saturday_end_time: string | null }   // G17-5
 
-const blank: Form = { name: "", start_time: "08:00", end_time: "17:00", grace_minutes: 10, working_days: "12345", is_active: true };
+const blank: Form = { name: "", start_time: "08:00", end_time: "17:00", grace_minutes: 10, working_days: "12345", is_active: true,
+                      saturday_end_time: null };
 
 export default function ShiftPage() {
   const [shifts, setShifts] = useState<Shift[]>([]);
@@ -33,7 +35,8 @@ export default function ShiftPage() {
   const edit = (s: Shift | null) => {
     setEditId(s?.id ?? null);
     setForm(s ? { name: s.name, start_time: hhmm(s.start_time), end_time: hhmm(s.end_time), grace_minutes: s.grace_minutes,
-                  working_days: s.working_days, is_active: s.is_active } : blank);
+                  working_days: s.working_days, is_active: s.is_active,
+                  saturday_end_time: s.saturday_end_time ? hhmm(s.saturday_end_time) : null } : blank);
     setErrors({}); setMsg(null);
   };
 
@@ -86,6 +89,7 @@ export default function ShiftPage() {
                     <td className="mono" style={{ fontSize: 13 }}>
                       {hhmm(s.start_time)}-{hhmm(s.end_time)}
                       {s.crosses_midnight && <Moon size={13} style={{ marginLeft: 6, verticalAlign: "-2px", color: "var(--steel)" }} />}
+                      {s.saturday_end_time && <div style={{ fontSize: 11.5, color: "var(--steel)" }}>Sabtu s/d {hhmm(s.saturday_end_time)}</div>}
                     </td>
                     <td style={{ fontSize: 13 }}>{s.grace_minutes} menit</td>
                     <td style={{ fontSize: 13 }}>
@@ -126,6 +130,17 @@ export default function ShiftPage() {
             <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 6 }}>
               <Moon size={13} style={{ verticalAlign: "-2px" }} /> Shift malam: selesai keesokan harinya.
             </div>
+          )}
+
+          {form.working_days.includes("6") && !night && (
+            <>
+              <label className="label" style={{ marginTop: 12 }}>Sabtu selesai jam (opsional)</label>
+              <input className="input" type="time" value={form.saturday_end_time ?? ""}
+                     onChange={(e) => setForm({ ...form, saturday_end_time: e.target.value || null })} />
+              <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 4 }}>
+                Kosongkan bila Sabtu sama dengan hari lain. Mis. kantor yang Sabtu hanya sampai 12:00.
+              </div>
+            </>
           )}
 
           <label className="label" style={{ marginTop: 12 }}>Toleransi terlambat (menit)</label>
