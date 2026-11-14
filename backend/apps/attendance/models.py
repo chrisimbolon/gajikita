@@ -236,3 +236,44 @@ class AttendanceExemption(TenantScopedModel):
 
     def _resolve_organization(self):
         return self.employee.organization if self.employee_id else None
+
+
+class CompanyEvent(TenantScopedModel):
+    """
+    "Kejadian" (G17-2, 14 Nov 2026): a power cut or a holiday, entered ONCE for a date range and a group.
+    gangguan = attendance disrupted (DKCB 12-14 Okt "Mati lampu"): working days count as worked, nothing is cut.
+    libur    = holiday: working days become days off; working that day is paid the rest-day rate.
+    Who: everyone, or the chosen locations (the employee's main location) and/or people.
+    Rules in company_events.py; days of a locked payroll can't be touched (event_views.py).
+    """
+    class Kind(models.TextChoices):
+        DISRUPTION = "gangguan", "Gangguan absen"
+        HOLIDAY    = "libur",    "Libur"
+
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    start      = models.DateField(verbose_name="Mulai")
+    end        = models.DateField(verbose_name="Sampai")
+    kind       = models.CharField(max_length=10, choices=Kind.choices, verbose_name="Jenis")
+    reason     = models.CharField(max_length=200, verbose_name="Alasan", help_text="mis. Mati lampu")
+    everyone   = models.BooleanField(default=True, verbose_name="Semua karyawan")
+    sites      = models.ManyToManyField("sites.Site", blank=True, related_name="+", verbose_name="Lokasi")
+    employees  = models.ManyToManyField("employees.Employee", blank=True, related_name="+", verbose_name="Karyawan")
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name        = "Kejadian"
+        verbose_name_plural = "Kejadian"
+        ordering            = ["-start"]
+        indexes             = [models.Index(fields=["organization", "start"], name="attendance_event_org_start")]
+
+    def __str__(self):
+        return f"{self.get_kind_display()} {self.start} - {self.end} ({self.reason})"
+
+    def as_rule(self):
+        """The pure company_events.Event (uses prefetched sites / employees when present)."""
+        from .company_events import Event
+        return Event(self.start, self.end, self.kind, self.reason, self.everyone,
+                     frozenset(s.pk for s in self.sites.all()), frozenset(e.pk for e in self.employees.all()))
