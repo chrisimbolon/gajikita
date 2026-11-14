@@ -19,6 +19,7 @@ from apps.attendance.machine_views import EmployeeMachineIdsView, MachineDetailV
 from apps.attendance.fingerprint_link import FingerprintLinkView
 from apps.attendance.day_notes_views import DayNotesDeleteView, DayNotesImportView
 from apps.attendance.exemption_views import EmployeeExemptionsView, ExemptionDetailView
+from apps.attendance.event_views import EventDetailView, EventListView
 from apps.attendance.rekap import RekapExportView, RekapView
 from apps.attendance.review_bulk import BulkDecideView, ReviewPeriodView
 
@@ -37,6 +38,8 @@ urlpatterns = [
     path("employees/<uuid:pk>/machine-ids/", EmployeeMachineIdsView.as_view(), name="hr-employee-machine-ids"),
     path("employees/<uuid:pk>/attendance-exemptions/", EmployeeExemptionsView.as_view(), name="hr-employee-exemptions"),
     path("attendance-exemptions/<uuid:pk>/", ExemptionDetailView.as_view(), name="hr-exemption-detail"),   # G12i
+    path("attendance/events/",               EventListView.as_view(),   name="hr-events"),                 # G17-2
+    path("attendance/events/<uuid:pk>/",     EventDetailView.as_view(), name="hr-event"),
     path("attendance/fingerprint/link/",     FingerprintLinkView.as_view(),    name="hr-fingerprint-link"),   # G12f.2
     # HR's notes per day from the recap (G12f.3.1)
     path("attendance/notes/import/", DayNotesImportView.as_view(), name="hr-day-notes-import"),
