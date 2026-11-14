@@ -113,6 +113,9 @@ class Shift(TenantScopedModel):
         max_length=7, default="12345", verbose_name="Hari Kerja",
         help_text="Angka hari: 1=Senin ... 7=Minggu. Contoh 6 hari kerja: 123456",
     )
+    # G17-5: offices that close early on Saturday (DKCB office: 08:00-12:00). Empty = the same hours as other days.
+    saturday_end_time = models.TimeField(null=True, blank=True, verbose_name="Sabtu selesai jam",
+                                         help_text="Kosongkan bila Sabtu sama dengan hari lain.")
     is_active     = models.BooleanField(default=True, verbose_name="Aktif")
     created_at    = models.DateTimeField(auto_now_add=True)
 
