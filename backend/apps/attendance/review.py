@@ -20,7 +20,7 @@ def shift_info(shift):
     if shift is None:
         return None
     return ShiftInfo(start=shift.start_time, end=shift.end_time, grace_minutes=shift.grace_minutes,
-                     working_days=shift.working_days)
+                     working_days=shift.working_days, saturday_end=shift.saturday_end_time)   # G17-5
 
 
 def taps_of(day):

@@ -12,7 +12,7 @@ from rest_framework.test import APITestCase
 
 from apps.attendance.day_status import ShiftInfo, Status, Tap, evaluate_day
 from apps.attendance.models import AttendanceDay, ClockEvent, DayNote
-from apps.attendance.note_decisions import CUTI, FORGIVE, HALF, HALF_CUTI, HANDLED, OTHER, UL, classify
+from apps.attendance.note_decisions import AWAY, CUTI, FORGIVE, HALF, HALF_CUTI, HANDLED, OTHER, UL, classify
 from apps.attendance.review import evaluate
 from apps.authentication.models import CustomUser
 from apps.employees.models import Employee
@@ -35,7 +35,8 @@ class ClassifyTests(SimpleTestCase):
             "UL": UL, "UL 1/2 hari": HALF, "Izin masuk jam 13.00 wib, mau berobat pagi": HALF,
             "Izin pulang cepat ada urusan keluarga mendesak": HALF, "Cuti sakit mata": CUTI, "Cuti": CUTI,
             "Cuti 1/2 hari berobat": HALF_CUTI, "Mati lampu": FORGIVE, "Finger in tidak terbaca": FORGIVE,
-            "Belanja alat lori fuso dll": HANDLED, "Kerja di Lobam": HANDLED, "Sudah tidak join": HANDLED,
+            "Belanja alat lori fuso dll": AWAY, "Kerja di Lobam": AWAY, "Standbye di office BSP": AWAY,
+            "Sudah tidak join": HANDLED, "sdh tdk join": HANDLED,
             "Ketemu klien": OTHER, "": OTHER,
         }
         for text, group in cases.items():
@@ -106,7 +107,7 @@ class NoteDecisionApiTests(APITestCase):
         self.assertEqual((half["taps"], half["state"]), ("12:37 – 17:01", "todo"))
         self.assertEqual(self.group(body, CUTI)["rows"][0]["balance_left"], 12)
         self.assertEqual(self.group(body, FORGIVE)["rows"][0]["state"], "no_taps")     # absent, not "done"
-        self.assertEqual(self.group(body, HANDLED)["rows"][0]["state"], "info")
+        self.assertEqual(self.group(body, AWAY)["rows"][0]["state"], "todo")              # absent until applied
 
     def test_ul_becomes_unpaid_leave(self):
         resp = self.apply(UL, (self.eko, date(2026, 10, 6), ""))
@@ -142,6 +143,14 @@ class NoteDecisionApiTests(APITestCase):
                                                         "reason": "Mati lampu", "everyone": True}, format="json")
         body = self.client.get(URL, {"month": "2026-10"}).data
         self.assertEqual(self.group(body, FORGIVE)["rows"][0]["state"], "done")
+
+    def test_tugas_luar_counts_a_no_tap_day_as_worked(self):
+        from apps.attendance.models import AttendanceExemption
+        resp = self.apply(AWAY, (self.eko, date(2026, 10, 9), ""))
+        self.assertEqual((resp.data["applied"], resp.data["errors"]), (1, []))
+        x = AttendanceExemption.objects.get(employee=self.eko)
+        self.assertEqual((x.start, x.end, x.reason), (date(2026, 10, 9), date(2026, 10, 9), "Tugas luar: Belanja alat"))
+        self.assertEqual(self.group(resp.data, AWAY)["rows"][0]["state"], "done")
 
     def test_forgive_needs_taps_and_a_wrong_group_is_refused(self):
         resp = self.apply(FORGIVE, (self.vinsen, date(2026, 10, 8), ""))
