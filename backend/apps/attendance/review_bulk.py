@@ -30,6 +30,10 @@ period (26 - 25), filtered by kind, and decides many days at once.
 
 G12f.3.1: rows carry "hr_note"; has_note=1 / 0 keeps only the days with / without HR's note (GET and the
 bulk filter alike, so "everything matching the filter" is exactly what the screen lists).
+
+G17-6 (15 Nov 2026): state=decided lists the days HR already decided (not locked), judged as if still open, so
+overtime can be changed in place; actions pay_overtime / no_overtime / reset live in review_overtime.py.
+Every bulk answer carries a "batch": POST review/undo/ puts that batch back.
 """
 from django.db import transaction
 from django.db.models import Q
@@ -52,6 +56,7 @@ from .day_status import Status
 from .day_notes_import import notes_for
 from .models import AttendanceDay
 from .review_kinds import KINDS, LABELS, capped_overtime, kinds_of, over_legal
+from .review_overtime import OVERTIME_ACTIONS, as_pending, decide_overtime, new_batch          # G17-6
 
 PAGE_SIZE = 100
 MAX_BULK = 10000
@@ -77,6 +82,30 @@ def pending_days(org, start, end, now, kind="", q=""):
     return out
 
 
+def decided_days(org, start, end, now, kind="", q=""):
+    """G17-6: [(day, result, kinds)] HR already decided in [start, end], not locked, judged as if still open."""
+    leaves = leaves_between(org.id, start, end)
+    ctx = night_context(org.id, None, start, end)
+    qs = _days_qs(org).filter(date__gte=start, date__lte=end, is_locked=False).exclude(decision="")
+    q = (q or "").strip().lower()
+    out = []
+    for d in qs.order_by("date", "employee__full_name"):
+        if q and q not in d.employee.full_name.lower() and q not in d.employee.employee_no.lower():
+            continue
+        r = evaluate(as_pending(d), now, leave=leaves.get((d.employee_id, d.date), ""), ctx=ctx)
+        if not r.needs_review:
+            continue
+        kinds = kinds_of(r.review_reasons)
+        if kind and kind not in kinds:
+            continue
+        out.append((d, r, kinds))
+    return out
+
+
+def days_for(org, start, end, now, state, kind="", q=""):
+    return (decided_days if state == "decided" else pending_days)(org, start, end, now, kind, q)
+
+
 def with_note_filter(org, items, start, end, has_note, notes=None):
     """G12f.3.1: (items, notes). has_note "1" keeps the days with HR's note, "0" those without, "" all."""
     notes = notes_for(org, None, start, end) if notes is None else notes
@@ -100,11 +129,15 @@ class ReviewPeriodView(APIView):
     def get(self, request):
         p = request.query_params
         info, start, end = _period(request.hr_org, p.get("month"))
-        everything = pending_days(request.hr_org, start, end, timezone.now(), q=p.get("q", ""))
+        state = "decided" if p.get("state") == "decided" else ""                    # G17-6
+        now = timezone.now()
+        everything = days_for(request.hr_org, start, end, now, state, q=p.get("q", ""))
         has_note = p.get("has_note", "")                                            # G12f.3.1
         _, notes = with_note_filter(request.hr_org, [], start, end, "")
         noted = sum(1 for d, _, _ in everything if (d.employee_id, d.date) in notes)
         everything, _ = with_note_filter(request.hr_org, everything, start, end, has_note, notes)
+        other = days_for(request.hr_org, start, end, now, "" if state else "decided", q=p.get("q", ""))
+        other, _ = with_note_filter(request.hr_org, other, start, end, has_note, notes)
         counts = {k: 0 for k, _ in KINDS}
         for _, _, kinds in everything:
             for k in kinds:
@@ -131,6 +164,9 @@ class ReviewPeriodView(APIView):
                          "over_legal": over, "legal_day_minutes": WEEKDAY_MAX_MINUTES,      # G12g
                          "cap_minutes": PayrollSettings.for_org(request.hr_org).overtime_daily_cap_minutes,
                          "has_note": has_note if has_note in ("1", "0") else "", "with_note": noted,   # G12f.3.1
+                         "state": state,                                                                 # G17-6
+                         "pending_all": len(other) if state else len(everything),
+                         "decided_all": len(everything) if state else len(other),
                          "rows": rows})
 
 
@@ -139,7 +175,7 @@ def _over_legal(r):
 
 
 class BulkSerializer(serializers.Serializer):
-    action = serializers.ChoiceField(choices=["approve", "reject", "away"])                 # G17-3: away
+    action = serializers.ChoiceField(choices=["approve", "reject", "away", *OVERTIME_ACTIONS])   # G17-3, G17-6
     note = serializers.CharField(required=False, allow_blank=True, default="", max_length=500)
     ids = serializers.ListField(child=serializers.UUIDField(), required=False, allow_empty=True)
     month = serializers.CharField(required=False, allow_blank=True, default="")
@@ -149,6 +185,10 @@ class BulkSerializer(serializers.Serializer):
     overtime_max_minutes = serializers.IntegerField(required=False, allow_null=True, min_value=0, max_value=24 * 60)
     waive_late = serializers.BooleanField(required=False, default=False)
     has_note = serializers.ChoiceField(choices=["", "1", "0"], required=False, default="")      # G12f.3.1
+    # G17-6: minutes per day as HR typed them (pay_overtime); state "decided" = the list of decided days
+    overtime = serializers.DictField(child=serializers.IntegerField(min_value=0, max_value=24 * 60), required=False,
+                                     default=dict)
+    state = serializers.ChoiceField(choices=["", "decided"], required=False, default="")
 
     def validate(self, attrs):
         if attrs["action"] == "reject" and not attrs["note"].strip():
@@ -168,6 +208,8 @@ class BulkDecideView(APIView):
         ser.is_valid(raise_exception=True)
         d = ser.validated_data
         org, now = request.hr_org, timezone.now()
+        if d["action"] in OVERTIME_ACTIONS:                                            # G17-6
+            return _overtime(request, org, d, now)
         if d.get("ids"):
             days = list(_days_qs(org).filter(id__in=d["ids"]))
             dates = [x.date for x in days] or [now.date()]
@@ -197,6 +239,7 @@ class BulkDecideView(APIView):
                else PayrollSettings.for_org(org).overtime_daily_cap_minutes)
         note = d["note"].strip()
         audits, trimmed, over = [], [], 0
+        batch = new_batch()                                                             # G17-6: Urungkan
         with transaction.atomic():
             for day, r in todo:
                 before = _snapshot(day)
@@ -229,12 +272,32 @@ class BulkDecideView(APIView):
                     target_type=day._meta.label_lower, target_id=str(day.pk),
                     summary=f"{day.employee.full_name} {day.date:%d-%m-%Y}: {summary}"[:255],
                     data={"before": before, "after": _snapshot(day), "note": note, "bulk": True,
-                          "proposed": r.overtime_proposed_minutes, "cap": cap}))
+                          "proposed": r.overtime_proposed_minutes, "cap": cap, "batch": batch}))
             AuditEntry.objects.bulk_create(audits, batch_size=500)
         overtime = sum(day.overtime_approved_minutes or 0 for day, _ in todo) if d["action"] == "approve" else 0
         return Response({"success": True, "decided": len(todo), "skipped": skipped, "overtime_minutes": overtime,
                          "cap_minutes": cap, "trimmed_count": len(trimmed), "trimmed": trimmed[:50],
-                         "over_legal_days": over})
+                         "over_legal_days": over, "batch": batch if todo else None})
+
+
+def _overtime(request, org, d, now):
+    """G17-6: pay_overtime / no_overtime / reset, on ticked rows or the whole filter, decided days included."""
+    if d.get("ids"):
+        days = list(_days_qs(org).filter(id__in=d["ids"]))
+        dates = [x.date for x in days] or [now.date()]
+        leaves = leaves_between(org.id, min(dates), max(dates))
+        ctx = night_context(org.id, None, min(dates), max(dates))
+        todo = [(day, evaluate(as_pending(day), now, leave=leaves.get((day.employee_id, day.date), ""), ctx=ctx))
+                for day in days]
+    else:
+        _, start, end = _period(org, d["month"])
+        found, _ = with_note_filter(org, days_for(org, start, end, now, d["state"], d["kind"], d["q"]), start, end,
+                                    d["has_note"])
+        todo = [(day, r) for day, r, _ in found]
+    if len(todo) > MAX_BULK:
+        return Response({"success": False, "message": f"Maksimal {MAX_BULK} hari sekali proses. Saring dulu per jenis."},
+                        status=status.HTTP_400_BAD_REQUEST)
+    return decide_overtime(request, org, d["action"], todo, d["overtime"], d["waive_late"], d["note"].strip())
 
 
 def _mark_away(request, org, todo, skipped, note):
@@ -242,6 +305,7 @@ def _mark_away(request, org, todo, skipped, note):
     from .models import AttendanceExemption
     reason = f"Tugas luar: {note}"[:200]
     done, audits = 0, []
+    batch = new_batch()                                                                 # G17-6: Urungkan
     with transaction.atomic():
         for day, _ in todo:
             emp = day.employee
@@ -256,15 +320,16 @@ def _mark_away(request, org, todo, skipped, note):
                 organization=org, actor=request.user, action="attendance.exemption_create",
                 target_type=emp._meta.label_lower, target_id=str(emp.pk),
                 summary=f"{emp.full_name}: tugas luar {day.date:%d-%m-%Y} ({note})"[:255],
-                data={"bulk": True, "day": str(day.pk), "exemption": str(x.pk), "reason": reason}))
+                data={"bulk": True, "day": str(day.pk), "exemption": str(x.pk), "reason": reason, "batch": batch}))
             done += 1
         AuditEntry.objects.bulk_create(audits, batch_size=500)
     return Response({"success": True, "decided": done, "skipped": skipped, "overtime_minutes": 0, "cap_minutes": None,
-                     "trimmed_count": 0, "trimmed": [], "over_legal_days": 0})
+                     "trimmed_count": 0, "trimmed": [], "over_legal_days": 0, "batch": batch if done else None})
 
 
 # ── G12g: repairing days the old 240-minute default cut ─────────────────────────────────────────
-DECISION_ACTIONS = ("attendance.approve", "attendance.reject", "attendance.reset", "attendance.overtime_uncap")
+DECISION_ACTIONS = ("attendance.approve", "attendance.reject", "attendance.reset", "attendance.overtime_uncap",
+                    "attendance.overtime_pay", "attendance.overtime_none", "attendance.undo")          # G17-6
 
 
 def capped_bulk_days(org, start, end, now, employee_no=""):
