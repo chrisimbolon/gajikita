@@ -57,6 +57,8 @@ export interface RunSummary {
   employer_cost: string;
   warnings:      number;
   negative?:     number;                  // G17-0: people whose net pay is below zero (blocks locking)
+  typed_items?:  number;                  // G13 part 2: lost when the run is deleted
+  corrections?:  number;
 }
 
 export interface RegisterColumn { code: string; label: string; side: "earnings" | "deductions" }
@@ -173,8 +175,8 @@ export const payrollApi = {
     const { data } = await api.get(`/api/hr/payroll/runs/${id}/`);
     return data;
   },
-  async deleteRun(id: string): Promise<void> {
-    await api.delete(`/api/hr/payroll/runs/${id}/`);
+  async deleteRun(id: string, confirm = ""): Promise<void> {
+    await api.delete(`/api/hr/payroll/runs/${id}/`, { params: confirm ? { confirm } : {} });
   },
   async recalculate(id: string): Promise<RunDetail> {
     const { data } = await api.post(`/api/hr/payroll/runs/${id}/recalculate/`, {}, { timeout: 120000 });
@@ -208,6 +210,29 @@ export const payrollApi = {
   async saveItemGrid(runId: string, body: ItemGridSave): Promise<ItemGrid> {
     const { data } = await api.post(`/api/hr/payroll/runs/${runId}/items/grid/`, body, { timeout: 120000 });
     return data;
+  },
+};
+
+// G13 part 2: loans. Mirrors backend/apps/payroll/loan_views.py.
+export interface Loan {
+  id: string; employee: { id: string; employee_no: string; full_name: string };
+  amount: string; installment: string; kasbon: boolean; start_month: string; start_label: string; note: string;
+  state: "active" | "paid" | "cancelled"; state_label: string; paid: string; planned: string; remaining: string;
+  this_month: { run: string; run_name: string; amount: string } | null;
+  history: { run: string; amount: string; locked: boolean }[];
+}
+export const loanApi = {
+  async loans(show: "active" | "all"): Promise<{ loans: Loan[]; total_remaining: string }> {
+    const { data } = await api.get("/api/hr/payroll/loans/", { params: { show } });
+    return data;
+  },
+  async createLoan(body: { employee: string; amount: string; installment: string; start_month: string; note: string }): Promise<Loan> {
+    const { data } = await api.post("/api/hr/payroll/loans/", body, { timeout: 120000 });
+    return data.loan;
+  },
+  async updateLoan(id: string, body: { installment?: string; note?: string; run?: string; this_month?: string; action?: "cancel" }): Promise<Loan> {
+    const { data } = await api.patch(`/api/hr/payroll/loans/${id}/`, body, { timeout: 120000 });
+    return data.loan;
   },
 };
 
