@@ -170,6 +170,8 @@ class Command(BaseCommand):
     def _print(self, run, sheet, summary, diffs, book_only, sg_only, out):
         w = self.stdout.write
         w(f"{run.name} ({run.period_start} – {run.period_end})  vs  buku sheet '{sheet}'\n")
+        calc = run.calculated_at.astimezone().strftime("%d-%m-%Y %H:%M") if run.calculated_at else "-"
+        w(f"Run id {run.id} · dihitung {calc} · {run.get_status_display()}\n")          # G13 part 2
         w(f"{'Nama':<28}{'SeeGaji':>14}{'Buku':>14}{'Selisih':>13}  Status")
         for r in summary:
             w(f"{r[1][:27]:<28}{rp(r[4]):>14}{rp(r[5]):>14}{rp(r[6]):>13}  {r[7]}")
