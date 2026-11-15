@@ -10,7 +10,7 @@
 import { readErrors } from "@/lib/api/hr";
 import { LineDetail, RunDetail, dayLabel, payrollApi, periodLabel } from "@/lib/api/payroll";
 import { rupiah } from "@/lib/format";
-import { AlertTriangle, ArrowLeft, Download, Landmark, Loader2, Lock, Printer, RefreshCw, Trash2, Unlock, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, Landmark, Loader2, Lock, Printer, RefreshCw, Table, Trash2, Unlock, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -343,6 +343,8 @@ export default function PayRunPage() {
               <RefreshCw size={15} style={busy ? { animation: "spin 1s linear infinite" } : undefined} /> Hitung ulang
             </button>
           )}
+          <Link href={`/dashboard/payroll/run/item?id=${id}`} className="btn-ghost"                 // G13
+                style={{ display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}><Table size={15} /> Item manual</Link>
           <button className="btn-ghost" onClick={download} style={{ display: "flex", alignItems: "center", gap: 6 }}><Download size={15} /> CSV</button>
           <a href={`/cetak/slip?run=${id}`} target="_blank" rel="noreferrer" className="btn-ghost"
              style={{ display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}><Printer size={15} /> Slip gaji</a>
