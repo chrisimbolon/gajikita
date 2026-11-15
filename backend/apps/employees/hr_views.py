@@ -126,6 +126,24 @@ class EmployeeListView(APIView):
                         status=status.HTTP_201_CREATED)
 
 
+def _days_follow_shift(emp, actor):
+    """G17-5.1 (15 Nov 2026): every attendance day keeps the shift it was created with. When HR gives the
+    employee another shift (Tari and Dila: Pagi -> Kantor with Saturday until 12:00), the days not yet in a
+    LOCKED payroll follow it; locked days never change. Without this the old shift kept judging October, and
+    5 Saturdays x 5 hours still showed as leaving early. -> how many days moved."""
+    from apps.attendance.models import AttendanceDay
+    from apps.core.audit import record_audit
+    if emp.default_shift_id is None:
+        return 0
+    days = AttendanceDay.objects.filter(employee=emp, is_locked=False).exclude(shift_id=emp.default_shift_id)
+    n = days.update(shift=emp.default_shift)
+    if n:
+        record_audit(organization=emp.organization, actor=actor, action="attendance.shift_follow", target=emp,
+                     summary=f"{emp.full_name}: {n} hari absensi (belum dikunci) pindah ke shift {emp.default_shift.name}"[:255],
+                     after={"shift": str(emp.default_shift_id), "days": n})
+    return n
+
+
 class EmployeeDetailView(APIView):
     permission_classes = [IsCompanyHR]
 
@@ -139,7 +157,10 @@ class EmployeeDetailView(APIView):
         ser.is_valid(raise_exception=True)
         ser.save()
         emp.refresh_from_db()
-        return Response({"success": True, "employee": EmployeeSerializer(emp, context={"org": request.hr_org}).data})
+        moved = _days_follow_shift(emp, request.user) if "default_shift" in ser.validated_data else 0
+        data = EmployeeSerializer(emp, context={"org": request.hr_org}).data
+        data["shift_days_moved"] = moved                                                   # G17-5.1
+        return Response({"success": True, "employee": data})
 
 
 class EmployeeLoginView(APIView):
