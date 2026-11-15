@@ -278,8 +278,17 @@ export default function PayRunPage() {
     finally { setBusy(false); }
   };
   const remove = async () => {
-    if (!window.confirm(`Hapus ${run.name} (draft)? Item tambahan di dalamnya ikut terhapus.`)) return;
-    try { await payrollApi.deleteRun(id); window.location.href = "/dashboard/payroll"; }
+    const typed = run.typed_items ?? 0, fixes = run.corrections ?? 0;               // G13 part 2
+    let confirm = "";
+    if (typed || fixes) {
+      const answer = window.prompt(
+        `Hapus ${run.name}?\n\n${typed} item yang diketik (insentif, kubikasi, kasbon ...) dan ${fixes} koreksi HR akan HILANG ` +
+        `dan tidak bisa dikembalikan.\n\nMau menghitung ulang dari absensi? Tutup ini dan pakai "Hitung ulang": semua ketikan tetap aman.` +
+        `\n\nKetik HAPUS untuk tetap menghapus.`);
+      if ((answer ?? "").trim().toUpperCase() !== "HAPUS") return;
+      confirm = "HAPUS";
+    } else if (!window.confirm(`Hapus ${run.name} (draft)? Untuk menghitung ulang dari absensi cukup pakai "Hitung ulang".`)) return;
+    try { await payrollApi.deleteRun(id, confirm); window.location.href = "/dashboard/payroll"; }
     catch (err) { setError(readErrors(err).summary); }
   };
   const download = () => {

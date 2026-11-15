@@ -7,7 +7,7 @@
 import { readErrors } from "@/lib/api/hr";
 import { RunSummary, dayLabel, payrollApi, periodLabel } from "@/lib/api/payroll";
 import { rupiah, todayISO } from "@/lib/format";
-import { AlertTriangle, Loader2, Lock, Plus, Settings } from "lucide-react";
+import { AlertTriangle, HandCoins, Loader2, Lock, Plus, Settings } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -43,10 +43,16 @@ export default function PayrollPage() {
             lain, periksa peringatan, lalu kunci.
           </p>
         </div>
-        <Link href="/dashboard/payroll/pengaturan" className="btn-ghost"
-              style={{ display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
-          <Settings size={15} /> Pengaturan payroll
-        </Link>
+        <div style={{ display: "flex", gap: 8 }}>
+          <Link href="/dashboard/payroll/pinjaman" className="btn-ghost"                      // G13 part 2
+                style={{ display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
+            <HandCoins size={15} /> Pinjaman & kasbon
+          </Link>
+          <Link href="/dashboard/payroll/pengaturan" className="btn-ghost"
+                style={{ display: "flex", alignItems: "center", gap: 6, textDecoration: "none" }}>
+            <Settings size={15} /> Pengaturan payroll
+          </Link>
+        </div>
       </div>
 
       <div className="card" style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
