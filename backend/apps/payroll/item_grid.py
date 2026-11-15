@@ -186,7 +186,13 @@ class ItemGridView(APIView):
                 col = known[code]
                 item = next((i for i in line.items.all() if i.code == code), None)
                 before = str(item.amount) if item else "0"
-                if amount == 0:
+                if amount == 0 and item is not None and item.loan_id:      # G13 part 2: a loan skips this month
+                    if item.amount == 0:
+                        continue
+                    item.amount = Decimal("0")
+                    item.save(update_fields=["amount"])
+                    summary = f"{col['label']} ditunda bulan ini"
+                elif amount == 0:
                     if item is None:
                         continue
                     item.delete()
