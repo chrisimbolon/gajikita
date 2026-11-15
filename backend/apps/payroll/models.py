@@ -12,6 +12,7 @@ Payroll in the database (G8b part 1, 1 Nov 2026).
   PayRunItem       an extra line on one employee's slip: per-m3 pay, an incentive, a loan
                    repayment, PPh 21, any deduction. "Recurring" items are copied into
                    the next run automatically (e.g. Insentif BPJS Kesehatan).
+  EmployeeLoan     G13 part 2: a loan or kasbon entered once; every draft run deducts it (loans.py).
 """
 import uuid
 from datetime import time
@@ -173,6 +174,8 @@ class PayRunItem(TenantScopedModel):
     unit      = models.CharField(max_length=15, blank=True, default="")
     recurring = models.BooleanField(default=False, verbose_name="Ulangi tiap bulan")
     note      = models.CharField(max_length=255, blank=True, default="")
+    loan      = models.ForeignKey("EmployeeLoan", null=True, blank=True, on_delete=models.SET_NULL,
+                                  related_name="repayments")                            # G13 part 2
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -181,3 +184,33 @@ class PayRunItem(TenantScopedModel):
 
     def _resolve_organization(self):
         return self.line.organization if self.line_id else None
+
+
+class EmployeeLoan(TenantScopedModel):
+    """G13 part 2 (15 Nov 2026): a loan or kasbon, entered once. See loans.py."""
+    class Status(models.TextChoices):
+        ACTIVE    = "active",    "Aktif"
+        CANCELLED = "cancelled", "Dihentikan"
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee    = models.ForeignKey("employees.Employee", on_delete=models.PROTECT, related_name="loans")
+    amount      = models.DecimalField(max_digits=14, decimal_places=2,
+                                      verbose_name="Sisa yang harus dibayar (saat dicatat)")
+    installment = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Potongan per bulan")
+    start_month = models.DateField(verbose_name="Mulai dipotong (bulan gaji, tanggal 1)")
+    note        = models.CharField(max_length=120, blank=True, default="")
+    status      = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    created_by  = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="+")
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "Pinjaman karyawan"
+        ordering = ["start_month", "created_at"]
+
+    @property
+    def is_kasbon(self):
+        return self.installment >= self.amount
+
+    def _resolve_organization(self):
+        return self.employee.organization if self.employee_id else None
