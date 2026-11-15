@@ -9,6 +9,7 @@ from apps.attendance.dashboard import SummaryView
 from apps.payroll.payrun_views import (ItemDeleteView, LineDetailView, LineItemsView, RunDetailView, RunListView,
                                        RunLockView, RunRecalculateView, SettingsView)
 from apps.payroll.slip_views import SlipsView, TransfersView
+from apps.payroll.item_grid import ItemGridView                                            # G13
 from apps.leave.hr_views import HrLeaveAttachmentView, HrLeaveBalanceView, HrLeaveDecideView, HrLeaveListView
 
 from .hr_views import EmployeeDetailView, EmployeeListView, EmployeeLoginView
@@ -85,6 +86,7 @@ urlpatterns = [
     path("payroll/runs/<uuid:pk>/lines/<uuid:line_id>/",         LineDetailView.as_view(),     name="hr-payroll-line"),
     path("payroll/runs/<uuid:pk>/lines/<uuid:line_id>/items/",   LineItemsView.as_view(),      name="hr-payroll-items"),
     path("payroll/runs/<uuid:pk>/items/<uuid:item_id>/",         ItemDeleteView.as_view(),     name="hr-payroll-item"),
+    path("payroll/runs/<uuid:pk>/items/grid/",                   ItemGridView.as_view(),       name="hr-payroll-item-grid"),   # G13
     path("payroll/runs/<uuid:pk>/slips/",                        SlipsView.as_view(),          name="hr-payroll-slips"),
     path("payroll/runs/<uuid:pk>/transfers/",                    TransfersView.as_view(),      name="hr-payroll-transfers"),
 ]
