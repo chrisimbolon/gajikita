@@ -122,6 +122,7 @@ export interface RekapData {
 export interface ReviewPeriodRow extends DayRow { kinds: string[]; over_legal: boolean }
 export interface ReviewPeriodData {
   month: string; label: string; start: string; end: string; prev: string; next: string; kind: string;
+  state?: "" | "decided"; pending_all?: number; decided_all?: number;          // G17-6
   all: number; total: number; page: number; pages: number;
   kinds: { key: string; label: string; count: number }[];
   over_legal: number; legal_day_minutes: number; cap_minutes: number | null;   // G12g
@@ -129,12 +130,18 @@ export interface ReviewPeriodData {
   rows: ReviewPeriodRow[];
 }
 export interface BulkTrimmed { name: string; date: string; proposed: number; approved: number }
+export interface BulkSkipped { name: string; date: string; message: string }
 export interface BulkDecideResult {
   decided: number; skipped: number; overtime_minutes: number;
+  batch?: string | null; skipped_list?: BulkSkipped[];                        // G17-6: Urungkan
   cap_minutes: number | null; trimmed_count: number; trimmed: BulkTrimmed[]; over_legal_days: number;   // G12g
 }
 export interface BulkDecideBody {
-  action: "approve" | "reject" | "away"; note: string; waive_late: boolean; overtime_max_minutes: number | null;   // G17-3
+  action: "approve" | "reject" | "away" | "pay_overtime" | "no_overtime" | "reset";   // G17-3, G17-6
+  note: string; waive_late: boolean;
+  overtime_max_minutes?: number | null;           // left out = the limit in Pengaturan payroll
+  overtime?: Record<string, number>;              // G17-6: pay_overtime, minutes per day as typed
+  state?: "" | "decided";
   ids?: string[]; month?: string; kind?: string; q?: string;
   has_note?: "" | "1" | "0";                                                  // G12f.3: same filter as the list
 }
@@ -142,12 +149,16 @@ export interface BulkDecideBody {
 export interface RekapParams { month?: string; q?: string; site?: string; shift?: string; problems?: string; page?: number }
 
 export const attendanceApi = {
-  async reviewPeriod(params: { month?: string; kind?: string; q?: string; page?: number; has_note?: string }): Promise<ReviewPeriodData> {
+  async reviewPeriod(params: { month?: string; kind?: string; q?: string; page?: number; has_note?: string; state?: string }): Promise<ReviewPeriodData> {
     const { data } = await api.get("/api/hr/attendance/review/period/", { params, timeout: 120000 });
     return data;
   },
   async bulkDecide(body: BulkDecideBody): Promise<BulkDecideResult> {
     const { data } = await api.post("/api/hr/attendance/review/bulk/", body, { timeout: 300000 });
+    return data;
+  },
+  async undoBulk(batch: string): Promise<{ undone: number; skipped: number; skipped_list?: BulkSkipped[] }> {   // G17-6
+    const { data } = await api.post("/api/hr/attendance/review/undo/", { batch }, { timeout: 300000 });
     return data;
   },
   async rekap(params: RekapParams): Promise<RekapData> {
