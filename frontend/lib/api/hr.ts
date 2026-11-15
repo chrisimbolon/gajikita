@@ -76,6 +76,7 @@ export interface Employee {
   sites:             string[];
   default_site:      string | null;
   default_shift:     string | null;
+  shift_days_moved?: number;           // G17-5.1: only in the answer to a save
   mandor:            string | null;
   status:            "active" | "resigned";
   login_phone:       string | null;

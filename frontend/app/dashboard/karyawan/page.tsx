@@ -191,6 +191,7 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [summary, setSummary] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [moved, setMoved] = useState(0);                       // G17-5.1: days that followed a new shift
   const [saving, setSaving] = useState(false);
 
   const set = <K extends keyof Form>(key: K, value: Form[K]) => {
@@ -204,6 +205,7 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
                                          fixed_allowance: form.fixed_allowance || "0" };
     try {
       let emp = employee ? await hrApi.updateEmployee(employee.id, body) : await hrApi.createEmployee(body);
+      setMoved(emp.shift_days_moved ?? 0);
       if (employee && machineIdsChanged) {                       // G12f.1b: IDs on the other machines
         try {
           const r = await machineApi.setEmployeeIds(emp.id, shownMachines.map((m) => (
@@ -391,7 +393,9 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
       </div>
 
       {summary && <div style={{ color: "var(--danger)", fontSize: 13.5, margin: "8px 0" }}>{summary}</div>}
-      {saved && !summary && <div style={{ color: "var(--workshop)", fontSize: 13.5, margin: "8px 0", fontWeight: 600 }}>Tersimpan.</div>}
+      {saved && !summary && <div style={{ color: "var(--workshop)", fontSize: 13.5, margin: "8px 0", fontWeight: 600 }}>
+        Tersimpan.{moved > 0 && ` ${moved} hari absensi yang belum dikunci sekarang memakai shift ini. Hitung ulang payroll supaya angkanya ikut berubah.`}
+      </div>}
       <button className="btn-rust" onClick={save} disabled={saving} style={{ width: "100%", justifyContent: "center", marginTop: 6 }}>
         {saving ? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /> : <Save size={16} />}
         {employee ? "Simpan perubahan" : "Simpan karyawan"}
