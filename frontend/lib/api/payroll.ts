@@ -201,7 +201,31 @@ export const payrollApi = {
     const { data } = await api.delete(`/api/hr/payroll/runs/${runId}/items/${itemId}/`);
     return data.line;
   },
+  async itemGrid(runId: string): Promise<ItemGrid> {                                    // G13
+    const { data } = await api.get(`/api/hr/payroll/runs/${runId}/items/grid/`);
+    return data;
+  },
+  async saveItemGrid(runId: string, body: ItemGridSave): Promise<ItemGrid> {
+    const { data } = await api.post(`/api/hr/payroll/runs/${runId}/items/grid/`, body, { timeout: 120000 });
+    return data;
+  },
 };
+
+// G13 part 1: manual items for everyone in one table. Mirrors backend/apps/payroll/item_grid.py.
+export interface GridColumn { code: string; label: string; kind: "earning" | "deduction"; standard: boolean; recurring: boolean; count: number }
+export interface ItemGridRow {
+  line: string; employee: { id: string; employee_no: string; full_name: string };
+  cells: Record<string, string>; multi: string[]; loan_balance: string | null; net: string;
+}
+export interface ItemGrid {
+  run: { id: string; name: string; locked: boolean }; columns: GridColumn[]; rows: ItemGridRow[];
+  changed?: number; recalculated?: number;
+}
+export interface ItemGridSave {
+  cells: { line: string; code: string; amount: string }[];
+  columns: { code: string; label?: string; kind?: string; recurring?: boolean }[];
+  loan_balance: { line: string; value: string | null }[];
+}
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
