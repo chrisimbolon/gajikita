@@ -215,8 +215,8 @@ def calculate_line(line, cfg):
         overtime_days=ot_days, overtime_hours=ot_hours, rest_days_worked=rest_days,
         meal_days=pick("meal_days"), breakfast_days=pick("breakfast_days"),               # G12e
         late_minutes=pick("late_minutes"), unpaid_days=unpaid,
-        additions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.EARNING),
-        deductions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.DEDUCTION),
+        additions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.EARNING and i.amount),
+        deductions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.DEDUCTION and i.amount),   # 0 = skipped
     )
     slip = engine.calculate(terms, period, rules)
     if nums.get("review_days"):
@@ -251,6 +251,11 @@ def calculate_line(line, cfg):
     return line
 
 
+def sync_loans(line, run):
+    from .loans import sync_line
+    sync_line(line, run)
+
+
 def _settings(run):
     return PayrollSettings.for_org(run.organization)
 
@@ -272,6 +277,7 @@ def calculate_run(run, now=None, refresh=True):
         leaves = _leaves_by_employee(run.organization, run.period_start, run.period_end, ids) if refresh else {}
         ctx = night_context(run.organization_id, ids, run.period_start, run.period_end) if refresh else None
         for line in existing.values():
+            sync_loans(line, run)                                                     # G13 part 2
             if refresh:
                 line.auto = collect_numbers(line.employee, run.period_start, run.period_end, cfg,
                                             days.get(line.employee_id, {}), leaves.get(line.employee_id, {}), now,

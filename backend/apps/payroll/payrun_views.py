@@ -125,6 +125,9 @@ def _run_summary(run):
         "employer_cost": _money(sum((l.employer_cost for l in lines), Decimal("0"))),
         "warnings": sum(l.warning_count for l in lines),
         "negative": sum(1 for l in lines if l.net < 0),                              # G17-0
+        # G13 part 2: what deleting the run would throw away (loan deductions come back by themselves)
+        "typed_items": PayRunItem.objects.filter(line__run=run, loan__isnull=True).count(),
+        "corrections": sum(1 for l in lines if l.override),
     }
 
 
@@ -188,8 +191,14 @@ class RunDetailView(APIView):
         run = get_object_or_404(_runs(request.hr_org), pk=pk)
         if run.is_locked:
             return _error(LOCKED)
+        typed = PayRunItem.objects.filter(line__run=run, loan__isnull=True).count()        # G13 part 2
+        fixes = sum(1 for o in run.lines.values_list("override", flat=True) if o)
+        if (typed or fixes) and request.query_params.get("confirm") != "HAPUS":
+            return _error(f"{run.name} berisi {typed} item yang diketik dan {fixes} koreksi HR. Semuanya akan hilang. "
+                          f"Untuk menghitung ulang dari absensi pakai \"Hitung ulang\" (semua ketikan tetap aman).")
         record_audit(organization=run.organization, actor=request.user, action="payroll.delete", target=run,
-                     summary=f"{run.name} (draft) dihapus")
+                     summary=f"{run.name} (draft) dihapus" + (f" ({typed} item diketik, {fixes} koreksi ikut hilang)"
+                                                             if typed or fixes else ""))
         run.delete()
         return Response({"success": True})
 
