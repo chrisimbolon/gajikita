@@ -15,6 +15,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 MIN_PEOPLE = 5          # fewer than 5 people missing taps on one date is just a normal day
 MIN_SHARE = Decimal("0.4")
+LEFT_AFTER_DAYS = 5     # G17-7.2: 5+ working days in a row with no tap after the last one = maybe left
 
 
 def late_charge(late, early, tolerance):
