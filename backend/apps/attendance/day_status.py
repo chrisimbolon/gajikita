@@ -262,7 +262,7 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
             early = _minutes(end_dt - last_out)
             if early > 0 and not night_off and not out_only:      # G17-1: a lone clock-out is the ½-day rule
                 result.early_minutes = early
-                if not on_leave and not permitted:                                  # G17-4
+                if not on_leave and not permitted and not waive_late:               # G17-4; G17-7: forgiven = whole day
                     tags.append(Status.EARLY_OUT)
             overtime = _minutes(last_out - end_dt)
         else:
