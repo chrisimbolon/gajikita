@@ -19,6 +19,8 @@ pay_overtime / no_overtime also CHANGE days already decided (state "decided" on 
 and HR's ½-day decision stay as they were. Rejected days are skipped (Kembalikan ke belum first). Locked days
 are never touched. Every change is one audit line carrying the batch id.
 
+  forgive        G17-7: late, early leave and the one-tap ½ day of those days are not fined (waive_late); a day
+                 with nothing else open becomes "approved", one with open overtime keeps waiting for it
 POST /api/hr/attendance/review/undo/  {"batch": "..."}
   puts every day of that batch back as it was (also bulk Setujui / Tolak / Tugas luar). A day changed again
   since, or locked, is left alone and listed.
@@ -41,9 +43,9 @@ from .day_status import Status
 from .models import AttendanceDay, AttendanceExemption
 from .review_kinds import capped_overtime, over_legal
 
-OVERTIME_ACTIONS = ("pay_overtime", "no_overtime", "reset")
+OVERTIME_ACTIONS = ("pay_overtime", "no_overtime", "reset", "forgive")          # G17-7: forgive
 AUDIT_ACTION = {"pay_overtime": "attendance.overtime_pay", "no_overtime": "attendance.overtime_none",
-                "reset": "attendance.reset"}
+                "reset": "attendance.reset", "forgive": "attendance.forgive"}
 BATCH = re.compile(r"^[0-9a-f]{32}$")
 
 
@@ -77,7 +79,23 @@ def decide_overtime(request, org, action, todo, minutes_by_id, waive_late, note)
                 skip(day, "payroll sudah dikunci")
                 continue
             before = snapshot(day)
-            if action == "reset":
+            if action == "forgive":                       # G17-7: late, early leave and the one-tap ½ day
+                if day.decision == "rejected":
+                    skip(day, "ditolak: kembalikan ke belum dulu")
+                    continue
+                if day.waive_late:
+                    skip(day, "sudah dimaafkan")
+                    continue
+                day.waive_late = True
+                if note:
+                    day.decision_note = note[:1000]
+                open_ot = (r.overtime_proposed_minutes or 0) and day.overtime_approved_minutes is None
+                if not day.decision and not open_ot:      # nothing else to decide: the day is settled
+                    day.decision = "approved"
+                    day.decided_by, day.decided_at = request.user, now
+                summary = "Dimaafkan (terlambat / pulang cepat / tap sekali)" + (f": {note}" if note else "") + \
+                          (" · lembur tetap menunggu" if open_ot and not day.decision else "")
+            elif action == "reset":
                 if not day.decision:
                     skip(day, "belum diputuskan")
                     continue
