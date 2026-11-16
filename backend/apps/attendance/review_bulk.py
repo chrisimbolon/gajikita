@@ -329,7 +329,8 @@ def _mark_away(request, org, todo, skipped, note):
 
 # ── G12g: repairing days the old 240-minute default cut ─────────────────────────────────────────
 DECISION_ACTIONS = ("attendance.approve", "attendance.reject", "attendance.reset", "attendance.overtime_uncap",
-                    "attendance.overtime_pay", "attendance.overtime_none", "attendance.undo")          # G17-6
+                    "attendance.overtime_pay", "attendance.overtime_none", "attendance.undo",          # G17-6
+                    "attendance.forgive")                                                              # G17-7
 
 
 def capped_bulk_days(org, start, end, now, employee_no=""):
