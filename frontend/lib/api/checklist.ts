@@ -15,13 +15,16 @@ export interface CkOvertimePerson { employee: CkEmployee; days: CkOvertimeDay[];
 export interface CkMissingPerson { employee: CkEmployee; days: CkMissingDay[]; cut_days: number; rupiah: number }
 export interface CkLatePerson { employee: CkEmployee; days: CkLateDay[]; minutes: number; rupiah: number; count: number }
 export interface CkSuggestion { start: string; end: string; people: number; peak: number; names: string[]; absent: number; one_tap: number }
-export interface CkNoTrack { employee: CkEmployee; expected: number; tapped: number; complete: number; start: string }   // G17-7.1
+export interface CkNoTrack {                                                               // G17-7.1, G17-7.2
+  employee: CkEmployee; kind: "notrack" | "left"; expected: number; tapped: number; complete: number; start: string;
+  last_tap: string | null; missing_after: number;
+}
 
 export interface Checklist {
   month: string; label: string; start: string; end: string; prev: string; next: string;
   rules: { late_fine_per_minute: string; late_tolerance_minutes: number; fine_set: boolean; single_tap_half_day: boolean; overtime_cap_minutes: number | null };
   no_track: CkNoTrack[];
-  import: { days: number; people: number; employees: number; last_import: string | null };
+  import: { days: number; people: number; employees: number; last_import: string | null; until: string; short: boolean };
   events: { existing: { id: string; start: string; end: string; kind: string; kind_label: string; reason: string }[]; suggestions: CkSuggestion[] };
   notes: { total: number; todo: number } | null;
   overtime: { open_days: number; people: CkOvertimePerson[]; proposed: number; decided_days: number };
