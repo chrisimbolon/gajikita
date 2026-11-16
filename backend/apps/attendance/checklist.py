@@ -107,7 +107,7 @@ def build(org, month=None, now=None):
     last_data = (ClockEvent.objects.filter(organization=org, day__date__gte=start, day__date__lte=end)
                  .aggregate(m=Max("day__date"))["m"])                               # G17-7.2
     until = min(end, today, last_data) if last_data else min(end, today)
-    tapped_days, tapped_people = 0, set()
+    tapped_days, tapped_people, not_imported = 0, set(), set()
     per_date = defaultdict(list)                          # date -> [(employee, "ok" | "absent" | "one")]
     person = defaultdict(lambda: {"expected": 0, "problems": 0, "tapped": 0, "complete": 0, "seq": []})
     covered_dates, off_for_all = set(), defaultdict(lambda: [0, 0])
@@ -137,7 +137,10 @@ def build(org, month=None, now=None):
                 tapped_people.add(emp.id)
             # expected to tap that day (for the power-cut pattern)
             expected = r.status not in (Status.DAY_OFF, Status.LEAVE, Status.EXEMPT, Status.NOT_YET) \
-                and not r.disrupted and not r.holiday and d <= until     # G17-7.2: not imported yet != absent
+                and not r.disrupted and not r.holiday
+            if expected and d > until:                     # G17-7.2: not imported yet != absent
+                not_imported.add(d)                        # (G17-7.2.1: only working days count, not a last Sunday)
+                expected = False
             if expected:
                 forgiven_day = day is not None and day.waive_late
                 what = "absent" if r.status == Status.ABSENT else "one" if (r.half_day and not forgiven_day) else "ok"
@@ -254,7 +257,7 @@ def build(org, month=None, now=None):
         "rules": {"late_fine_per_minute": str(fine), "late_tolerance_minutes": tol, "fine_set": fine > 0,
                   "single_tap_half_day": cfg.single_tap_half_day, "overtime_cap_minutes": cap},
         "import": {"days": tapped_days, "people": len(tapped_people), "employees": len(emps),
-                   "until": until.isoformat(), "short": bool(last_data) and until < min(end, today),       # G17-7.2
+                   "until": until.isoformat(), "short": bool(last_data) and bool(not_imported),             # G17-7.2.1
                    "last_import": timezone.localtime(last_import).isoformat() if last_import else None},
         "events": {"existing": events, "suggestions": suggestions},
         "notes": note_step,
