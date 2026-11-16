@@ -137,7 +137,7 @@ export interface BulkDecideResult {
   cap_minutes: number | null; trimmed_count: number; trimmed: BulkTrimmed[]; over_legal_days: number;   // G12g
 }
 export interface BulkDecideBody {
-  action: "approve" | "reject" | "away" | "pay_overtime" | "no_overtime" | "reset";   // G17-3, G17-6
+  action: "approve" | "reject" | "away" | "pay_overtime" | "no_overtime" | "reset" | "forgive";   // G17-3, G17-6, G17-7
   note: string; waive_late: boolean;
   overtime_max_minutes?: number | null;           // left out = the limit in Pengaturan payroll
   overtime?: Record<string, number>;              // G17-6: pay_overtime, minutes per day as typed
