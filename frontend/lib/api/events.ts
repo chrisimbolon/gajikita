@@ -26,6 +26,7 @@ export interface CompanyEvent {
 export interface EventInput {
   start: string; end: string; kind: EventKind; reason: string;
   everyone: boolean; site_ids: string[]; employee_ids: string[];
+  confirm_long?: boolean;                                   // G17-7.2: "yes, this long range is right"
 }
 
 export const eventApi = {
