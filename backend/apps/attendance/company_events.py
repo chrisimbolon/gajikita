@@ -27,6 +27,7 @@ from datetime import date as Date
 DISRUPTION, HOLIDAY = "gangguan", "libur"
 LABELS = {DISRUPTION: "Gangguan absen", HOLIDAY: "Libur"}
 MAX_DAYS = 62                     # one event covers at most two pay periods; longer is a typo
+LONG_DAYS = 7                     # G17-7.2: longer than this asks "Benar?" first
 
 
 @dataclass(frozen=True)
