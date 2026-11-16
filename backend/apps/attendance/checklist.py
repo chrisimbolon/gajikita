@@ -23,12 +23,18 @@ someone at another site or security on night shifts, made every date look like a
 Now a person whose days are mostly missing taps ("chronic", 50%+ of their working days) is left out of the
 power-cut pattern and suggested once as "Tidak wajib absen?" instead (step "Siapa yang tidak perlu absen?").
 
+G17-7.2 (16 Nov 2026): (1) someone who tapped, then has 5+ working days in a row with no tap up to the end of the
+data ("left", Nur Aji: last tap 1 Okt) is asked "Sudah keluar?" (fills Tanggal keluar) instead of "Tidak wajib
+absen?"; (2) days after the last tap in the company's data are "not imported yet", never "absent": a mid-month
+import can't make everyone look gone or suggest a power cut for the days not imported.
+
 Only days up to today are counted; locked days are left out of the lists (they can't change).
 """
 from collections import defaultdict
 from datetime import date as Date, timedelta
 from decimal import Decimal
 
+from django.db.models import Max
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
@@ -98,9 +104,12 @@ def build(org, month=None, now=None):
     tol, fine = cfg.late_tolerance_minutes, Decimal(cfg.late_fine_per_minute or 0)
     cap = cfg.overtime_daily_cap_minutes
 
+    last_data = (ClockEvent.objects.filter(organization=org, day__date__gte=start, day__date__lte=end)
+                 .aggregate(m=Max("day__date"))["m"])                               # G17-7.2
+    until = min(end, today, last_data) if last_data else min(end, today)
     tapped_days, tapped_people = 0, set()
     per_date = defaultdict(list)                          # date -> [(employee, "ok" | "absent" | "one")]
-    person = defaultdict(lambda: {"expected": 0, "problems": 0, "tapped": 0, "complete": 0})
+    person = defaultdict(lambda: {"expected": 0, "problems": 0, "tapped": 0, "complete": 0, "seq": []})
     covered_dates, off_for_all = set(), defaultdict(lambda: [0, 0])
     ot, miss, late = {}, {}, {}
     ot_decided = 0
@@ -128,7 +137,7 @@ def build(org, month=None, now=None):
                 tapped_people.add(emp.id)
             # expected to tap that day (for the power-cut pattern)
             expected = r.status not in (Status.DAY_OFF, Status.LEAVE, Status.EXEMPT, Status.NOT_YET) \
-                and not r.disrupted and not r.holiday
+                and not r.disrupted and not r.holiday and d <= until     # G17-7.2: not imported yet != absent
             if expected:
                 forgiven_day = day is not None and day.waive_late
                 what = "absent" if r.status == Status.ABSENT else "one" if (r.half_day and not forgiven_day) else "ok"
@@ -138,6 +147,7 @@ def build(org, month=None, now=None):
                 pp["problems"] += what != "ok"
                 pp["tapped"] += bool(r.first_in or r.last_out)
                 pp["complete"] += bool(r.first_in and r.last_out)
+                pp["seq"].append((d, what, bool(r.first_in or r.last_out)))
             if day is None or day.is_locked:
                 continue
             base = {"day_id": str(day.id), "date": d.isoformat(), "in": _t(r.first_in), "out": _t(r.last_out),
@@ -177,14 +187,26 @@ def build(org, month=None, now=None):
                     p["rupiah"] += R.rupiah_int(charged * fine)
 
     # people who (almost) never tap completely: not part of the pattern; suggested as "Tidak wajib absen?"
+    left = {}                                                                         # G17-7.2: stopped tapping
+    for eid, pp in person.items():
+        last_tap = max((d for d, _, t in pp["seq"] if t), default=None)
+        after = [w for d, w, _ in pp["seq"] if last_tap and d > last_tap]
+        if last_tap and len(after) >= R.LEFT_AFTER_DAYS and all(w == "absent" for w in after):
+            left[eid] = (last_tap, len(after))
     chronic = {eid for eid, pp in person.items()
-               if pp["expected"] >= 3 and Decimal(pp["problems"]) / Decimal(pp["expected"]) >= CHRONIC_SHARE}
+               if eid not in left and pp["expected"] >= 3 and Decimal(pp["problems"]) / Decimal(pp["expected"]) >= CHRONIC_SHARE}
     by_id = {e.id: e for e in emps}
     skip_people = _notrack_dismissed(org)
-    no_track = [{"employee": _emp(by_id[eid]), "expected": person[eid]["expected"], "tapped": person[eid]["tapped"],
-                 "complete": person[eid]["complete"], "start": max(start, by_id[eid].join_date).isoformat()}
+    no_track = [{"employee": _emp(by_id[eid]), "kind": "notrack", "expected": person[eid]["expected"],
+                 "tapped": person[eid]["tapped"], "complete": person[eid]["complete"],
+                 "start": max(start, by_id[eid].join_date).isoformat(), "last_tap": None, "missing_after": 0}
                 for eid in chronic if str(eid) not in skip_people]
-    no_track.sort(key=lambda x: (x["complete"], x["employee"]["full_name"]))
+    no_track += [{"employee": _emp(by_id[eid]), "kind": "left", "expected": person[eid]["expected"],
+                  "tapped": person[eid]["tapped"], "complete": person[eid]["complete"],
+                  "start": max(start, by_id[eid].join_date).isoformat(), "last_tap": lt.isoformat(), "missing_after": n}
+                 for eid, (lt, n) in left.items() if str(eid) not in skip_people]
+    no_track.sort(key=lambda x: (x["kind"] != "left", x["complete"], x["employee"]["full_name"]))
+    chronic |= set(left)                                   # neither counts in the power-cut pattern
 
     # the power-cut pattern
     dismissed = _dismissed(org, start, end)
@@ -232,6 +254,7 @@ def build(org, month=None, now=None):
         "rules": {"late_fine_per_minute": str(fine), "late_tolerance_minutes": tol, "fine_set": fine > 0,
                   "single_tap_half_day": cfg.single_tap_half_day, "overtime_cap_minutes": cap},
         "import": {"days": tapped_days, "people": len(tapped_people), "employees": len(emps),
+                   "until": until.isoformat(), "short": bool(last_data) and until < min(end, today),       # G17-7.2
                    "last_import": timezone.localtime(last_import).isoformat() if last_import else None},
         "events": {"existing": events, "suggestions": suggestions},
         "notes": note_step,
