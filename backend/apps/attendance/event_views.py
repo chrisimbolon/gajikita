@@ -9,7 +9,8 @@ POST   /api/hr/attendance/events/          {"start", "end", "kind", "reason", "e
 PATCH  /api/hr/attendance/events/<id>/     the same fields, all optional
 DELETE /api/hr/attendance/events/<id>/
 
-Rules: end on or after start, at most 62 days; a reason of 3+ letters; when not everyone, at least one location
+Rules: end on or after start, at most 62 days; longer than 7 days needs "confirm_long": true (G17-7.2, after a
+12 Okt -> 14 Nov typo forgave a month of missing taps); a reason of 3+ letters; when not everyone, at least one location
 or person, all from this company; no change may touch the dates of a LOCKED payroll. Every change is audited.
 """
 from django.db import transaction
@@ -23,7 +24,7 @@ from apps.employees.models import Employee
 from apps.organizations.permissions import IsCompanyHR
 from apps.sites.models import Site
 
-from .company_events import LABELS, MAX_DAYS
+from .company_events import LABELS, LONG_DAYS, MAX_DAYS
 from .exemption_views import _d, _locked
 from .exemptions import changed_ranges, locked_hit
 from .models import CompanyEvent
@@ -55,8 +56,26 @@ def who_text(everyone, sites, people):
     return " · ".join(parts)
 
 
-def _bad(message):
-    return Response({"success": False, "message": message}, status=status.HTTP_400_BAD_REQUEST)
+def _bad(message, code=None):
+    body = {"success": False, "message": message}
+    if code:
+        body["code"] = code
+    return Response(body, status=status.HTTP_400_BAD_REQUEST)
+
+
+def _long_problem(d, fields, x=None):
+    """G17-7.2: a new or changed range longer than LONG_DAYS asks "Benar?" once (the screen resends confirm_long)."""
+    days = (fields["end"] - fields["start"]).days + 1
+    if days <= LONG_DAYS or d.get("confirm_long"):
+        return None
+    if x is not None and (x.start, x.end) == (fields["start"], fields["end"]):
+        return None                                    # dates unchanged: only the reason or the people changed
+    span = f"{_d(fields['start'])} s/d {_d(fields['end'])}"
+    if fields["kind"] == "libur":
+        return (f"Libur ini {days} hari ({span}). Benar? Semua hari di rentang ini jadi libur: yang tidak masuk "
+                f"tidak dipotong, yang masuk dihitung lembur hari libur.")
+    return (f"Kejadian ini {days} hari ({span}). Benar? Mati lampu atau mesin rusak biasanya 1-3 hari. "
+            f"Semua tap yang hilang di rentang ini akan dimaafkan.")
 
 
 def _summary(x):
@@ -71,6 +90,7 @@ class EventInput(serializers.Serializer):
     everyone = serializers.BooleanField(required=False)
     site_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     employee_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
+    confirm_long = serializers.BooleanField(required=False)                    # G17-7.2
 
     def validate_reason(self, value):
         value = " ".join(value.split())
@@ -137,6 +157,9 @@ class EventListView(APIView):
         if isinstance(got, str):
             return _bad(got)
         fields, sites, people = got
+        long = _long_problem(ser.validated_data, fields)
+        if long:
+            return _bad(long, "confirm_long")
         problem = _locked_problem(org, None, (fields["start"], fields["end"]))
         if problem:
             return _bad(problem)
@@ -163,6 +186,9 @@ class EventDetailView(APIView):
         if isinstance(got, str):
             return _bad(got)
         fields, sites, people = got
+        long = _long_problem(ser.validated_data, fields, x)
+        if long:
+            return _bad(long, "confirm_long")
         # any change re-decides every day of the old and the new range
         problem = (_locked_problem(org, (x.start, x.end), None)
                    or _locked_problem(org, None, (fields["start"], fields["end"])))
