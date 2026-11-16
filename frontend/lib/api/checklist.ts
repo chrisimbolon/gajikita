@@ -14,11 +14,13 @@ export interface CkLateDay extends CkDayBase { late: number; early: number; char
 export interface CkOvertimePerson { employee: CkEmployee; days: CkOvertimeDay[]; proposed: number }
 export interface CkMissingPerson { employee: CkEmployee; days: CkMissingDay[]; cut_days: number; rupiah: number }
 export interface CkLatePerson { employee: CkEmployee; days: CkLateDay[]; minutes: number; rupiah: number; count: number }
-export interface CkSuggestion { start: string; end: string; people: number; peak: number; names: string[] }
+export interface CkSuggestion { start: string; end: string; people: number; peak: number; names: string[]; absent: number; one_tap: number }
+export interface CkNoTrack { employee: CkEmployee; expected: number; tapped: number; complete: number; start: string }   // G17-7.1
 
 export interface Checklist {
   month: string; label: string; start: string; end: string; prev: string; next: string;
-  rules: { late_fine_per_minute: string; late_tolerance_minutes: number; single_tap_half_day: boolean; overtime_cap_minutes: number | null };
+  rules: { late_fine_per_minute: string; late_tolerance_minutes: number; fine_set: boolean; single_tap_half_day: boolean; overtime_cap_minutes: number | null };
+  no_track: CkNoTrack[];
   import: { days: number; people: number; employees: number; last_import: string | null };
   events: { existing: { id: string; start: string; end: string; kind: string; kind_label: string; reason: string }[]; suggestions: CkSuggestion[] };
   notes: { total: number; todo: number } | null;
@@ -35,5 +37,8 @@ export const checklistApi = {
   },
   async dismiss(start: string, end: string): Promise<void> {
     await api.post("/api/hr/attendance/checklist/dismiss/", { start, end });
+  },
+  async keepTracking(employee: string): Promise<void> {                                     // G17-7.1
+    await api.post("/api/hr/attendance/checklist/dismiss/", { employee });
   },
 };

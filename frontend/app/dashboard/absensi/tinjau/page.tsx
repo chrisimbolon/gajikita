@@ -6,11 +6,14 @@
 // Only overtime (money out, the SPL) and patterns (many people missing taps = a power cut?) need a decision.
 // Every action shows Urungkan. Payroll never waits for this page: open steps simply follow the rules.
 // The old day-by-day queue lives at /dashboard/absensi/tinjau/harian; the full table at .../periode.
+// G17-7.1: people who (almost) never tap completely are asked once ("Tidak wajib absen?") and left out of the
+// power-cut pattern; a missing late fine or ½-day rule says so and links to Pengaturan payroll.
 // =============================================================================
 import FingerprintImport from "@/components/FingerprintImport";
 import { attendanceApi, BulkDecideResult, minutesText } from "@/lib/api/attendance";
 import { Checklist, CkLatePerson, CkMissingPerson, CkOvertimePerson, checklistApi } from "@/lib/api/checklist";
 import { eventApi } from "@/lib/api/events";
+import { exemptionApi } from "@/lib/api/exemptions";
 import { readErrors } from "@/lib/api/hr";
 import { rupiah } from "@/lib/format";
 import { hoursText, parseHours } from "@/lib/overtimeInput";
@@ -172,6 +175,7 @@ export default function SiapGajianPage() {
   const [person, setPerson] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [reason, setReason] = useState<Record<string, string>>({});
+  const [why, setWhy] = useState<Record<string, string>>({});                     // G17-7.1: per person
 
   const load = useCallback(async () => {
     try { setData(await checklistApi.get(month)); setError(null); }
@@ -214,6 +218,23 @@ export default function SiapGajianPage() {
     finally { setBusy(false); }
   };
 
+  const noTrack = async (employeeId: string, name: string, start: string) => {
+    const r = (why[employeeId] ?? "").trim();
+    setBusy(true); setError(null);
+    try {
+      await exemptionApi.create(employeeId, { start, end: null, reason: r });
+      setDone({ text: `${name}: tidak wajib absen mulai ${dayText(start)} (${r}). Hari kerjanya dihitung hadir; bisa diakhiri di halaman Karyawan.`, batch: null });
+      await load();
+    } catch (err) { setError(readErrors(err).summary); }
+    finally { setBusy(false); }
+  };
+  const keep = async (employeeId: string, name: string) => {
+    setBusy(true);
+    try { await checklistApi.keepTracking(employeeId); setDone({ text: `${name}: tetap wajib absen. Tidak ditanyakan lagi.`, batch: null }); await load(); }
+    catch (err) { setError(readErrors(err).summary); }
+    finally { setBusy(false); }
+  };
+
   if (!data) return error ? <div className="card" style={{ color: "var(--danger)" }}>{error}</div>
                           : <div style={{ padding: 24 }}><Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} /></div>;
 
@@ -221,12 +242,13 @@ export default function SiapGajianPage() {
   const st = {
     import: (data.import.days > 0 ? "done" : "todo") as State,
     events: (data.events.suggestions.length ? "todo" : "done") as State,
+    track: (data.no_track.length ? "todo" : "done") as State,
     notes: (data.notes && data.notes.todo > 0 ? "todo" : "done") as State,
     overtime: (data.overtime.open_days ? "todo" : "done") as State,
     missing: (data.missing.days ? "rule" : "done") as State,
     late: (data.late.count ? "rule" : "done") as State,
   };
-  const steps = data.notes ? 6 : 5;
+  const steps = data.notes ? 7 : 6;
   const settled = Object.entries(st).filter(([k, v]) => (k !== "notes" || data.notes) && v !== "todo").length;
   const togglePerson = (k: string) => setPerson(person === k ? null : k);
   let n = 0;
@@ -269,7 +291,7 @@ export default function SiapGajianPage() {
       {error && <div className="card" style={{ color: "var(--danger)", marginBottom: 12 }}>{error}</div>}
 
       <Step n={++n} state={st.import} title="File mesin"
-            summary={data.import.days ? <><b>{data.import.days} hari kerja</b> dari {data.import.people} dari {data.import.employees} karyawan
+            summary={data.import.days ? <><b>{data.import.days} hari kerja</b> · {data.import.people} dari {data.import.employees} karyawan punya tap
                        {data.import.last_import ? ` · import terakhir ${dayText(data.import.last_import.slice(0, 10))} ${data.import.last_import.slice(11, 16)}` : ""}</>
                      : "Belum ada tap di periode ini."}
             actions={<button className="btn-ghost" onClick={() => setImporting(true)} style={{ padding: "5px 12px", fontSize: 13 }}>Import file mesin</button>} />
@@ -282,7 +304,9 @@ export default function SiapGajianPage() {
       </Step>
       {data.events.suggestions.map((s) => (
         <div key={s.start} className="card" style={{ margin: "-6px 0 12px 54px", padding: "12px 16px" }}>
-          <div style={{ fontWeight: 700 }}>{rangeText(s.start, s.end)}: {s.people} orang ({s.names.join(", ")}{s.people > s.names.length ? ", …" : ""})</div>
+          <div style={{ fontWeight: 700 }}>{rangeText(s.start, s.end)}: {s.people} orang
+            <span style={{ fontWeight: 500, color: "var(--steel)" }}> · {s.absent ? `${s.absent}× tidak tap` : ""}{s.absent && s.one_tap ? ", " : ""}{s.one_tap ? `${s.one_tap}× tap sekali` : ""}</span></div>
+          <div style={{ fontSize: 13, color: "var(--steel)" }}>{s.names.join(", ")}{s.people > s.names.length ? ", …" : ""}</div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
             <input className="input" value={reason[s.start] ?? ""} onChange={(e) => setReason({ ...reason, [s.start]: e.target.value })}
                    placeholder="Apa yang terjadi? mis. Mati lampu" style={{ width: 240, padding: "5px 8px", fontSize: 13 }} />
@@ -291,6 +315,28 @@ export default function SiapGajianPage() {
             <button className="btn-ghost" disabled={busy} onClick={() => dismiss(s)} style={{ padding: "5px 12px", fontSize: 13 }}>Bukan kejadian</button>
           </div>
           <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 6 }}>Kejadian berlaku untuk semua karyawan; ubah orang atau lokasinya di halaman Kejadian.</div>
+        </div>
+      ))}
+
+      <Step n={++n} state={st.track} title="Siapa yang tidak perlu absen?"
+            summary={data.no_track.length
+              ? <>{data.no_track.length} orang hampir tidak pernah tap lengkap. Kerja di luar, sales, manajer, atau security shift malam?</>
+              : "Semua karyawan yang wajib absen terlihat tap seperti biasa."}
+            ifNothing={data.no_track.length ? "hari tanpa tap dihitung tidak hadir dan dipotong." : undefined} />
+      {data.no_track.map((p) => (
+        <div key={p.employee.id} className="card" style={{ margin: "-6px 0 12px 54px", padding: "12px 16px" }}>
+          <div style={{ fontWeight: 700 }}>{p.employee.full_name} <span className="mono" style={{ fontSize: 12, color: "var(--steel)", fontWeight: 400 }}>{p.employee.employee_no}</span>
+            <span style={{ fontWeight: 500, color: "var(--steel)" }}> · tap lengkap {p.complete} dari {p.expected} hari kerja{p.tapped > p.complete ? `, tap sekali ${p.tapped - p.complete} hari` : ""}</span></div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
+            <input className="input" value={why[p.employee.id] ?? ""} onChange={(e) => setWhy({ ...why, [p.employee.id]: e.target.value })}
+                   placeholder="Kenapa? mis. Sales, Kerja di Lobam" style={{ width: 240, padding: "5px 8px", fontSize: 13 }} />
+            <button className="btn-rust" disabled={busy || (why[p.employee.id] ?? "").trim().length < 3}
+                    onClick={() => noTrack(p.employee.id, p.employee.full_name, p.start)} style={{ padding: "5px 12px", fontSize: 13 }}>
+              Tidak wajib absen mulai {dayText(p.start)}</button>
+            <button className="btn-ghost" disabled={busy} onClick={() => keep(p.employee.id, p.employee.full_name)} style={{ padding: "5px 12px", fontSize: 13 }}>
+              Bukan, tetap wajib absen</button>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 6 }}>Tidak wajib absen: hari kerjanya dihitung hadir, tanpa denda, lembur atau uang makan dari tap. Bisa diakhiri kapan saja di halaman Karyawan.</div>
         </div>
       ))}
 
@@ -319,7 +365,8 @@ export default function SiapGajianPage() {
       <Step n={++n} state={st.missing} title="Lupa tap (tap sekali)"
             summary={data.missing.days
               ? <><b>{data.missing.days} hari</b> dari {data.missing.people.length} orang.{" "}
-                  {data.rules.single_tap_half_day ? <>{data.missing.cut_days} hari dipotong ½ hari, ± <b>{rupiah(data.missing.rupiah)}</b>.</> : "Aturan potong ½ hari tidak aktif: tidak dipotong."}</>
+                  {data.rules.single_tap_half_day ? <>{data.missing.cut_days} hari dipotong ½ hari, ± <b>{rupiah(data.missing.rupiah)}</b>.</>
+                    : <>Aturan &quot;tap sekali = potong ½ hari&quot; belum aktif. <Link href="/dashboard/payroll/pengaturan" style={{ color: "var(--rust)" }}>Atur di Pengaturan payroll</Link></>}</>
               : "Tidak ada."}
             ifNothing={data.missing.days ? (data.rules.single_tap_half_day ? "dipotong ½ hari per hari sesuai aturan perusahaan." : "tidak ada potongan.") : undefined}
             open={!!open.missing} onToggle={data.missing.days ? () => setOpen({ ...open, missing: !open.missing }) : undefined}>
@@ -339,9 +386,13 @@ export default function SiapGajianPage() {
 
       <Step n={++n} state={st.late} title="Terlambat & pulang cepat"
             summary={data.late.count
-              ? <><b>{data.late.people.filter((p) => p.count).length} orang</b> · {data.late.count} kali · {data.late.minutes} menit · <b>{rupiah(data.late.rupiah)}</b></>
+              ? <><b>{data.late.people.filter((p) => p.count).length} orang</b> · {data.late.count} kali · {data.late.minutes} menit
+                  {data.rules.fine_set ? <> · <b>{rupiah(data.late.rupiah)}</b></>
+                    : <> · denda terlambat belum diatur. <Link href="/dashboard/payroll/pengaturan" style={{ color: "var(--rust)" }}>Atur di Pengaturan payroll</Link></>}</>
               : "Tidak ada yang dipotong."}
-            ifNothing={data.late.count ? `dipotong sesuai aturan (toleransi ${data.rules.late_tolerance_minutes} menit untuk datang, ${rupiah(fine)}/menit).` : undefined}
+            ifNothing={data.late.count ? (data.rules.fine_set
+              ? `dipotong sesuai aturan (toleransi ${data.rules.late_tolerance_minutes} menit untuk datang, ${rupiah(fine)}/menit).`
+              : "tidak ada potongan, karena denda per menit di Pengaturan payroll masih Rp 0.") : undefined}
             open={!!open.late} onToggle={data.late.people.length ? () => setOpen({ ...open, late: !open.late }) : undefined}>
         <div style={{ fontSize: 12.5, color: "var(--steel)", marginBottom: 6 }}>Terlambat adalah fakta: cukup buka orang yang punya alasan (izin, belanja alat, mati lampu).</div>
         {data.late.people.map((p: CkLatePerson) => (
