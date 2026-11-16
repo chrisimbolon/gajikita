@@ -107,7 +107,7 @@ class PayRunTests(APITestCase):
                           a["review_days"]), (25, 0, 3, 3, 25, 1))
         # 4,000,000 + 14.5 h x 12,500 + 3 x 15,000 - 25 min x 500 - JHT 2% 80,000
         self.assertEqual(andi["net"], "4133750.00")
-        self.assertIn("1 hari absensi belum ditinjau HR di periode ini.", andi["result"]["warnings"])
+        self.assertFalse(any("belum" in w and "HR" in w for w in andi["result"]["warnings"]))   # G17-7: late = a fact
         self.assertTrue(any("PP 35/2021 Rp" in w for w in andi["result"]["warnings"]))
 
         budi = self.line(run["id"], "Budi")
