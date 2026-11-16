@@ -130,7 +130,7 @@ export default function FingerprintImport({ onClose, onDone }: { onClose: () => 
             <CheckCircle2 size={16} style={{ verticalAlign: "-3px" }} /> Tersimpan: {n(result.applied.days)} hari kerja ({n(result.applied.events)} tap)
             {several && result.machine ? `, dari ${result.machine.name}` : ""}.
             <div style={{ fontWeight: 500, color: "var(--ink)", marginTop: 4, fontSize: 13.5 }}>
-              Lembur, terlambat dan lupa absen pulang sekarang menunggu di <Link href="/dashboard/absensi/tinjau">Perlu Tinjau</Link>.
+              Langkah berikutnya: <Link href="/dashboard/absensi/tinjau">Perlu Tinjau</Link> (Siap gajian?). Terlambat dan lupa tap dihitung sesuai aturan; yang perlu keputusanmu terutama lembur.
             </div>
             <div style={{ marginTop: 10 }}><button className="btn-rust" onClick={onClose}>Selesai</button></div>
           </div>
