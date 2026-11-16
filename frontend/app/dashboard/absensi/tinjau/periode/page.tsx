@@ -192,7 +192,8 @@ export default function TinjauPeriodePage() {
           <h1 className="display" style={{ fontSize: 28, marginBottom: 4, textTransform: "none" }}>Tinjau per periode</h1>
           <p style={{ color: "var(--steel)", margin: 0, fontSize: 14 }}>
             Semua hari yang menunggu keputusan HR dalam satu periode gaji. Saring per jenis, centang, lalu putuskan sekaligus.{" "}
-            <Link href="/dashboard/absensi/tinjau" style={{ color: "var(--rust)" }}>← Antrean harian</Link>
+            <Link href="/dashboard/absensi/tinjau" style={{ color: "var(--rust)", fontWeight: 700 }}>← Siap gajian?</Link>
+            {" · "}<Link href="/dashboard/absensi/tinjau/harian" style={{ color: "var(--rust)" }}>Antrean harian</Link>
             {" · "}
             <Link href="/dashboard/absensi/tinjau/catatan" style={{ color: "var(--rust)", fontWeight: 700 }}>Catatan HR → keputusan</Link>
           </p>
