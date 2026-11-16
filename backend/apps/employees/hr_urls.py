@@ -26,6 +26,7 @@ from apps.attendance.note_decision_views import NoteDecisionApplyView, NoteDecis
 from apps.attendance.rekap import RekapExportView, RekapView
 from apps.attendance.review_bulk import BulkDecideView, ReviewPeriodView
 from apps.attendance.review_overtime import BulkUndoView                                   # G17-6
+from apps.attendance.checklist import ChecklistDismissView, ChecklistView                  # G17-7
 
 urlpatterns = [
     path("employees/",                EmployeeListView.as_view(),   name="hr-employees"),
@@ -56,6 +57,8 @@ urlpatterns = [
     path("attendance/review/period/", ReviewPeriodView.as_view(), name="hr-att-review-period"),
     path("attendance/review/bulk/",   BulkDecideView.as_view(),   name="hr-att-review-bulk"),
     path("attendance/review/undo/",   BulkUndoView.as_view(),     name="hr-att-review-undo"),     # G17-6
+    path("attendance/checklist/",     ChecklistView.as_view(),    name="hr-att-checklist"),       # G17-7
+    path("attendance/checklist/dismiss/", ChecklistDismissView.as_view(), name="hr-att-checklist-dismiss"),
     path("attendance/rekap/export/", RekapExportView.as_view(), name="hr-att-rekap-export"),
     path("sites/",                    SiteListView.as_view(),       name="hr-sites"),
     path("sites/<uuid:pk>/",          SiteDetailView.as_view(),     name="hr-site"),
