@@ -106,7 +106,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             "overtime": [], "late_raw": [], "meal_days": 0, "breakfast_days": 0, "review_days": 0, "leave": {},
             "exempt_days": 0, "exempt_reason": "", "half_days": 0,                     # G12i, G17-1
             "disrupted_days": 0, "disrupted_reason": "", "holiday_days": 0, "holiday_reason": "",   # G17-2
-            "permit_half_days": 0}                                                    # G17-4
+            "permit_half_days": 0, "overtime_open_days": 0}                          # G17-4, G17-7
     leave_count = Counter()
     meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
     tz = timezone.get_current_timezone()
@@ -146,7 +146,9 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["present_days"] += 1
         if day is not None and r.needs_review and not day.decision:
             nums["review_days"] += 1
-        forgiven = day is not None and day.decision == "approved" and day.waive_late
+        if day is not None and not day.decision and r.overtime_proposed_minutes and day.overtime_approved_minutes is None:
+            nums["overtime_open_days"] += 1                                            # G17-7
+        forgiven = day is not None and day.waive_late and day.decision != "rejected"   # G17-7: "Maafkan" alone
         if cfg.single_tap_half_day and r.half_day and not forgiven:        # G17-1: ½ day unpaid
             nums["half_days"] += 1
         if r.half_leave == "unpaid":                                       # G17-4: ½ day permit without pay
@@ -219,8 +221,9 @@ def calculate_line(line, cfg):
         deductions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.DEDUCTION and i.amount),   # 0 = skipped
     )
     slip = engine.calculate(terms, period, rules)
-    if nums.get("review_days"):
-        slip.warnings.insert(0, f"{nums['review_days']} hari absensi belum ditinjau HR di periode ini.")
+    if nums.get("overtime_open_days"):             # G17-7: late / one tap are facts; only overtime waits for HR
+        slip.warnings.insert(0, f"Lembur {nums['overtime_open_days']} hari belum diputuskan HR: belum dibayar "
+                                f"(Perlu Tinjau → Lembur).")
     if nums.get("disrupted_days"):                                                   # G17-2: never silent
         slip.warnings.append(f"{nums['disrupted_reason']} ({nums['disrupted_days']} hari): tap yang hilang dimaafkan "
                              f"(tanpa potongan ½ hari atau tidak hadir); terlambat yang tercatat tetap dihitung.")
