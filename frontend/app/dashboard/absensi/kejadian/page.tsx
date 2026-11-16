@@ -72,8 +72,20 @@ export default function KejadianPage() {
   const save = async (ev: React.FormEvent) => {
     ev.preventDefault();
     setBusy(true); setMsg(null);
+    const send = (body: EventInput) => (editId ? eventApi.update(editId, body) : eventApi.create(body));
     try {
-      const res = editId ? await eventApi.update(editId, form) : await eventApi.create(form);
+      let res;
+      try { res = await send(form); }
+      catch (err) {
+        // G17-7.2: a long range asks "Benar?" once; Batal keeps the form open to fix the date
+        const data = (err as { response?: { data?: { code?: string; message?: string } } }).response?.data;
+        if (data?.code !== "confirm_long") throw err;
+        if (!window.confirm(`${data.message}\n\nOK = simpan. Batal = periksa tanggalnya lagi.`)) {
+          setMsg({ ok: false, text: "Belum disimpan. Periksa tanggal mulai dan selesai." });
+          return;
+        }
+        res = await send({ ...form, confirm_long: true });
+      }
       setEvents(res.events);
       edit(res.event);
       setMsg({ ok: true, text: "Tersimpan. Hitung ulang payroll periode itu supaya angkanya ikut berubah." });
