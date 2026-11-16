@@ -15,7 +15,13 @@ GET  /api/hr/attendance/checklist/?month=YYYY-MM
      the rule unless forgiven), late & early (minutes and rupiah by the rule unless forgiven). Each person's days
      carry day_id, so the screen acts with the existing bulk actions (pay_overtime, no_overtime, forgive, away)
      and their Urungkan.
-POST /api/hr/attendance/checklist/dismiss/  {start, end}   "Bukan kejadian": the suggestion stops showing (audited)
+POST /api/hr/attendance/checklist/dismiss/  {start, end} | {employee}   "Bukan kejadian" / "Bukan, dia wajib absen":
+     the suggestion stops showing (audited)
+
+G17-7.1 (16 Nov 2026, first look on seegaji.com): people who (almost) never tap completely, such as a manager, sales,
+someone at another site or security on night shifts, made every date look like a power cut (26 Sep: 12 people).
+Now a person whose days are mostly missing taps ("chronic", 50%+ of their working days) is left out of the
+power-cut pattern and suggested once as "Tidak wajib absen?" instead (step "Siapa yang tidak perlu absen?").
 
 Only days up to today are counted; locked days are left out of the lists (they can't change).
 """
@@ -41,6 +47,8 @@ from .review_bulk import _period
 from .review_kinds import capped_overtime
 
 DISMISS = "attendance.event_dismiss"
+NOTRACK_DISMISS = "attendance.notrack_dismiss"                                              # G17-7.1
+CHRONIC_SHARE = Decimal("0.5")
 
 
 def _t(dt):
@@ -70,6 +78,10 @@ def _dismissed(org, start, end):
     return out
 
 
+def _notrack_dismissed(org):
+    return {str(((a.data or {}).get("after") or {}).get("employee")) for a in AuditEntry.objects.filter(organization=org, action=NOTRACK_DISMISS)}
+
+
 def build(org, month=None, now=None):
     from apps.payroll.payrun import _dates, _days_by_employee, _leaves_by_employee, employees_in_period
     info, start, end = _period(org, month)
@@ -87,7 +99,8 @@ def build(org, month=None, now=None):
     cap = cfg.overtime_daily_cap_minutes
 
     tapped_days, tapped_people = 0, set()
-    per_date = defaultdict(lambda: [0, 0, []])            # date -> [tracked, problems, names]
+    per_date = defaultdict(list)                          # date -> [(employee, "ok" | "absent" | "one")]
+    person = defaultdict(lambda: {"expected": 0, "problems": 0, "tapped": 0, "complete": 0})
     covered_dates, off_for_all = set(), defaultdict(lambda: [0, 0])
     ot, miss, late = {}, {}, {}
     ot_decided = 0
@@ -117,11 +130,14 @@ def build(org, month=None, now=None):
             expected = r.status not in (Status.DAY_OFF, Status.LEAVE, Status.EXEMPT, Status.NOT_YET) \
                 and not r.disrupted and not r.holiday
             if expected:
-                per_date[d][0] += 1
                 forgiven_day = day is not None and day.waive_late
-                if r.status == Status.ABSENT or (r.half_day and not forgiven_day):
-                    per_date[d][1] += 1
-                    per_date[d][2].append(emp.full_name)
+                what = "absent" if r.status == Status.ABSENT else "one" if (r.half_day and not forgiven_day) else "ok"
+                per_date[d].append((emp, what))
+                pp = person[emp.id]
+                pp["expected"] += 1
+                pp["problems"] += what != "ok"
+                pp["tapped"] += bool(r.first_in or r.last_out)
+                pp["complete"] += bool(r.first_in and r.last_out)
             if day is None or day.is_locked:
                 continue
             base = {"day_id": str(day.id), "date": d.isoformat(), "in": _t(r.first_in), "out": _t(r.last_out),
@@ -160,23 +176,37 @@ def build(org, month=None, now=None):
                     p["minutes"] += charged
                     p["rupiah"] += R.rupiah_int(charged * fine)
 
+    # people who (almost) never tap completely: not part of the pattern; suggested as "Tidak wajib absen?"
+    chronic = {eid for eid, pp in person.items()
+               if pp["expected"] >= 3 and Decimal(pp["problems"]) / Decimal(pp["expected"]) >= CHRONIC_SHARE}
+    by_id = {e.id: e for e in emps}
+    skip_people = _notrack_dismissed(org)
+    no_track = [{"employee": _emp(by_id[eid]), "expected": person[eid]["expected"], "tapped": person[eid]["tapped"],
+                 "complete": person[eid]["complete"], "start": max(start, by_id[eid].join_date).isoformat()}
+                for eid in chronic if str(eid) not in skip_people]
+    no_track.sort(key=lambda x: (x["complete"], x["employee"]["full_name"]))
+
     # the power-cut pattern
     dismissed = _dismissed(org, start, end)
-    flagged = [d for d, (tracked, probs, _) in per_date.items() if d not in covered_dates and R.is_cluster(probs, tracked)]
+    counted = {d: [(e, w) for e, w in rows if e.id not in chronic] for d, rows in per_date.items()}
+    flagged = [d for d, rows in counted.items()
+               if d not in covered_dates and R.is_cluster(sum(1 for _, w in rows if w != "ok"), len(rows))]
     everyone_off = lambda d: off_for_all[d][0] > 0 and off_for_all[d][1] == off_for_all[d][0]
     suggestions = []
     for s, e in R.group_dates(flagged, gap_ok=everyone_off):
         if any(ds <= s and e <= de for ds, de in dismissed):
             continue
-        names, peak = set(), 0
+        names, peak, absent, one = set(), 0, 0, 0
         d = s
         while d <= e:
-            if d in per_date:
-                names.update(per_date[d][2])
-                peak = max(peak, per_date[d][1])
+            probs = [(emp, w) for emp, w in counted.get(d, []) if w != "ok"]
+            names.update(emp.full_name for emp, _ in probs)
+            peak = max(peak, len(probs))
+            absent += sum(1 for _, w in probs if w == "absent")
+            one += sum(1 for _, w in probs if w == "one")
             d += timedelta(days=1)
         suggestions.append({"start": s.isoformat(), "end": e.isoformat(), "people": len(names), "peak": peak,
-                            "names": sorted(names)[:8]})
+                            "names": sorted(names)[:8], "absent": absent, "one_tap": one})
     events = [{"id": str(x.id), "start": x.start.isoformat(), "end": x.end.isoformat(), "kind": x.kind,
                "kind_label": x.get_kind_display(), "reason": x.reason}
               for x in CompanyEvent.objects.filter(organization=org, start__lte=end, end__gte=start).order_by("start")]
@@ -198,7 +228,8 @@ def build(org, month=None, now=None):
     run = PayRun.objects.filter(organization=org, period_end__year=end.year, period_end__month=end.month).first()
     return {
         "success": True, **info,
-        "rules": {"late_fine_per_minute": str(fine), "late_tolerance_minutes": tol,
+        "no_track": no_track,                                                                         # G17-7.1
+        "rules": {"late_fine_per_minute": str(fine), "late_tolerance_minutes": tol, "fine_set": fine > 0,
                   "single_tap_half_day": cfg.single_tap_half_day, "overtime_cap_minutes": cap},
         "import": {"days": tapped_days, "people": len(tapped_people), "employees": len(emps),
                    "last_import": timezone.localtime(last_import).isoformat() if last_import else None},
@@ -225,6 +256,14 @@ class ChecklistDismissView(APIView):
     permission_classes = [IsCompanyHR]
 
     def post(self, request):
+        if request.data.get("employee"):                                                  # G17-7.1
+            from apps.employees.models import Employee
+            emp = Employee.objects.filter(organization=request.hr_org, pk=request.data.get("employee")).first()
+            if emp is None:
+                return Response({"success": False, "message": "Karyawan tidak ditemukan."}, status=status.HTTP_400_BAD_REQUEST)
+            record_audit(organization=request.hr_org, actor=request.user, action=NOTRACK_DISMISS, target=emp,
+                         summary=f"{emp.full_name}: tetap wajib absen (bukan tidak wajib absen)", after={"employee": str(emp.pk)})
+            return Response({"success": True})
         try:
             s, e = Date.fromisoformat(str(request.data.get("start"))), Date.fromisoformat(str(request.data.get("end")))
         except ValueError:
