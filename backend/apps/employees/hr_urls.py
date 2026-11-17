@@ -22,7 +22,7 @@ from apps.attendance.fingerprint_link import FingerprintLinkView
 from apps.attendance.day_notes_views import DayNotesDeleteView, DayNotesImportView
 from apps.attendance.exemption_views import EmployeeExemptionsView, ExemptionDetailView
 from apps.attendance.event_views import EventDetailView, EventListView
-from apps.attendance.note_decision_views import NoteDecisionApplyView, NoteDecisionsView
+from apps.attendance.note_decision_views import NoteDecisionApplyView, NoteDecisionsView, NoteDecisionUndoView
 from apps.attendance.rekap import RekapExportView, RekapView
 from apps.attendance.review_bulk import BulkDecideView, ReviewPeriodView
 from apps.attendance.review_overtime import BulkUndoView                                   # G17-6
@@ -48,6 +48,7 @@ urlpatterns = [
     path("attendance/events/<uuid:pk>/",     EventDetailView.as_view(), name="hr-event"),
     path("attendance/note-decisions/",        NoteDecisionsView.as_view(),     name="hr-note-decisions"),   # G17-4
     path("attendance/note-decisions/apply/",  NoteDecisionApplyView.as_view(), name="hr-note-decisions-apply"),
+    path("attendance/note-decisions/undo/",   NoteDecisionUndoView.as_view(),  name="hr-note-decisions-undo"),   # G17-8.1
     path("attendance/fingerprint/link/",     FingerprintLinkView.as_view(),    name="hr-fingerprint-link"),   # G12f.2
     # HR's notes per day from the recap (G12f.3.1)
     path("attendance/notes/import/", DayNotesImportView.as_view(), name="hr-day-notes-import"),
