@@ -92,6 +92,8 @@ class EmployeeTerms:
     bpjs_tk: bool = True                     # enrolled in BPJS Ketenagakerjaan (JHT, JKK, JKM)
     overtime_basis: Decimal = None           # PP 35 monthly wage when it isn't pokok + tunjangan (daily workers)
     check_minimum_wage: bool = True          # off for daily and piece-rate workers (G8b)
+    jht_by_company: bool = False             # G13-3: the company pays the worker's JHT 2% (not taken from pay)
+    attendance_bonus: Decimal = ZERO         # G13-3: tunjangan kehadiran, paid only for a perfect period
 
 
 @dataclass(frozen=True)
@@ -114,6 +116,8 @@ class PeriodInput:
     additions: tuple = ()                    # Extra: one-off earnings
     loan_repayment: Decimal = ZERO
     deductions: tuple = ()                   # Extra: one-off deductions (PPh 21 for now, "Lainnya")
+    sick_days: Decimal = ZERO                # G13-3: approved sick leave (with a doctor's letter) in the period
+    attendance_unpaid_days: Decimal = None   # G13-3: unpaid days for the attendance bonus (None = unpaid_days)
 
 
 @dataclass
@@ -179,6 +183,32 @@ def _pp35_amount(days, basis, rules):
 
 # ── the engine ──
 
+def _days(n):
+    """1 -> "1", 0.5 -> "½", 1.5 -> "1½" (days and minutes as HR writes them)."""
+    n = D(n)
+    whole, half = int(n), n - int(n) == D("0.5")
+    if n == int(n):
+        return str(int(n))
+    return (f"{whole}½" if whole else "½") if half else f"{n:g}".replace(".", ",")
+
+
+def attendance_lost(late_minutes, sick_days, unpaid_days):
+    """
+    G13-3: why the tunjangan kehadiran is not paid this period ([] = paid). DKCB's Note sheet: "no late, no MC,
+    no UL". Late = chargeable late / early-leave minutes (after the tolerance; forgiven days don't count);
+    MC = sick leave with a doctor's letter (sick without one is UL anyway); UL = any unpaid day, absent or
+    ½ day included, and days before joining / after leaving.
+    """
+    why = []
+    if D(late_minutes) > 0:
+        why.append(f"terlambat / pulang cepat {_days(late_minutes)} menit")
+    if D(sick_days) > 0:
+        why.append(f"sakit {_days(sick_days)} hari")
+    if D(unpaid_days) > 0:
+        why.append(f"tidak masuk tanpa upah {_days(unpaid_days)} hari")
+    return why
+
+
 def calculate(terms, period, rules):
     slip = Payslip()
     base = D(terms.base_salary)
@@ -243,6 +273,14 @@ def calculate(terms, period, rules):
          quantity=D(period.breakfast_days), unit="hari", rate=D(rules.breakfast_allowance))
     for x in tuple(period.piece_work) + tuple(terms.monthly_extras) + tuple(period.additions):
         earn(x.code, x.label, x.amount, quantity=x.quantity, unit=x.unit, rate=x.rate)
+    if D(terms.attendance_bonus) > 0:                                                  # G13-3
+        unpaid_for_bonus = period.unpaid_days if period.attendance_unpaid_days is None else period.attendance_unpaid_days
+        why = attendance_lost(period.late_minutes, period.sick_days, unpaid_for_bonus)
+        if why:
+            slip.warnings.append(f"Tunjangan kehadiran Rp {rupiah(terms.attendance_bonus):,.0f} hangus: "
+                                 .replace(",", ".") + ", ".join(why) + ".")
+        else:
+            earn("attendance_bonus", "Tunjangan kehadiran", terms.attendance_bonus)
 
     # deductions
     deduct("late", "Potongan keterlambatan", D(period.late_minutes) * D(rules.late_fine_per_minute),
@@ -252,7 +290,13 @@ def calculate(terms, period, rules):
            quantity=D(period.unpaid_days), unit="hari", rate=rupiah(per_day))
     wage = bpjs_wage(terms, rules)
     if terms.bpjs_tk:
-        deduct("jht_employee", "Iuran BPJS Ketenagakerjaan (JHT 2%)", wage * rules.jht_employee)
+        if terms.jht_by_company:                                                       # G13-3
+            amount = rupiah(wage * rules.jht_employee)
+            if amount:
+                slip.employer.append(SlipLine("jht_employee_company", "JHT 2% karyawan (ditanggung perusahaan)",
+                                              amount, rate=rules.jht_employee))
+        else:
+            deduct("jht_employee", "Iuran BPJS Ketenagakerjaan (JHT 2%)", wage * rules.jht_employee)
         for code, label, rate in (("jht_company", "JHT perusahaan", rules.jht_company),
                                   ("jkk", "JKK", rules.jkk), ("jkm", "JKM", rules.jkm)):
             amount = rupiah(wage * rate)
