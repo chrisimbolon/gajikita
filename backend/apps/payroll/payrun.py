@@ -30,7 +30,7 @@ from apps.core.audit import record_audit
 from apps.employees.models import Employee
 from . import meals                                                     # G12d
 from apps.leave.models import LeaveRequest
-from apps.leave.rules import UNPAID
+from apps.leave.rules import SICK, UNPAID
 
 from . import engine
 from .models import PayrollSettings, PayRun, PayRunItem, PayRunLine
@@ -106,7 +106,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             "overtime": [], "late_raw": [], "meal_days": 0, "breakfast_days": 0, "review_days": 0, "leave": {},
             "exempt_days": 0, "exempt_reason": "", "half_days": 0,                     # G12i, G17-1
             "disrupted_days": 0, "disrupted_reason": "", "holiday_days": 0, "holiday_reason": "",   # G17-2
-            "permit_half_days": 0, "overtime_open_days": 0}                          # G17-4, G17-7
+            "permit_half_days": 0, "overtime_open_days": 0,                          # G17-4, G17-7
+            "sick_days": 0}                                                           # G13-3
     leave_count = Counter()
     meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
     tz = timezone.get_current_timezone()
@@ -132,6 +133,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["working_days"] += 1
         if r.status == Status.LEAVE:
             leave_count[label] += 1
+            if leave and leave[0] == SICK:                                          # G13-3
+                nums["sick_days"] += 1
             if leave[0] == UNPAID:
                 nums["unpaid_leave_days"] += 1
             else:
@@ -193,6 +196,7 @@ def calculate_line(line, cfg):
 
     base, allowance = Decimal(emp.base_rate or 0), Decimal(emp.fixed_allowance or 0)
     unpaid = pick("unpaid_days")
+    unpaid_for_bonus = unpaid                        # G13-3: a daily worker's absent days still lose the bonus
     terms_kw = {}
     if emp.pay_type == Employee.PayType.DAILY:
         pattern = engine.week_pattern(working_days)
@@ -203,7 +207,9 @@ def calculate_line(line, cfg):
         terms_kw = {"check_minimum_wage": False, "overtime_eligible": False}
         base = Decimal("0")
     terms = engine.EmployeeTerms(base_salary=base, fixed_allowance=allowance, bpjs_tk=emp.bpjs_tk_enrolled,
-                                 overtime_eligible=terms_kw.pop("overtime_eligible", emp.overtime_eligible), **terms_kw)
+                                 overtime_eligible=terms_kw.pop("overtime_eligible", emp.overtime_eligible),
+                                 jht_by_company=emp.jht_by_company,                                       # G13-3
+                                 attendance_bonus=Decimal(emp.attendance_bonus or 0), **terms_kw)
 
     items = list(line.items.all())
     to_extra = lambda i: engine.Extra(i.code, i.label, i.amount, quantity=i.quantity, unit=i.unit)
@@ -217,6 +223,7 @@ def calculate_line(line, cfg):
         overtime_days=ot_days, overtime_hours=ot_hours, rest_days_worked=rest_days,
         meal_days=pick("meal_days"), breakfast_days=pick("breakfast_days"),               # G12e
         late_minutes=pick("late_minutes"), unpaid_days=unpaid,
+        sick_days=_dec(nums.get("sick_days", 0)) or Decimal("0"), attendance_unpaid_days=unpaid_for_bonus,   # G13-3
         additions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.EARNING and i.amount),
         deductions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.DEDUCTION and i.amount),   # 0 = skipped
     )
