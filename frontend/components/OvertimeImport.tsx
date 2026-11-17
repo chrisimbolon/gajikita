@@ -253,7 +253,7 @@ export default function OvertimeImport({ onClose, onDone }: { onClose: () => voi
             <table className="data-table">
               <thead><tr><th>Karyawan</th><th>Lembur di file</th><th>Usulan absen</th><th>Berubah</th></tr></thead>
               <tbody>
-                {result.people.filter((p) => p.lines.length || p.file_minutes).map((p) => {
+                {result.people.filter((p) => p.lines.length || p.file_minutes || p.name_check === "bad").map((p) => {   // G17-8.1
                   const bad = p.name_check === "bad";
                   const isOpen = openRow === p.employee.id;
                   const warn = p.total_mismatch || p.unreadable.length > 0 || p.twice.length > 0;
@@ -285,7 +285,7 @@ export default function OvertimeImport({ onClose, onDone }: { onClose: () => voi
               </tbody>
             </table>
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 6 }}>Klik nama untuk melihat per tanggal. Orang tanpa lembur dan tanpa usulan tidak ditampilkan.</div>
+          <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 6 }}>Klik nama untuk melihat per tanggal. Orang tanpa lembur dan tanpa usulan tidak ditampilkan (kecuali namanya tidak cocok).</div>
 
           <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8, marginTop: 14 }}>
             {blocked && <span style={{ fontSize: 13, color: "var(--danger)", fontWeight: 600 }}>Cek dulu nama yang tidak cocok di atas.</span>}
