@@ -149,7 +149,8 @@ def read_book(rows):
 # ── SeeGaji ───────────────────────────────────────────────────────────────────
 
 EARN_CODES = {"base": "base", "fixed_allowance": "base", "overtime": "overtime",
-              "overtime_rest_day": "overtime_rest_day", "meal": "meal", "breakfast": "meal"}
+              "overtime_rest_day": "overtime_rest_day", "meal": "meal", "breakfast": "meal",
+              "attendance_bonus": "other_earning"}                                        # G13-3
 DEDUCT_CODES = {"late": "late", "unpaid_leave": "unpaid_leave", "jht_employee": "jht", "loan": "loan",
                 "pph21": "pph21", "pph_21": "pph21"}
 
@@ -180,6 +181,10 @@ def seegaji_amounts(result, net=None):
             code = line.get("code", "")
             key = known.get(code) or item_component(code, line.get("label", ""), kind == "earnings")
             amounts[key] = amounts.get(key, ZERO) + to_dec(line.get("amount"))
+    if net is not None:                       # G13-3: JHT the company pays shows in the book's JHT column
+        for line in (result or {}).get("employer", []):
+            if line.get("code") == "jht_employee_company":
+                amounts["jht"] = amounts.get("jht", ZERO) + to_dec(line.get("amount"))
     if net is None:
         earned = sum((v for k, v in amounts.items() if k not in DEDUCTIONS), ZERO)
         net = earned - sum((v for k, v in amounts.items() if k in DEDUCTIONS), ZERO)
