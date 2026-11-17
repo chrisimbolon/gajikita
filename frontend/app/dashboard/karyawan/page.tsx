@@ -35,6 +35,7 @@ function npwpText(value: string): string {
 const blank = (): Form => ({
   employee_no: "", full_name: "", position: "", fingerprint_id: "", probation_end_date: "", nik: "", npwp: "", ptkp_status: "TK/0", join_date: todayISO(), end_date: "",
   employment_type: "pkwtt", pay_type: "monthly", base_rate: "0", fixed_allowance: "0", overtime_eligible: true, bpjs_tk_enrolled: true, meal_rule: "",
+  jht_by_company: false, pph21_by_company: false, attendance_bonus: "0",                       // G13-3
   bank_name: "", bank_account_no: "",
   bank_account_name: "", bpjs_kesehatan_no: "", bpjs_tk_no: "", phone: "", sites: [], default_site: null,
   default_shift: null, mandor: null, status: "active",
@@ -46,6 +47,7 @@ const fromEmployee = (e: Employee): Form => ({
   join_date: e.join_date, end_date: e.end_date ?? "", employment_type: e.employment_type, pay_type: e.pay_type,
   base_rate: e.base_rate, fixed_allowance: e.fixed_allowance, overtime_eligible: e.overtime_eligible,
   bpjs_tk_enrolled: e.bpjs_tk_enrolled, meal_rule: e.meal_rule ?? "",
+  jht_by_company: !!e.jht_by_company, pph21_by_company: !!e.pph21_by_company, attendance_bonus: e.attendance_bonus ?? "0",
   bank_name: e.bank_name, bank_account_no: e.bank_account_no,
   bank_account_name: e.bank_account_name, bpjs_kesehatan_no: e.bpjs_kesehatan_no, bpjs_tk_no: e.bpjs_tk_no,
   phone: e.phone, sites: e.sites.map(String), default_site: e.default_site, default_shift: e.default_shift,
@@ -205,7 +207,7 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
   const save = async () => {
     setSaving(true); setErrors({}); setSummary(null);
     const body: Partial<EmployeeInput> = { ...form, end_date: form.end_date || null, probation_end_date: form.probation_end_date || null, base_rate: form.base_rate || "0",
-                                         fixed_allowance: form.fixed_allowance || "0" };
+                                         fixed_allowance: form.fixed_allowance || "0", attendance_bonus: form.attendance_bonus || "0" };
     try {
       let emp = employee ? await hrApi.updateEmployee(employee.id, body) : await hrApi.createEmployee(body);
       setMoved(emp.shift_days_moved ?? 0);
@@ -245,7 +247,7 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
     </div>
   );
 
-  const money = (key: "base_rate" | "fixed_allowance", label: string) => (
+  const money = (key: "base_rate" | "fixed_allowance" | "attendance_bonus", label: string) => (
     <div style={{ marginBottom: 12 }}>
       <label className="label">{label}</label>
       <div style={{ position: "relative" }}>
@@ -358,6 +360,22 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
         <input type="checkbox" checked={form.bpjs_tk_enrolled} onChange={(e) => set("bpjs_tk_enrolled", e.target.checked)} />
         Terdaftar BPJS Ketenagakerjaan (JHT 2% dipotong dari gaji)
       </label>
+      {/* G13-3: what the company pays instead of the employee */}
+      {form.bpjs_tk_enrolled && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, margin: "-4px 0 12px 26px" }}>
+          <input type="checkbox" checked={!!form.jht_by_company} onChange={(e) => set("jht_by_company", e.target.checked)} />
+          JHT 2% ditanggung perusahaan (tidak dipotong dari gaji)
+        </label>
+      )}
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12 }}>
+        <input type="checkbox" checked={!!form.pph21_by_company} onChange={(e) => set("pph21_by_company", e.target.checked)} />
+        PPh 21 ditanggung perusahaan <span style={{ color: "var(--steel)", fontSize: 12.5 }}>(dipakai saat PPh 21 dihitung)</span>
+      </label>
+      {money("attendance_bonus", "Tunjangan kehadiran sebulan (0 = tidak ada)")}
+      <div style={{ fontSize: 12.5, color: "var(--steel)", margin: "-6px 0 12px" }}>
+        Dibayar hanya kalau sebulan penuh tidak terlambat / pulang cepat, tidak sakit, dan tidak ada hari tanpa upah.
+        Kalau hangus, slip gaji menulis alasannya.
+      </div>
       {select("meal_rule", "Uang makan", MEAL_RULE_OPTIONS)}
       {select("default_shift", "Shift utama", shifts.filter((s) => s.is_active || s.id === form.default_shift)
         .map((s): [string, string] => [s.id, `${s.name} (${hhmm(s.start_time)}-${hhmm(s.end_time)})`]), true)}
