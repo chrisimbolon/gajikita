@@ -74,24 +74,33 @@ jobs:
   deploy:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read      # to find the last SUCCESSFUL deploy (step 2)
     steps:
 
       # ── 1. Checkout ─────────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # the whole push may hold several commits; we diff against github.event.before
+          fetch-depth: 0   # we diff against the last successful deploy, which may be several commits back
 
       # ── 2. Detect what changed (same rules as Arthasee) ─────
       - name: Detect changed paths
         id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             echo "backend=true"  >> $GITHUB_OUTPUT
             echo "frontend=true" >> $GITHUB_OUTPUT
             echo "🔧 Manual trigger — deploying EVERYTHING"; exit 0
           fi
-          BASE_SHA="${{ github.event.before }}"
+          # Compare with the last run that actually DEPLOYED, not the previous push: a push whose tests
+          # failed deployed nothing, so its frontend/backend changes must still go out with the next one.
+          BASE_SHA=$(gh api "repos/${{ github.repository }}/actions/workflows/deploy.yml/runs?branch=main&status=success&per_page=1" \
+                       -q '.workflow_runs[0].head_sha' 2>/dev/null || true)
+          echo "Last successful deploy: ${BASE_SHA:-none}"
           if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ] \
              || ! git cat-file -e "$BASE_SHA" 2>/dev/null; then
             echo "backend=true"  >> $GITHUB_OUTPUT
