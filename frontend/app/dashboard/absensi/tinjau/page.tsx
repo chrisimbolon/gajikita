@@ -12,6 +12,7 @@
 // in the data are "not imported yet"; Kejadian from a suggestion confirm their own length.
 // =============================================================================
 import FingerprintImport from "@/components/FingerprintImport";
+import OvertimeImport from "@/components/OvertimeImport";                       // G17-8
 import { attendanceApi, BulkDecideResult, minutesText } from "@/lib/api/attendance";
 import { Checklist, CkLatePerson, CkMissingPerson, CkOvertimePerson, checklistApi } from "@/lib/api/checklist";
 import { eventApi } from "@/lib/api/events";
@@ -176,6 +177,7 @@ export default function SiapGajianPage() {
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [person, setPerson] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [otImport, setOtImport] = useState(false);                                // G17-8
   const [reason, setReason] = useState<Record<string, string>>({});
   const [why, setWhy] = useState<Record<string, string>>({});                     // G17-7.1: per person
   const [leftOn, setLeftOn] = useState<Record<string, string>>({});               // G17-7.2: Tanggal keluar
@@ -388,6 +390,8 @@ export default function SiapGajianPage() {
               ? <><b>{data.overtime.open_days} hari</b> dari {data.overtime.people.length} orang menunggu keputusan · usulan dari jam absen {minutesText(data.overtime.proposed)}. Cocokkan dengan SPL.</>
               : <>Semua lembur sudah diputuskan{data.overtime.decided_days ? ` (${data.overtime.decided_days} hari dibayar)` : ""}.</>}
             ifNothing={data.overtime.open_days ? "lembur yang belum diputuskan tidak dibayar." : undefined}
+            actions={<button className="btn-ghost" onClick={() => setOtImport(true)} style={{ padding: "5px 12px", fontSize: 13 }}>
+                       Ambil lembur dari file rekap</button>}
             open={!!open.overtime} onToggle={data.overtime.open_days ? () => setOpen({ ...open, overtime: !open.overtime }) : undefined}>
         {data.overtime.people.map((p) => (
           <div key={p.employee.id}>
@@ -456,6 +460,7 @@ export default function SiapGajianPage() {
       </div>
 
       {importing && <FingerprintImport onClose={() => setImporting(false)} onDone={() => load()} />}
+      {otImport && <OvertimeImport onClose={() => setOtImport(false)} onDone={() => load()} />}
     </div>
   );
 }
