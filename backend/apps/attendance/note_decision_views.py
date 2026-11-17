@@ -16,6 +16,9 @@ POST /api/hr/attendance/note-decisions/apply/
        forgive    -> the day approved, late and single tap forgiven
        away       -> G17-5: a one-day "tidak wajib absen" (Tugas luar), counted as worked
      Locked days and rows already done are skipped; every failure comes back by name and date. Audited.
+POST /api/hr/attendance/note-decisions/undo/     G17-8.1 "Ubah": {"month", "group", "employee", "date"}
+     undoes what applying that one note did (the 1-day leave is cancelled, the Tugas luar day removed, the day's
+     ½-day / forgive decision cleared; an overtime decision on that day stays), so the row waits again.
 """
 from datetime import date as Date
 
@@ -248,3 +251,90 @@ class NoteDecisionApplyView(APIView):
         body = build(org, d["month"])
         body.update({"applied": applied, "errors": errors})
         return Response(body, status=status.HTTP_200_OK)
+
+
+# ── G17-8.1: "Ubah" on an applied note: undo that one decision, so HR can choose again ──
+class UndoSerializer(serializers.Serializer):
+    month = serializers.CharField(required=False, allow_blank=True, default="")
+    group = serializers.ChoiceField(choices=list(ACTIONABLE))
+    employee = serializers.UUIDField()
+    date = serializers.DateField()
+
+
+def _undo(org, actor, emp, d, group, text):
+    """Undo what applying this note did. -> error text for HR, or None."""
+    from apps.leave.services import decide_leave
+    from .review_overtime import snapshot
+    day = AttendanceDay.objects.filter(employee=emp, date=d).first()
+    if day is not None and day.is_locked:
+        return "Hari ini sudah masuk payroll yang dikunci."
+    if group in (UL, CUTI):
+        leaves = list(LeaveRequest.objects.filter(organization=org, employee=emp, status__in=ACTIVE,
+                                                  start_date__lte=d, end_date__gte=d))
+        if not leaves:
+            return "Tidak ada cuti / izin di tanggal ini."
+        if any(lv.start_date != lv.end_date for lv in leaves):
+            return "Cuti / izin ini lebih dari 1 hari: ubah di halaman Cuti & Izin."
+        try:
+            for lv in leaves:
+                decide_leave(lv, action="cancel", actor=actor, note="Diubah dari Catatan HR")
+        except LeaveError as err:
+            return getattr(err, "message", None) or "Cuti / izin ini tidak bisa dibatalkan."
+        if day is not None and day.decision == "rejected" and "tap diabaikan" in (day.decision_note or ""):
+            before = snapshot(day)                              # the taps set aside by the leave count again
+            day.decision, day.decision_note, day.decided_by, day.decided_at = "", "", None, None
+            day.save(update_fields=["decision", "decision_note", "decided_by", "decided_at", "updated_at"])
+            record_audit(organization=org, actor=actor, action="attendance.note_decision_undo", target=day,
+                         summary=f"{emp.full_name} {d:%d-%m-%Y}: tap dihitung lagi (catatan HR diubah)"[:255],
+                         before=before, after=snapshot(day))
+        return None
+    if group == AWAY:
+        xs = list(AttendanceExemption.objects.filter(organization=org, employee=emp, start=d, end=d))
+        if not xs:
+            return "Hari ini tidak wajib absen karena periode yang lebih panjang: ubah di halaman Karyawan."
+        for x in xs:
+            record_audit(organization=org, actor=actor, action="attendance.exemption_delete", target=emp,
+                         summary=f"{emp.full_name}: tugas luar {d:%d-%m-%Y} dibatalkan (catatan HR diubah)"[:255],
+                         before={"exemption": str(x.pk), "start": d.isoformat(), "end": d.isoformat(), "reason": x.reason})
+            x.delete()
+        return None
+    # HALF, HALF_CUTI, FORGIVE: the day's decision
+    if day is None or day.decision != "approved" or not (day.waive_late or day.half_day_leave):
+        if group == FORGIVE:
+            return "Hari ini beres karena Kejadian, cuti atau tidak wajib absen: ubah di halaman itu."
+        return "Tidak ada keputusan untuk diubah di hari ini."
+    before = snapshot(day)
+    day.waive_late, day.half_day_leave = False, ""
+    if day.overtime_approved_minutes is None:                   # nothing else decided that day: back to "belum"
+        day.decision, day.decision_note, day.decided_by, day.decided_at = "", "", None, None
+    elif (day.decision_note or "").startswith("Catatan HR:"):   # the overtime decision stays
+        day.decision_note = ""
+    day.save(update_fields=["decision", "decision_note", "waive_late", "half_day_leave", "decided_by", "decided_at",
+                            "updated_at"])
+    record_audit(organization=org, actor=actor, action="attendance.note_decision_undo", target=day,
+                 summary=f"{emp.full_name} {d:%d-%m-%Y}: keputusan dari catatan HR dibatalkan ({text})"[:255],
+                 before=before, after=snapshot(day))
+    return None
+
+
+class NoteDecisionUndoView(APIView):
+    """POST /api/hr/attendance/note-decisions/undo/ {"month", "group", "employee", "date"} -> the page again."""
+    permission_classes = [IsCompanyHR]
+
+    def post(self, request):
+        ser = UndoSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        d = ser.validated_data
+        org = request.hr_org
+        emp = Employee.objects.filter(pk=d["employee"], organization=org).first()
+        note = DayNote.objects.filter(organization=org, employee=emp, date=d["date"]).first() if emp else None
+        if note is None or classify(note.code, note.text) != d["group"]:
+            return Response({"success": False, "message": "Catatan tidak ditemukan di kelompok ini."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        with transaction.atomic():
+            problem = _undo(org, request.user, emp, d["date"], d["group"], note.text)
+        if problem:
+            return Response({"success": False, "message": problem}, status=status.HTTP_400_BAD_REQUEST)
+        body = build(org, d["month"])
+        body["undone"] = {"name": emp.full_name, "date": d["date"].isoformat()}
+        return Response(body)
