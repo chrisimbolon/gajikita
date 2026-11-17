@@ -68,6 +68,13 @@ class Employee(TenantScopedModel):
                                             verbose_name="Tunjangan Tetap (sebulan)")
     overtime_eligible = models.BooleanField(default=True, verbose_name="Berhak Upah Lembur")
     bpjs_tk_enrolled  = models.BooleanField(default=True, verbose_name="Terdaftar BPJS Ketenagakerjaan")  # G8b
+    # G13-3: what the company pays for this person instead of taking it from the pay (DKCB: Anthony)
+    jht_by_company    = models.BooleanField(default=False, verbose_name="JHT 2% ditanggung perusahaan")
+    pph21_by_company  = models.BooleanField(default=False, verbose_name="PPh 21 ditanggung perusahaan")
+    # G13-3: tunjangan kehadiran, paid only for a perfect period (no late / early leave, no sick leave, no unpaid
+    # day); 0 = none. Not a tunjangan tetap: it does not count for BPJS, THR or overtime.
+    attendance_bonus  = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"),
+                                            verbose_name="Tunjangan Kehadiran (sebulan)")
     # G12d: uang makan rule for this person; empty = the company's rule (Payroll → Pengaturan)
     meal_rule         = models.CharField(max_length=15, blank=True, default="", verbose_name="Uang Makan",
                                          choices=[("", "Ikut pengaturan perusahaan"), ("none", "Tidak ada"),
