@@ -15,6 +15,8 @@ import { FileSpreadsheet, KeyRound, Loader2, Plus, Save, Search, X } from "lucid
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 type Form = Omit<EmployeeInput, "end_date" | "probation_end_date"> & { end_date: string; probation_end_date: string };
+// G17-8.1: someone with a Tanggal keluar in the past has left, even while the status still says Aktif
+const hasLeft = (e: { status: string; end_date: string | null }) => e.status === "resigned" || (!!e.end_date && e.end_date < todayISO());
 
 // G9e: how money and NPWP read in the form (stored as plain digits)
 const RP = new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 });
@@ -104,7 +106,8 @@ export default function KaryawanPage() {
         <div>
           <h1 className="display" style={{ fontSize: 28, marginBottom: 4, textTransform: "none" }}>Karyawan</h1>
           <p style={{ color: "var(--steel)", margin: 0, fontSize: 14 }}>
-            {employees.filter((e) => e.status === "active").length} aktif · {employees.length} total
+            {employees.filter((e) => e.status === "active" && !hasLeft(e)).length} aktif · {employees.length} total
+            {employees.some(hasLeft) ? ` · ${employees.filter(hasLeft).length} sudah keluar` : ""}
           </p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -140,9 +143,9 @@ export default function KaryawanPage() {
                 {shown.map((e) => (
                   <tr key={e.id} onClick={() => setEditing(e)} style={{ cursor: "pointer",
                       background: editing !== "new" && editing?.id === e.id ? "var(--paper)" : undefined,
-                      opacity: e.status === "resigned" ? 0.55 : 1 }}>
+                      opacity: hasLeft(e) ? 0.55 : 1 }}>
                     <td className="mono" style={{ fontSize: 13, whiteSpace: "nowrap" }}>{e.employee_no}</td>
-                    <td style={{ fontWeight: 600 }}>{e.full_name}{e.status === "resigned" ? " (keluar)" : ""}
+                    <td style={{ fontWeight: 600 }}>{e.full_name}{hasLeft(e) ? ` (keluar${e.end_date ? " " + e.end_date.split("-").reverse().join("/") : ""})` : ""}
                       {e.attendance_exempt && (
                         <span title={`Tidak wajib absen: ${e.attendance_exempt.reason}`}
                               style={{ marginLeft: 8, fontSize: 11.5, fontWeight: 700, padding: "1px 7px", borderRadius: 999,
