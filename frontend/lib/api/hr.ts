@@ -62,6 +62,9 @@ export interface Employee {
   pay_type:          keyof typeof PAY_TYPE_LABEL;
   base_rate:         string;
   fixed_allowance:   string;
+  jht_by_company?:   boolean;                    // G13-3
+  pph21_by_company?: boolean;
+  attendance_bonus?: string;
   overtime_eligible: boolean;
   bpjs_tk_enrolled:  boolean;
   meal_rule:         "" | "none" | "present_day" | "overtime_day" | "late_out";   // G12d
