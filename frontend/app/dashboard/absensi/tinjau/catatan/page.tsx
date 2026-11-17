@@ -3,6 +3,7 @@
 // /dashboard/absensi/tinjau/catatan — HR's notes -> decisions (G17-4, 14 Nov 2026).
 // The notes imported from the recap ("UL", "Izin pulang cepat", "Cuti sakit mata", "Mati lampu") grouped by
 // what they mean; HR checks a group and applies it once, instead of deciding day by day.
+// G17-8.1: "Ubah" on a row already applied undoes that one decision, so HR can choose again.
 // =============================================================================
 import { NoteDecisions, NoteGroup, NoteRow, noteDecisionApi } from "@/lib/api/noteDecisions";
 import { readErrors } from "@/lib/api/hr";
@@ -22,8 +23,9 @@ const STATE: Record<string, { text: string; color: string }> = {
   todo:    { text: "Belum",            color: "var(--ink)" },
 };
 
-function GroupCard({ g, busy, onApply }: { g: NoteGroup; busy: boolean;
-                                          onApply: (g: NoteGroup, items: { row: NoteRow; choice: string }[]) => void }) {
+function GroupCard({ g, busy, onApply, onUndo }: { g: NoteGroup; busy: boolean;
+                                          onApply: (g: NoteGroup, items: { row: NoteRow; choice: string }[]) => void;
+                                          onUndo: (g: NoteGroup, row: NoteRow) => void }) {
   const todo = g.rows.filter((r) => r.state === "todo");
   const [picked, setPicked] = useState<Set<string>>(new Set(todo.map(key)));
   const [choice, setChoice] = useState<Record<string, string>>({});
@@ -63,7 +65,7 @@ function GroupCard({ g, busy, onApply }: { g: NoteGroup; busy: boolean;
                   const k = key(r);
                   const can = r.state === "todo";
                   return (
-                    <tr key={k} style={{ opacity: can || !g.actionable ? 1 : 0.6 }}>
+                    <tr key={k} style={{ opacity: can || !g.actionable || r.state === "done" ? 1 : 0.6 }}>
                       {g.actionable && <td>{can && <input type="checkbox" checked={picked.has(k)} onChange={() => toggle(k)} />}</td>}
                       <td style={{ whiteSpace: "nowrap", fontSize: 13.5 }}>{day(r.date)}</td>
                       <td style={{ fontSize: 13.5 }}><b>{r.employee.full_name}</b> <span style={{ color: "var(--steel)", fontSize: 12 }}>{r.employee.employee_no}</span></td>
@@ -83,7 +85,16 @@ function GroupCard({ g, busy, onApply }: { g: NoteGroup; busy: boolean;
                           )}
                         </td>
                       )}
-                      {g.actionable && <td style={{ fontSize: 12.5, fontWeight: 700, color: STATE[r.state].color }}>{STATE[r.state].text}</td>}
+                      {g.actionable && (
+                        <td style={{ fontSize: 12.5, fontWeight: 700, color: STATE[r.state].color, whiteSpace: "nowrap" }}>
+                          {STATE[r.state].text}
+                          {r.state === "done" && (
+                            <button type="button" disabled={busy} onClick={() => onUndo(g, r)} title="Batalkan keputusan ini, lalu pilih lagi"
+                                    style={{ marginLeft: 8, background: "none", border: 0, padding: 0, color: "var(--rust)",
+                                             fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Ubah</button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -137,6 +148,20 @@ export default function CatatanPage() {
     }
   };
 
+  const undo = async (g: NoteGroup, row: NoteRow) => {                              // G17-8.1
+    if (!data) return;
+    setBusy(true); setError(null); setDone(null);
+    try {
+      const res = await noteDecisionApi.undo({ month: data.month, group: g.key, employee: row.employee.id, date: row.date });
+      setData(res);
+      setDone(`${row.employee.full_name} ${day(row.date)}: keputusan dibatalkan, baris ini menunggu lagi. Pilih lalu Terapkan.`);
+    } catch (err) {
+      setError(readErrors(err).summary);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div>
       <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 12 }}>
@@ -167,7 +192,7 @@ export default function CatatanPage() {
           Belum ada catatan HR di periode ini. Catatan masuk lewat import catatan dari file rekap HR.
         </div>
       ) : (
-        data.groups.filter((g) => g.rows.length > 0).map((g) => <GroupCard key={g.key} g={g} busy={busy} onApply={apply} />)
+        data.groups.filter((g) => g.rows.length > 0).map((g) => <GroupCard key={g.key} g={g} busy={busy} onApply={apply} onUndo={undo} />)
       )}
     </div>
   );
