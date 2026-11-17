@@ -17,6 +17,7 @@ export interface NoteGroup {
 export interface NoteDecisions {
   month: string; label: string; start: string; end: string; prev: string; next: string; total: number;
   groups: NoteGroup[]; applied?: number; errors?: { name: string; date: string; message: string }[];
+  undone?: { name: string; date: string };                                     // G17-8.1
 }
 
 export const noteDecisionApi = {
@@ -26,6 +27,10 @@ export const noteDecisionApi = {
   },
   async apply(body: { month: string; group: string; items: { employee: string; date: string; choice?: string }[] }): Promise<NoteDecisions> {
     const { data } = await api.post("/api/hr/attendance/note-decisions/apply/", body, { timeout: 300000 });
+    return data;
+  },
+  async undo(body: { month: string; group: string; employee: string; date: string }): Promise<NoteDecisions> {   // G17-8.1
+    const { data } = await api.post("/api/hr/attendance/note-decisions/undo/", body, { timeout: 120000 });
     return data;
   },
 };
