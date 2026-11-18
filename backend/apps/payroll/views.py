@@ -2,7 +2,12 @@
 # === backend/apps/payroll/views.py ===
 # =============================================================================
 """
-GET /api/hr/overtime/?month=YYYY-MM  (G4a, 28 Oct 2026)
+GET /api/hr/overtime/?month=YYYY-MM&basis=period|calendar  (G4a, 28 Oct 2026; G17-10, 18 Nov 2026)
+
+basis=period (the Lembur page and Ringkasan since G17-10): the pay period that ends in that month, the dates the
+payroll pays (start day 26: "2026-10" = 26 Sep - 25 Okt); without month = the current pay period. The answer
+also carries `payroll`: that month's pay run and the overtime its slips pay, so the page can say whether both agree.
+basis missing or calendar: the calendar month, as before G17-10.
 
 Approved overtime for the month in rupiah: per employee (with every day's
 working), per site, and the totals, plus PP 35 warnings (over 4 hours a day,
@@ -22,30 +27,62 @@ from rest_framework.views import APIView
 from apps.attendance.models import AttendanceDay
 from apps.organizations.permissions import IsCompanyHR
 
+from .engine import period_for                                                        # G17-10
 from .overtime import overtime_pay, week_warnings
-from .models import PayrollSettings
+from .models import PayrollSettings, PayRun
 from .services import NOT_PAID_REASONS, is_rest_day, pay_payload, price_overtime, shift_of, wage_basis
 
 
-def _month(value):
+PERIOD, CALENDAR = "period", "calendar"                                                # G17-10
+OVERTIME_CODES = ("overtime", "overtime_rest_day")
+
+
+def _month(value, default=None):
     try:
         y, m = (int(x) for x in (value or "").split("-"))
         return Date(y, m, 1)
     except (ValueError, TypeError):
-        today = timezone.localdate()
-        return today.replace(day=1)
+        return default or timezone.localdate().replace(day=1)
 
 
-def overtime_month(org, first):
-    last = first.replace(day=monthrange(first.year, first.month)[1])
+def current_pay_month(today, start_day):
+    """G17-10: the pay month whose period holds `today` (start day 26: 18 Nov -> November, 28 Okt -> November)."""
+    if start_day and start_day > 1 and today.day >= start_day:
+        return Date(today.year + 1, 1, 1) if today.month == 12 else Date(today.year, today.month + 1, 1)
+    return today.replace(day=1)
+
+
+def bounds(cfg, first, basis):
+    """(start, end) of what the page counts."""
+    if basis == PERIOD:
+        return period_for(first.year, first.month, cfg.period_start_day)
+    return first, first.replace(day=monthrange(first.year, first.month)[1])
+
+
+def payroll_overtime(org, first):
+    """G17-10: that month's pay run and the overtime its slips pay (as last calculated)."""
+    run = PayRun.objects.filter(organization=org, period_end__year=first.year, period_end__month=first.month).first()
+    if run is None:
+        return None
+    total = Decimal("0")
+    for result in run.lines.values_list("result", flat=True):
+        for e in (result or {}).get("earnings", []):
+            if e.get("code") in OVERTIME_CODES:
+                total += Decimal(str(e.get("amount") or 0))
+    return {"run": str(run.id), "name": run.name, "locked": run.is_locked, "amount": str(total),
+            "calculated_at": run.calculated_at.isoformat() if getattr(run, "calculated_at", None) else None}
+
+
+def overtime_month(org, first, basis=CALENDAR):
+    cfg = PayrollSettings.for_org(org)
+    start, last = bounds(cfg, first, basis)
     days = (AttendanceDay.objects
-            .filter(organization=org, date__gte=first, date__lte=last,
+            .filter(organization=org, date__gte=start, date__lte=last,
                     decision="approved", overtime_approved_minutes__gt=0)
             .select_related("employee", "employee__default_shift", "shift")
             .prefetch_related("events__site").order_by("employee__full_name", "date"))
 
-    cfg = PayrollSettings.for_org(org)          # G11c: priced the way payroll pays it
-    people, sites = {}, {}
+    people, sites = {}, {}                      # G11c: priced the way payroll pays it (cfg above)
     for day in days:
         emp = day.employee
         p = people.setdefault(emp.id, {
@@ -81,8 +118,13 @@ def overtime_month(org, first):
         rows.append(p)
     site_rows = sorted(({**s, "amount": str(s["amount"])} for s in sites.values()), key=lambda s: s["site"])
     total = sum((Decimal(r["amount"]) for r in rows), Decimal("0"))
+    payroll = payroll_overtime(org, first) if basis == PERIOD else None              # G17-10
+    if payroll is not None:
+        diff = Decimal(payroll["amount"]) - total
+        payroll.update({"same": diff == 0, "difference": str(diff)})
     return {
         "month": first.strftime("%Y-%m"),
+        "basis": basis, "start": start.isoformat(), "end": last.isoformat(), "payroll": payroll,   # G17-10
         "totals": {"people": len(rows), "minutes": sum(r["minutes"] for r in rows), "amount": str(total)},
         "employees": rows, "sites": site_rows,
     }
@@ -92,5 +134,8 @@ class OvertimeMonthView(APIView):
     permission_classes = [IsCompanyHR]
 
     def get(self, request):
-        first = _month(request.query_params.get("month"))
-        return Response({"success": True, **overtime_month(request.hr_org, first)})
+        basis = PERIOD if request.query_params.get("basis") == PERIOD else CALENDAR
+        default = (current_pay_month(timezone.localdate(), PayrollSettings.for_org(request.hr_org).period_start_day)
+                   if basis == PERIOD else None)
+        first = _month(request.query_params.get("month"), default)
+        return Response({"success": True, **overtime_month(request.hr_org, first, basis)})
