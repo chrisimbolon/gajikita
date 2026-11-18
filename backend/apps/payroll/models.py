@@ -196,6 +196,10 @@ class EmployeeLoan(TenantScopedModel):
     employee    = models.ForeignKey("employees.Employee", on_delete=models.PROTECT, related_name="loans")
     amount      = models.DecimalField(max_digits=14, decimal_places=2,
                                       verbose_name="Sisa yang harus dibayar (saat dicatat)")
+    # G17-9: the figure in HR's book, for reading only: the loan's full amount (a running loan: what was lent at
+    # the start), or what a kasbon asked for. Deductions always follow `amount`.
+    original_amount = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True,
+                                          verbose_name="Jumlah awal / pengajuan (opsional)")
     installment = models.DecimalField(max_digits=14, decimal_places=2, verbose_name="Potongan per bulan")
     start_month = models.DateField(verbose_name="Mulai dipotong (bulan gaji, tanggal 1)")
     note        = models.CharField(max_length=120, blank=True, default="")
