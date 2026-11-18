@@ -1,18 +1,24 @@
 "use client";
 // =============================================================================
 // /dashboard/lembur — approved overtime in rupiah for a month, PP 35/2021 (G4a).
+// G17-10 (18 Nov 2026): by PAY PERIOD by default (26 Sep - 25 Okt = Oktober), like the payroll, with a check line
+// against the payroll's own overtime; "Bulan kalender" stays as a choice.
 // Per person (click to see every day's working), per site, PP 35 warnings,
 // and a CSV download that opens in Excel.
 // =============================================================================
 import { minutesText } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
-import { OvertimeMonth, OvertimePerson, overtimeApi } from "@/lib/api/overtime";
-import { rupiah, todayISO } from "@/lib/format";
+import { OvertimeBasis, OvertimeMonth, OvertimePerson, overtimeApi } from "@/lib/api/overtime";
+import { rupiah } from "@/lib/format";
 import { AlertTriangle, ChevronDown, ChevronRight, Download, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useState } from "react";
 
 const DAY_NAMES = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+const MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
+const monthText = (ym: string) => `${MONTHS[Number(ym.slice(5, 7)) - 1]} ${ym.slice(0, 4)}`;
+const dateText = (iso: string, year = true) => `${Number(iso.slice(8, 10))} ${MON[Number(iso.slice(5, 7)) - 1]}${year ? ` ${iso.slice(0, 4)}` : ""}`;
 
 function weekday(iso: string): string {
   const [y, m, d] = iso.split("-").map(Number);
@@ -32,20 +38,21 @@ function toCsv(data: OvertimeMonth): string {
 }
 
 export default function LemburPage() {
-  const [month, setMonth] = useState(todayISO().slice(0, 7));
+  const [month, setMonth] = useState("");                     // "" = the current pay period (the server decides)
+  const [basis, setBasis] = useState<OvertimeBasis>("period");
   const [data, setData] = useState<OvertimeMonth | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
 
-  const load = useCallback(async (m: string) => {
+  const load = useCallback(async (m: string, b: OvertimeBasis) => {
     setLoading(true);
-    try { setData(await overtimeApi.month(m)); setError(null); }
+    try { setData(await overtimeApi.month(m, b)); setError(null); }
     catch (err) { setError(readErrors(err).summary); }
     finally { setLoading(false); }
   }, []);
 
-  useEffect(() => { load(month); }, [month, load]);
+  useEffect(() => { load(month, basis); }, [month, basis, load]);
 
   const download = () => {
     if (!data) return;
@@ -53,7 +60,7 @@ export default function LemburPage() {
     const blob = new Blob(["﻿" + toCsv(data)], { type: "text/csv;charset=utf-8" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `lembur-${data.month}.csv`;
+    a.download = `lembur-${data.month}${data.basis === "period" ? "-periode-gaji" : "-kalender"}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -67,11 +74,21 @@ export default function LemburPage() {
           <h1 className="display" style={{ fontSize: 28, marginBottom: 4, textTransform: "none" }}>Lembur</h1>
           <p style={{ color: "var(--steel)", margin: 0, fontSize: 14 }}>
             Lembur yang sudah disetujui HR, dihitung sesuai PP 35/2021. Usulan lembur menunggu di{" "}
-            <Link href="/dashboard/absensi/tinjau" style={{ color: "var(--rust)" }}>Perlu Tinjau</Link>.
+            <Link href="/dashboard/absensi/tinjau" style={{ color: "var(--rust)" }}>Siap gajian?</Link>.
           </p>
+          {data && (
+            <p style={{ margin: "6px 0 0", fontSize: 14, fontWeight: 600 }}>
+              {data.basis === "period" ? `Periode gaji ${monthText(data.month)}: ` : `Bulan kalender ${monthText(data.month)}: `}
+              {dateText(data.start, data.start.slice(0, 4) !== data.end.slice(0, 4))} – {dateText(data.end)}
+            </p>
+          )}
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <input className="input" type="month" value={month} onChange={(e) => e.target.value && setMonth(e.target.value)} style={{ width: 170 }} />
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <select className="input" value={basis} onChange={(e) => setBasis(e.target.value as OvertimeBasis)} style={{ width: 170 }}>
+            <option value="period">Periode gaji</option>
+            <option value="calendar">Bulan kalender</option>
+          </select>
+          <input className="input" type="month" value={month || data?.month || ""} onChange={(e) => e.target.value && setMonth(e.target.value)} style={{ width: 170 }} />
           <button className="btn-ghost" onClick={download} disabled={!data || data.employees.length === 0}
                   style={{ display: "flex", alignItems: "center", gap: 6 }}><Download size={15} /> CSV</button>
         </div>
@@ -92,8 +109,22 @@ export default function LemburPage() {
             ))}
           </div>
 
+          {data.payroll && (
+            <div className="card" style={{ padding: "10px 14px", marginBottom: 14, fontSize: 13.5,
+                                           background: data.payroll.same ? "var(--workshop-lt)" : "var(--paper-3)" }}>
+              <b>{data.payroll.name}</b> ({data.payroll.locked ? "dikunci" : "draft"}): lembur di slip {rupiah(data.payroll.amount)}
+              {data.payroll.same ? " · sama dengan halaman ini." : (
+                <> · <b>beda {rupiah(String(Math.abs(Number(data.payroll.difference))))}</b> dengan halaman ini. Biasanya karena lembur
+                  diubah setelah payroll terakhir dihitung (tekan Hitung ulang), atau ada koreksi jam lembur di slip.{" "}
+                  <Link href={`/dashboard/payroll/run?id=${data.payroll.run}`} style={{ color: "var(--rust)" }}>Buka payroll</Link></>
+              )}
+            </div>
+          )}
+
           {data.employees.length === 0 ? (
-            <div className="card" style={{ color: "var(--steel)", fontSize: 14 }}>Belum ada lembur yang disetujui untuk bulan ini.</div>
+            <div className="card" style={{ color: "var(--steel)", fontSize: 14 }}>
+              Belum ada lembur yang disetujui untuk {data.basis === "period" ? "periode gaji" : "bulan"} ini.
+            </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 300px", gap: 18, alignItems: "start" }}>
               <div className="card" style={{ padding: 0 }}>

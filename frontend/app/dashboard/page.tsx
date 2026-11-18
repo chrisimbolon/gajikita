@@ -159,13 +159,18 @@ export default function RingkasanPage() {
             {/* this month's approved overtime: the Midnight panel */}
             <Link href="/dashboard/lembur" style={{ background: "var(--midnight)", color: "#FFFFFF", borderRadius: 16, padding: 18, textDecoration: "none",
                                                    display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ fontSize: 13, color: "var(--on-dark-muted)", fontWeight: 600 }}>Lembur disetujui · {monthName(data.overtime.month)}</div>
+              <div style={{ fontSize: 13, color: "var(--on-dark-muted)", fontWeight: 600 }}>
+                Lembur disetujui · periode gaji {monthName(data.overtime.month)}
+                {data.overtime.start && data.overtime.end && (
+                  <span style={{ fontWeight: 400 }}> ({Number(data.overtime.start.slice(8, 10))}/{Number(data.overtime.start.slice(5, 7))} – {Number(data.overtime.end.slice(8, 10))}/{Number(data.overtime.end.slice(5, 7))})</span>
+                )}
+              </div>
               <div style={{ fontSize: 30, fontWeight: 800, letterSpacing: "-0.02em" }}>{rupiah(data.overtime.amount)}</div>
               <div style={{ fontSize: 13, color: "var(--on-dark-muted)" }}>
                 {minutesText(data.overtime.minutes)} · {data.overtime.people} karyawan · sesuai PP 35/2021
               </div>
               {data.overtime.sites.length === 0 ? (
-                <div style={{ fontSize: 13, color: "var(--on-dark-muted)" }}>Belum ada lembur yang disetujui bulan ini.</div>
+                <div style={{ fontSize: 13, color: "var(--on-dark-muted)" }}>Belum ada lembur yang disetujui di periode ini.</div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 2 }}>
                   {data.overtime.sites.map((s) => (
