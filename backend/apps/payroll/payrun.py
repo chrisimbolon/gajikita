@@ -107,7 +107,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             "exempt_days": 0, "exempt_reason": "", "half_days": 0,                     # G12i, G17-1
             "disrupted_days": 0, "disrupted_reason": "", "holiday_days": 0, "holiday_reason": "",   # G17-2
             "permit_half_days": 0, "overtime_open_days": 0,                          # G17-4, G17-7
-            "sick_days": 0}                                                           # G13-3
+            "sick_days": 0,                                                           # G13-3
+            "long_halves": 0, "long_days": 0, "long_limit": cfg.long_late_half_day_minutes}   # G13-4
     leave_count = Counter()
     meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
     tz = timezone.get_current_timezone()
@@ -152,12 +153,19 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
         if day is not None and not day.decision and r.overtime_proposed_minutes and day.overtime_approved_minutes is None:
             nums["overtime_open_days"] += 1                                            # G17-7
         forgiven = day is not None and day.waive_late and day.decision != "rejected"   # G17-7: "Maafkan" alone
-        if cfg.single_tap_half_day and r.half_day and not forgiven:        # G17-1: ½ day unpaid
+        one_tap = bool(cfg.single_tap_half_day and r.half_day and not forgiven)
+        if one_tap:                                                        # G17-1: ½ day unpaid
             nums["half_days"] += 1
-        if r.half_leave == "unpaid":                                       # G17-4: ½ day permit without pay
+        permit = r.half_leave == "unpaid"
+        if permit:                                                         # G17-4: ½ day permit without pay
             nums["permit_half_days"] += 1
         late = r.late_minutes if Status.LATE in r.tags else 0
         early = r.early_minutes if Status.EARLY_OUT in r.tags else 0
+        late, early, long_halves = engine.long_late_split(late, early, cfg.long_late_half_day_minutes,
+                                                          room=2 - int(one_tap) - int(permit))       # G13-4
+        if long_halves:
+            nums["long_halves"] += long_halves
+            nums["long_days"] += 1
         if late or early:
             nums["late_raw"].append([late, early])
         ot = day.overtime_approved_minutes if (day is not None and day.decision == "approved") else 0
@@ -167,13 +175,14 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
         no_taps = rejected or r.status == Status.EXEMPT          # G12i: taps decide nothing on an exempt day
         nums["meal_days"] += meals.meal_count(meal_rule, d, r.first_in, r.last_out, no_taps, ot,
                                              cfg.meal_late_after, tz, midnight_extra=cfg.meal_midnight_extra)
-        if breakfast and meals.earns_breakfast(d, r.first_in, no_taps, cfg.breakfast_before, tz):
+        if breakfast and (ot or not cfg.breakfast_needs_overtime) \
+                and meals.earns_breakfast(d, r.first_in, no_taps, cfg.breakfast_before, tz):   # G13-4: with an SPL
             nums["breakfast_days"] += 1
         if cells is not None:
             cells.append(day_cell(d, r, day, leave, ot))
     nums["leave"] = dict(leave_count)
     nums["late_minutes"] = engine.chargeable_late_minutes(nums["late_raw"], cfg.late_tolerance_minutes)
-    half = nums["half_days"] + nums["permit_half_days"]                              # G17-1, G17-4
+    half = nums["half_days"] + nums["permit_half_days"] + nums["long_halves"]        # G17-1, G17-4, G13-4
     nums["unpaid_days"] = (nums["absent_days"] + nums["unpaid_leave_days"] + nums["outside_days"]
                            + (half // 2 if half % 2 == 0 else half / 2))                # G17-1: 1 -> 0.5
     return nums
@@ -236,6 +245,12 @@ def calculate_line(line, cfg):
                              f"(tanpa potongan ½ hari atau tidak hadir); terlambat yang tercatat tetap dihitung.")
     if nums.get("holiday_days"):
         slip.warnings.append(f"{nums['holiday_reason']} ({nums['holiday_days']} hari): bukan hari kerja.")
+    if nums.get("long_halves"):                                                      # G13-4: never silent
+        limit = nums.get("long_limit") or 0
+        slip.warnings.insert(0, f"Terlambat / pulang cepat lebih dari {engine.minutes_text(limit)} "
+                                f"({nums.get('long_days', 0)} hari): dipotong {engine.halves_text(nums['long_halves'])} hari "
+                                f"(aturan perusahaan), tanpa denda per menit untuk keterlambatan itu. "
+                                f"Maafkan di Siap gajian bila ada alasannya.")
     if nums.get("permit_half_days"):                                                 # G17-4: never silent
         slip.warnings.append(f"Izin ½ hari tanpa upah {nums['permit_half_days']} hari: dipotong ½ hari per hari.")
     if nums.get("half_days"):                                                        # G17-1: never silent
