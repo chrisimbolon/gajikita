@@ -4,9 +4,11 @@
 // Enter a loan once (what is still owed, the deduction per month, the first pay month): every draft payroll from
 // that month deducts it, and the slip shows "Sisa pinjaman". Kasbon = the whole amount in one month.
 // "Bulan ini" changes this month's deduction (0 = skip this month). Locked payrolls never change.
+// G17-9 (18 Nov 2026): three kinds like HR's book (pinjaman baru / yang sudah berjalan / kasbon), the plan in words
+// ("8× Rp 300.000 + 1× Rp 100.000, lunas Mei 2027"), and "Mulai dipotong" starts at the open draft payroll.
 // =============================================================================
 import { Employee, hrApi, readErrors } from "@/lib/api/hr";
-import { Loan, loanApi as payrollApi } from "@/lib/api/payroll";
+import { Loan, LoanOpenRun, LoanRun, loanApi as payrollApi } from "@/lib/api/payroll";
 import { rupiah } from "@/lib/format";
 import { ArrowLeft, Ban, Loader2, Plus, X } from "lucide-react";
 import Link from "next/link";
@@ -15,6 +17,23 @@ import { useCallback, useEffect, useState } from "react";
 const digits = (t: string) => t.replace(/[^\d]/g, "");
 const show = (t: string) => (t ? new Intl.NumberFormat("id-ID").format(Number(t)) : "");
 const thisMonth = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+
+type Mode = "baru" | "berjalan" | "kasbon";
+const MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+const monthText = (m: string) => { const [y, mo] = m.split("-").map(Number); return y && mo ? `${MONTHS[mo - 1]} ${y}` : m; };
+const addMonths = (m: string, n: number) => {
+  const [y, mo] = m.split("-").map(Number); const k = y * 12 + mo - 1 + n;
+  return `${Math.floor(k / 12)}-${String((k % 12) + 1).padStart(2, "0")}`;
+};
+const rp = (v: number) => `Rp ${new Intl.NumberFormat("id-ID").format(v)}`;
+// The same sums as loans.plan_text in the backend.
+function planText(total: number, installment: number, first: string): string {
+  if (!(total > 0) || !(installment > 0) || !first) return "";
+  const inst = Math.min(installment, total);
+  const full = Math.floor(total / inst), last = total - inst * full;
+  return `${full}× ${rp(inst)}${last > 0 ? ` + 1× ${rp(last)}` : ""}, lunas ${monthText(addMonths(first, full + (last > 0 ? 1 : 0) - 1))}`;
+}
+const emptyForm = (start: string) => ({ employee: "", mode: "baru" as Mode, original: "", amount: "", installment: "", start_month: start, note: "" });
 
 export default function PinjamanPage() {
   const [loans, setLoans] = useState<Loan[] | null>(null);
@@ -25,13 +44,15 @@ export default function PinjamanPage() {
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const [people, setPeople] = useState<Employee[]>([]);
-  const [form, setForm] = useState({ employee: "", kasbon: false, amount: "", installment: "", start_month: thisMonth(), note: "" });
+  const [form, setForm] = useState(emptyForm(thisMonth()));
+  const [runs, setRuns] = useState<LoanRun[]>([]);
+  const [openRun, setOpenRun] = useState<LoanOpenRun | null>(null);
   const [month, setMonth] = useState<Record<string, string>>({});       // loan id -> this month's amount typed
 
   const load = useCallback(async () => {
     try {
       const r = await payrollApi.loans(showAll ? "all" : "active");
-      setLoans(r.loans); setTotal(r.total_remaining); setError(null);
+      setLoans(r.loans); setTotal(r.total_remaining); setRuns(r.runs ?? []); setOpenRun(r.open_run ?? null); setError(null);
     } catch (err) { setError(readErrors(err).summary); }
   }, [showAll]);
   useEffect(() => { load(); }, [load]);
@@ -44,16 +65,22 @@ export default function PinjamanPage() {
     finally { setBusy(false); }
   };
 
+  const kasbon = form.mode === "kasbon";
   const save = () => act(async () => {
     const r = await payrollApi.createLoan({ employee: form.employee, amount: form.amount,
-      installment: form.kasbon ? form.amount : form.installment, start_month: form.start_month, note: form.note.trim() });
+      installment: kasbon ? form.amount : form.installment, start_month: form.start_month, note: form.note.trim(),
+      original_amount: form.mode === "baru" ? form.amount : form.original });
     setAdding(false);
-    setForm({ employee: "", kasbon: false, amount: "", installment: "", start_month: form.start_month, note: "" });
+    setForm(emptyForm(form.start_month));
     return r;
   }, "Pinjaman dicatat. Payroll yang masih draft sudah dihitung ulang.");
 
-  const ready = form.employee && Number(form.amount) > 0 && (form.kasbon || Number(form.installment) > 0) && form.start_month;
-  const months = form.kasbon || !Number(form.installment) ? 1 : Math.ceil(Number(form.amount) / Number(form.installment));
+  const startRun = runs.find((r) => r.month === form.start_month);
+  const skipsOpen = !!openRun && !!form.start_month && form.start_month > openRun.month;
+  const origBad = form.mode !== "baru" && !!form.original && Number(form.original) < Number(form.amount);
+  const ready = !!form.employee && Number(form.amount) > 0 && (kasbon || Number(form.installment) > 0)
+                && !!form.start_month && !origBad && !startRun?.locked;
+  const plan = planText(Number(form.amount), kasbon ? Number(form.amount) : Number(form.installment), form.start_month);
 
   return (
     <div>
@@ -72,7 +99,8 @@ export default function PinjamanPage() {
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
             <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Tampilkan yang lunas / dibatalkan
           </label>
-          <button className="btn-rust" onClick={() => setAdding(!adding)} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <button className="btn-rust" onClick={() => { if (!adding) setForm(emptyForm(openRun?.month ?? thisMonth())); setAdding(!adding); }}
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <Plus size={15} /> Pinjaman baru
           </button>
         </div>
@@ -93,14 +121,20 @@ export default function PinjamanPage() {
               {people.map((p) => <option key={p.id} value={p.id}>{p.full_name} ({p.employee_no})</option>)}
             </select></div>
           <div><label className="label">Jenis</label>
-            <select className="input" value={form.kasbon ? "kasbon" : "cicilan"} onChange={(e) => setForm({ ...form, kasbon: e.target.value === "kasbon" })}>
-              <option value="cicilan">Cicilan (beberapa bulan)</option>
+            <select className="input" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as Mode })}>
+              <option value="baru">Pinjaman baru (dicicil)</option>
+              <option value="berjalan">Pinjaman yang sudah berjalan</option>
               <option value="kasbon">Kasbon (dipotong sekaligus)</option>
             </select></div>
-          <div><label className="label">Sisa yang harus dibayar</label>
-            <input className="input" inputMode="numeric" placeholder="mis. 2.200.000" value={show(form.amount)}
-                   onChange={(e) => setForm({ ...form, amount: digits(e.target.value) })} /></div>
-          {!form.kasbon && (
+          {form.mode !== "baru" && (
+            <div><label className="label">{kasbon ? "Pengajuan (opsional)" : "Jumlah pinjaman awal (opsional)"}</label>
+              <input className="input" inputMode="numeric" placeholder={kasbon ? "mis. 750.000" : "mis. 2.500.000"} value={show(form.original)}
+                     onChange={(e) => setForm({ ...form, original: digits(e.target.value) })} /></div>
+          )}
+          <div><label className="label">{form.mode === "baru" ? "Jumlah pinjaman" : form.mode === "berjalan" ? "Sisa yang masih harus dibayar" : "Disetujui (dipotong)"}</label>
+            <input className="input" inputMode="numeric" placeholder={form.mode === "berjalan" ? "mis. 2.200.000" : kasbon ? "mis. 500.000" : "mis. 2.500.000"}
+                   value={show(form.amount)} onChange={(e) => setForm({ ...form, amount: digits(e.target.value) })} /></div>
+          {!kasbon && (
             <div><label className="label">Potongan per bulan</label>
               <input className="input" inputMode="numeric" placeholder="mis. 300.000" value={show(form.installment)}
                      onChange={(e) => setForm({ ...form, installment: digits(e.target.value) })} /></div>
@@ -108,7 +142,26 @@ export default function PinjamanPage() {
           <div><label className="label">Mulai dipotong (bulan gaji)</label>
             <input className="input" type="month" value={form.start_month} onChange={(e) => setForm({ ...form, start_month: e.target.value })} /></div>
           <div><label className="label">Catatan (opsional)</label>
-            <input className="input" placeholder="mis. pinjaman Sept, 8x" value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></div>
+            <input className="input" placeholder={kasbon ? "mis. kasbon Oktober" : "mis. pinjaman Sept"} value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} /></div>
+          <div style={{ gridColumn: "1 / -1", display: "grid", gap: 4, fontSize: 13 }}>
+            {!form.start_month ? null : startRun?.locked ? (
+              <span style={{ color: "var(--danger)", fontWeight: 600 }}>{startRun.name} sudah dikunci. Pilih bulan berikutnya.</span>
+            ) : startRun ? (
+              <span style={{ color: "var(--workshop)", fontWeight: 600 }}>Dipotong pertama di {startRun.name} (draft).</span>
+            ) : (
+              <span style={{ color: "var(--steel)" }}>Payroll {monthText(form.start_month)} belum dibuat: dipotong pertama saat payroll itu dibuat.</span>
+            )}
+            {skipsOpen && openRun && (
+              <span style={{ color: "var(--danger)" }}>
+                Perhatian: {openRun.name} (draft) tidak ikut memotong pinjaman ini. Bila potongan bulan itu sudah diketik di Item manual,
+                pilih {monthText(openRun.month)} supaya potongannya tersambung ke pinjaman ini.
+              </span>
+            )}
+            {origBad && <span style={{ color: "var(--danger)" }}>{kasbon ? "Pengajuan" : "Jumlah awal"} tidak boleh lebih kecil dari {kasbon ? "yang disetujui" : "sisanya"}.</span>}
+            {form.mode === "berjalan" && Number(form.amount) > 0 && Number(form.original) > Number(form.amount) && (
+              <span style={{ color: "var(--steel)" }}>Sudah dibayar sebelum dicatat di SeeGaji: {rp(Number(form.original) - Number(form.amount))}.</span>
+            )}
+          </div>
           <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <button className="btn-rust" disabled={busy || !ready} onClick={save} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               {busy && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />} Simpan pinjaman
@@ -116,7 +169,7 @@ export default function PinjamanPage() {
             <button className="btn-ghost" onClick={() => setAdding(false)}>Batal</button>
             {ready && (
               <span style={{ fontSize: 13, color: "var(--steel)" }}>
-                {form.kasbon ? `Dipotong ${rupiah(form.amount)} sekaligus.` : `Sekitar ${months} bulan (terakhir bisa lebih kecil).`}{" "}
+                <b style={{ color: "var(--ink, inherit)" }}>{kasbon ? `Dipotong ${rp(Number(form.amount))} sekaligus.` : `Rencana: ${plan}.`}</b>{" "}
                 Bila potongan bulan itu sudah diketik di Item manual, potongan itu yang dipakai (tidak dipotong dua kali).
               </span>
             )}
@@ -144,7 +197,10 @@ export default function PinjamanPage() {
                     <td style={{ whiteSpace: "nowrap" }}><div style={{ fontWeight: 600 }}>{l.employee.full_name}</div>
                       <div className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{l.employee.employee_no}</div></td>
                     <td style={{ fontSize: 13 }}>{l.kasbon ? "Kasbon" : "Cicilan"}{l.note ? ` · ${l.note}` : ""}</td>
-                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{rupiah(l.amount)}</td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{rupiah(l.original_amount ?? l.amount)}
+                      {l.original_amount && Number(l.original_amount) !== Number(l.amount) && (
+                        <div style={{ fontSize: 12, color: "var(--steel)" }}>{l.kasbon ? `disetujui ${rupiah(l.amount)}` : `sisa saat dicatat ${rupiah(l.amount)}`}</div>
+                      )}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>{rupiah(l.installment)}</td>
                     <td style={{ whiteSpace: "nowrap" }}>{l.start_label}</td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap" }} title={l.history.filter((h) => h.locked).map((h) => `${h.run}: ${rupiah(h.amount)}`).join("\n")}>{rupiah(l.paid)}</td>
@@ -164,7 +220,8 @@ export default function PinjamanPage() {
                       ) : "-"}
                     </td>
                     <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 700 }}>{rupiah(l.remaining)}</td>
-                    <td><span className="pill" style={{ fontSize: 12, background: l.state === "active" ? "var(--midnight-soft)" : "var(--paper-3)" }}>{l.state_label}</span></td>
+                    <td><span className="pill" style={{ fontSize: 12, background: l.state === "active" ? "var(--midnight-soft)" : "var(--paper-3)" }}>{l.state_label}</span>
+                      {l.plan && <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3, whiteSpace: "nowrap" }}>{l.plan}</div>}</td>
                     <td>
                       {l.state === "active" && (
                         <button className="btn-ghost" disabled={busy} title="Hentikan pinjaman ini" style={{ padding: "3px 8px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}
