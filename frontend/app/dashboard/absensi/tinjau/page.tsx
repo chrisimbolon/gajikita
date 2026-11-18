@@ -29,6 +29,7 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt
 const dayText = (iso: string) => `${Number(iso.slice(8, 10))} ${MON[Number(iso.slice(5, 7)) - 1]}`;
 const rangeText = (a: string, b: string) => (a === b ? dayText(a) : `${dayText(a)} – ${dayText(b)}`);
 const taps = (i: string | null, o: string | null) => (i || o ? `${i ?? "–"} – ${o ?? "–"}` : "tanpa tap");
+const halves = (n: number) => { const w = Math.floor(n / 2); return `${w || ""}${n % 2 ? "½" : ""}` || "0"; };   // G13-4: 1 -> ½, 3 -> 1½
 
 type State = "done" | "todo" | "rule";
 type Act = (body: { action: "pay_overtime" | "no_overtime" | "forgive" | "away"; ids: string[]; note?: string;
@@ -427,23 +428,26 @@ export default function SiapGajianPage() {
       <Step n={++n} state={st.late} title="Terlambat & pulang cepat"
             summary={data.late.count
               ? <><b>{data.late.people.filter((p) => p.count).length} orang</b> · {data.late.count} kali · {data.late.minutes} menit
-                  {data.rules.fine_set ? <> · <b>{rupiah(data.late.rupiah)}</b></>
+                  {data.late.half_days ? <> · {halves(data.late.half_days)} hari dipotong</> : null}
+                  {data.rules.fine_set || data.late.half_days ? <> · <b>{rupiah(data.late.rupiah)}</b></>
                     : <> · denda terlambat belum diatur. <Link href="/dashboard/payroll/pengaturan" style={{ color: "var(--rust)" }}>Atur di Pengaturan payroll</Link></>}</>
               : "Tidak ada yang dipotong."}
             ifNothing={data.late.count ? (data.rules.fine_set
-              ? `dipotong sesuai aturan (toleransi ${data.rules.late_tolerance_minutes} menit untuk datang, ${rupiah(fine)}/menit).`
+              ? `dipotong sesuai aturan (toleransi ${data.rules.late_tolerance_minutes} menit untuk datang, ${rupiah(fine)}/menit${
+                  data.rules.long_late_half_day_minutes ? `; lebih dari ${data.rules.long_late_half_day_minutes} menit = potong ½ hari` : ""}).`
               : "tidak ada potongan, karena denda per menit di Pengaturan payroll masih Rp 0.") : undefined}
             open={!!open.late} onToggle={data.late.people.length ? () => setOpen({ ...open, late: !open.late }) : undefined}>
         <div style={{ fontSize: 12.5, color: "var(--steel)", marginBottom: 6 }}>Terlambat adalah fakta: cukup buka orang yang punya alasan (izin, belanja alat, mati lampu).</div>
         {data.late.people.map((p: CkLatePerson) => (
           <div key={p.employee.id}>
             <Who name={p.employee.full_name} no={p.employee.employee_no} open={person === `lt-${p.employee.id}`} onClick={() => togglePerson(`lt-${p.employee.id}`)}
-                 right={p.count ? <>{p.count} kali · {p.minutes} menit · <b>{rupiah(p.rupiah)}</b></> : <span style={{ color: "var(--steel)" }}>semua dimaafkan</span>} />
+                 right={p.count ? <>{p.count} kali · {p.minutes} menit{p.half_days ? ` · ${halves(p.half_days)} hari` : ""} · <b>{rupiah(p.rupiah)}</b></> : <span style={{ color: "var(--steel)" }}>semua dimaafkan</span>} />
             {person === `lt-${p.employee.id}` && (
               <Exceptions act={act} busy={busy} rows={p.days.map((d) => ({ id: d.day_id, date: d.date, forgiven: d.forgiven,
                 text: <>{d.late > data.rules.late_tolerance_minutes ? `Terlambat ${d.late} mnt` : ""}{d.late > data.rules.late_tolerance_minutes && d.early ? " · " : ""}{d.early ? `Pulang cepat ${d.early} mnt` : ""}{" "}
                        <span className="mono" style={{ color: "var(--steel)" }}>({taps(d.in, d.out)})</span></>,
-                money: <>{d.charged} mnt · {rupiah(d.rupiah)}</>, note: d.note ? (d.note.text || d.note.code) : null }))} />
+                money: <>{d.half ? `potong ${halves(d.half)} hari` : ""}{d.half && d.charged ? " + " : ""}{d.charged || !d.half ? `${d.charged} mnt` : ""} · {rupiah(d.rupiah)}</>,
+                note: d.note ? (d.note.text || d.note.code) : null }))} />
             )}
           </div>
         ))}
