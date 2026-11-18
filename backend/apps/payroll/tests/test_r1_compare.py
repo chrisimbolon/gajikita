@@ -161,7 +161,7 @@ class CommandTests(TestCase):
             call_command("r1_compare", book=book_path, period="2026-10", org="Beton", stdout=out)
             report = openpyxl.load_workbook(os.path.join(tmp, "R1 2026-10 SeeGaji vs buku.xlsx"))
 
-        self.assertEqual(report.sheetnames, ["Ringkasan", "Selisih", "Nama"])
+        self.assertEqual(report.sheetnames, ["Ringkasan", "Selisih", "Keputusan", "Nama"])     # R1-3
         people = {r[1]: r for r in report["Ringkasan"].iter_rows(min_row=5, values_only=True) if r[0]}
         self.assertEqual(people["Andi Saputra"][7], "cocok")
         self.assertEqual(people["Budi H.S"][7], "beda")
