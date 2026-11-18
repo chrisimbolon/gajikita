@@ -220,17 +220,21 @@ export interface Loan {
   state: "active" | "paid" | "cancelled"; state_label: string; paid: string; planned: string; remaining: string;
   this_month: { run: string; run_name: string; amount: string } | null;
   history: { run: string; amount: string; locked: boolean }[];
+  plan: string;                    // G17-9: "Berikutnya 6× Rp 300.000 + 1× Rp 100.000, lunas Mei 2027"
+  original_amount: string | null;  // G17-9: the full loan / what a kasbon asked for (reading only)
 }
+export interface LoanRun { month: string; name: string; locked: boolean }
+export interface LoanOpenRun { run: string; name: string; month: string }
 export const loanApi = {
-  async loans(show: "active" | "all"): Promise<{ loans: Loan[]; total_remaining: string }> {
+  async loans(show: "active" | "all"): Promise<{ loans: Loan[]; total_remaining: string; open_run: LoanOpenRun | null; runs: LoanRun[] }> {
     const { data } = await api.get("/api/hr/payroll/loans/", { params: { show } });
     return data;
   },
-  async createLoan(body: { employee: string; amount: string; installment: string; start_month: string; note: string }): Promise<Loan> {
+  async createLoan(body: { employee: string; amount: string; installment: string; start_month: string; note: string; original_amount?: string }): Promise<Loan> {
     const { data } = await api.post("/api/hr/payroll/loans/", body, { timeout: 120000 });
     return data.loan;
   },
-  async updateLoan(id: string, body: { installment?: string; note?: string; run?: string; this_month?: string; action?: "cancel" }): Promise<Loan> {
+  async updateLoan(id: string, body: { installment?: string; note?: string; original_amount?: string; run?: string; this_month?: string; action?: "cancel" }): Promise<Loan> {
     const { data } = await api.patch(`/api/hr/payroll/loans/${id}/`, body, { timeout: 120000 });
     return data.loan;
   },
