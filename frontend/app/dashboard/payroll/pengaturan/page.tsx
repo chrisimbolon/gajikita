@@ -180,6 +180,16 @@ export default function PayrollSettingsPage() {
           <input className="input" type="time" value={(form.breakfast_before ?? "07:00").slice(0, 5)} style={{ width: "100%" }}
                  onChange={(e) => set("breakfast_before", e.target.value as never)} />
         </label>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14 }}>
+          <input type="checkbox" checked={!!form.breakfast_needs_overtime} style={{ marginTop: 3 }}
+                 onChange={(e) => set("breakfast_needs_overtime", e.target.checked)} />
+          <span>
+            Sarapan hanya jika hari itu ada lembur (SPL)
+            <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+              Dibayar bila masuk sebelum jam di atas DAN lembur hari itu sudah dibayar (diputuskan HR atau dari file rekap).
+            </div>
+          </span>
+        </label>
         {money("late_fine_per_minute", "Potongan terlambat per menit", "0 = tidak dipotong. Harus tercantum di Peraturan Perusahaan / PKB.")}
         {number("late_tolerance_minutes", "Toleransi terlambat (menit)", "Dikurangi dari menit terlambat setiap hari")}
         <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14 }}>
@@ -191,6 +201,20 @@ export default function PayrollSettingsPage() {
               Hanya jam masuk, atau hanya jam pulang. Tidak dipotong bila HR memaafkannya atau mengubah jamnya di Perlu Tinjau.
             </div>
           </span>
+        </label>
+        <label>
+          <div className="label">Terlambat / pulang cepat lebih dari (menit) = potong ½ hari</div>
+          <input className="input" inputMode="numeric" placeholder="Tidak dipakai" style={{ width: "100%" }}
+                 value={form.long_late_half_day_minutes ?? ""}
+                 onChange={(e) => {
+                   const v = e.target.value.replace(/\D/g, "").slice(0, 3);
+                   set("long_late_half_day_minutes", v === "" ? null : Number(v));
+                 }} />
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+            Mis. 120 = terlambat atau pulang cepat lebih dari 2 jam dipotong ½ hari, bukan denda per menit. Terlambat dan
+            pulang cepat di hari yang sama = 1 hari. Kosongkan bila tidak dipakai.
+          </div>
+          {err("long_late_half_day_minutes")}
         </label>
       </Section>
 
