@@ -157,6 +157,36 @@ def round_overtime(minutes, mode):
     return minutes
 
 
+def long_late_split(late, early, limit, room=2):
+    """
+    G13-4 (DKCB, Anthony 18 Nov 2026): "lebih dari 2 jam telat atau pulang cepat, langsung potong ½ hari".
+    One day's late and early-leave minutes -> (late, early, halves). A part LONGER than `limit` minutes becomes
+    ½ day unpaid instead of a per-minute fine (its minutes become 0); late and early both long -> 2 halves.
+    limit None / 0 = rule off. room = halves this day may still take (a one-tap ½ day or an unpaid ½-day permit
+    already took one): a day is never cut more than one whole day; a long part with no room is fined per minute.
+    Used by the payroll (payrun.collect_numbers) and by "Siap gajian?" (checklist), so both always agree.
+    """
+    late, early, halves = int(late or 0), int(early or 0), 0
+    if not limit:
+        return late, early, 0
+    if late > limit and halves < room:
+        late, halves = 0, halves + 1
+    if early > limit and halves < room:
+        early, halves = 0, halves + 1
+    return late, early, halves
+
+
+def halves_text(halves):
+    """1 -> '½', 2 -> '1', 3 -> '1½'."""
+    whole, half = divmod(int(halves), 2)
+    return (str(whole) if whole else "") + ("½" if half else "") or "0"
+
+
+def minutes_text(minutes):
+    """120 -> '2 jam', 90 -> '90 menit'."""
+    return f"{minutes // 60} jam" if minutes and minutes % 60 == 0 else f"{minutes} menit"
+
+
 def chargeable_late_minutes(days, tolerance):
     """days: (late_minutes, early_leave_minutes) per day. The tolerance comes off each day's late minutes."""
     return sum(max(0, int(late) - tolerance) + max(0, int(early)) for late, early in days)
