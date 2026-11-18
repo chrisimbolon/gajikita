@@ -70,6 +70,12 @@ class PayrollSettings(TenantScopedModel):
     late_tolerance_minutes = models.PositiveSmallIntegerField(default=0)
     # G17-1: DKCB Note sheet "tidak clock out tp ada clock in / tidak clock in tp ada clock out: potong 1/2 hari"
     single_tap_half_day = models.BooleanField(default=False, verbose_name="Tap sekali = potong ½ hari")
+    # G13-4 (Anthony, 18 Nov 2026): "lebih dari 2 jam telat atau pulang cepat, langsung potong ½ hari"
+    long_late_half_day_minutes = models.PositiveSmallIntegerField(
+        null=True, blank=True, default=None, verbose_name="Terlambat / pulang cepat lebih dari (menit) = potong ½ hari",
+        help_text="Kosong = tidak dipakai. Menggantikan denda per menit untuk keterlambatan itu.")
+    # G13-4: "sarapan dibayar jika masuk sebelum jam 7 pagi dan ada SPL" (SPL = overtime HR paid that day)
+    breakfast_needs_overtime = models.BooleanField(default=False, verbose_name="Sarapan hanya jika hari itu ada lembur (SPL)")
     bpjs_base_includes_allowance = models.BooleanField(default=True)
     jkk_rate          = models.DecimalField(max_digits=6, decimal_places=4, default=Decimal("0.0024"),
                                             help_text="0.0024 / 0.0054 / 0.0089 / 0.0127 / 0.0174 (kelompok risiko 1-5)")
