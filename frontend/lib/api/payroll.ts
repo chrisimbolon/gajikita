@@ -30,6 +30,8 @@ export interface PayrollSettings {
   late_fine_per_minute:         string;
   late_tolerance_minutes:       number;
   single_tap_half_day?:         boolean;  // G17-1
+  long_late_half_day_minutes?:  number | null;   // G13-4: null = off (DKCB 120)
+  breakfast_needs_overtime?:    boolean;  // G13-4: breakfast only with an SPL (paid overtime that day)
   bpjs_base_includes_allowance: boolean;
   jkk_rate:                     string;
   minimum_wage:                 string;
