@@ -36,6 +36,44 @@ def label_for(loan):
     return "Cicilan pinjaman" + (f" ({loan.note})" if loan.note else "")
 
 
+_MONTHS = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober",
+           "November", "Desember"]
+
+
+def add_months(d, n):
+    k = d.year * 12 + d.month - 1 + n
+    return date(k // 12, k % 12 + 1, 1)
+
+
+def month_text(d):
+    return f"{_MONTHS[d.month - 1]} {d.year}"
+
+
+def rp(v):
+    return "Rp " + f"{int(v):,}".replace(",", ".")
+
+
+def schedule(total, installment, first_month):
+    """G17-9. 2.500.000 at 300.000 from September 2026 -> (8, 100000, 1 May 2027): 8 full deductions, then one of
+    100.000, the last in May 2027. -> (0, 0, None) when there is nothing to pay."""
+    total, installment = Decimal(total), Decimal(installment)
+    if total <= 0 or installment <= 0:
+        return 0, ZERO, None
+    installment = min(installment, total)
+    full = int(total // installment)
+    last = total - installment * full
+    return full, last, add_months(first_month, full + (1 if last > 0 else 0) - 1)
+
+
+def plan_text(total, installment, first_month):
+    """"8× Rp 300.000 + 1× Rp 100.000, lunas Mei 2027". The loan page's form does the same sums."""
+    full, last, end = schedule(total, installment, first_month)
+    if end is None:
+        return ""
+    inst = min(Decimal(installment), Decimal(total))
+    return f"{full}× {rp(inst)}" + (f" + 1× {rp(last)}" if last > 0 else "") + f", lunas {month_text(end)}"
+
+
 def paid_before(loan, run):
     """What earlier pay runs (locked or not) already took for this loan."""
     from .models import PayRunItem
