@@ -66,6 +66,11 @@ class SettingsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Isi 30 sampai 1440 menit, atau kosongkan untuk tanpa batas.")
         return v
 
+    def validate_long_late_half_day_minutes(self, v):                                  # G13-4
+        if v is not None and not 30 <= v <= 480:
+            raise serializers.ValidationError("Isi 30 sampai 480 menit, atau kosongkan bila tidak dipakai.")
+        return v
+
     def validate_night_ot_rules(self, v):                                              # G12e
         from apps.attendance.night_rules import RuleError, parse_rules
         try:
