@@ -43,6 +43,7 @@ from rest_framework.views import APIView
 from apps.core.audit import record_audit
 from apps.core.models import AuditEntry
 from apps.organizations.permissions import IsCompanyHR
+from apps.payroll import engine as pay_engine                                          # G13-4: one rule
 from apps.payroll.models import PayrollSettings, PayRun
 
 from . import checklist_rules as R
@@ -102,6 +103,7 @@ def build(org, month=None, now=None):
     notes = {(n.employee_id, n.date): n for n in DayNote.objects.filter(organization=org, employee_id__in=ids,
                                                                         date__gte=start, date__lte=end)}
     tol, fine = cfg.late_tolerance_minutes, Decimal(cfg.late_fine_per_minute or 0)
+    long_limit = cfg.long_late_half_day_minutes                                       # G13-4
     cap = cfg.overtime_daily_cap_minutes
 
     last_data = (ClockEvent.objects.filter(organization=org, day__date__gte=start, day__date__lte=end)
@@ -175,19 +177,25 @@ def build(org, month=None, now=None):
                 if cut:
                     p["cut_days"] += 1
                     p["rupiah"] += R.rupiah_int(rate / 2)
-            # late / early: facts, fined by the rule
-            charged = R.late_charge(r.late_minutes if Status.LATE in r.tags else 0,
-                                    r.early_minutes if Status.EARLY_OUT in r.tags else 0, tol)
+            # late / early: facts, fined by the rule (G13-4: a long one = ½ day, the same rule as the payroll)
+            one_cut = bool(r.half_day and cfg.single_tap_half_day and not (day.waive_late and day.decision != "rejected"))
+            l_min, e_min, halves = pay_engine.long_late_split(
+                r.late_minutes if Status.LATE in r.tags else 0, r.early_minutes if Status.EARLY_OUT in r.tags else 0,
+                long_limit, room=2 - int(one_cut) - int(r.half_leave == "unpaid"))
+            charged = R.late_charge(l_min, e_min, tol)
+            money = R.rupiah_int(charged * fine + halves * rate / 2)
             was_late = (r.late_minutes or 0) > tol or (r.early_minutes or 0) > 0
-            if charged or (day.waive_late and was_late):
-                p = late.setdefault(emp.id, {"employee": _emp(emp), "days": [], "minutes": 0, "rupiah": 0, "count": 0})
+            if charged or halves or (day.waive_late and was_late):
+                p = late.setdefault(emp.id, {"employee": _emp(emp), "days": [], "minutes": 0, "rupiah": 0, "count": 0,
+                                             "half_days": 0})
                 p["days"].append({**base, "late": r.late_minutes or 0, "early": r.early_minutes or 0,
-                                  "charged": charged, "rupiah": R.rupiah_int(charged * fine),
-                                  "forgiven": bool(day.waive_late and not charged)})
-                if charged:
+                                  "charged": charged, "half": halves, "rupiah": money,
+                                  "forgiven": bool(day.waive_late and not charged and not halves)})
+                if charged or halves:
                     p["count"] += 1
                     p["minutes"] += charged
-                    p["rupiah"] += R.rupiah_int(charged * fine)
+                    p["half_days"] += halves
+                    p["rupiah"] += money
 
     # people who (almost) never tap completely: not part of the pattern; suggested as "Tidak wajib absen?"
     left = {}                                                                         # G17-7.2: stopped tapping
@@ -255,7 +263,8 @@ def build(org, month=None, now=None):
         "success": True, **info,
         "no_track": no_track,                                                                         # G17-7.1
         "rules": {"late_fine_per_minute": str(fine), "late_tolerance_minutes": tol, "fine_set": fine > 0,
-                  "single_tap_half_day": cfg.single_tap_half_day, "overtime_cap_minutes": cap},
+                  "single_tap_half_day": cfg.single_tap_half_day, "overtime_cap_minutes": cap,
+                  "long_late_half_day_minutes": long_limit},                                                   # G13-4
         "import": {"days": tapped_days, "people": len(tapped_people), "employees": len(emps),
                    "until": until.isoformat(), "short": bool(last_data) and bool(not_imported),             # G17-7.2.1
                    "last_import": timezone.localtime(last_import).isoformat() if last_import else None},
@@ -266,6 +275,7 @@ def build(org, month=None, now=None):
         "missing": {"days": sum(len(p["days"]) for p in miss_rows), "cut_days": sum(p["cut_days"] for p in miss_rows),
                     "rupiah": sum(p["rupiah"] for p in miss_rows), "people": miss_rows},
         "late": {"count": sum(p["count"] for p in late_rows), "minutes": sum(p["minutes"] for p in late_rows),
+                 "half_days": sum(p["half_days"] for p in late_rows),                                         # G13-4
                  "rupiah": sum(p["rupiah"] for p in late_rows), "people": late_rows},
         "run": ({"id": str(run.id), "name": run.name, "locked": run.is_locked} if run else None),
     }
