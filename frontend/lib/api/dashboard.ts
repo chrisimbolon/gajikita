@@ -18,6 +18,8 @@ export interface Summary {
   leave:            { pending: number; today: number };     // G7
   overtime: {
     month:   string;
+    start?:  string;   // G17-10: the pay period
+    end?:    string;
     amount:  string;
     minutes: number;
     people:  number;

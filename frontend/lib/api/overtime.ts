@@ -31,16 +31,24 @@ export interface OvertimePerson {
   not_paid:     string | null;
 }
 
+export type OvertimeBasis = "period" | "calendar";      // G17-10
+
 export interface OvertimeMonth {
   month:     string;
+  basis:     OvertimeBasis;                            // G17-10
+  start:     string;                                   // first date counted
+  end:       string;                                   // last date counted
+  // G17-10 (period only): that month's pay run and the overtime its slips pay, as last calculated
+  payroll:   { run: string; name: string; locked: boolean; amount: string; same: boolean; difference: string } | null;
   totals:    { people: number; minutes: number; amount: string };
   employees: OvertimePerson[];
   sites:     { site: string; minutes: number; amount: string }[];
 }
 
 export const overtimeApi = {
-  async month(month: string): Promise<OvertimeMonth> {
-    const { data } = await api.get("/api/hr/overtime/", { params: { month } });
+  // month "" = the current pay period (basis period) / this calendar month
+  async month(month: string, basis: OvertimeBasis = "period"): Promise<OvertimeMonth> {
+    const { data } = await api.get("/api/hr/overtime/", { params: { month: month || undefined, basis } });
     return data;
   },
 };
