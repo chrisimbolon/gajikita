@@ -123,7 +123,7 @@ export default function PinjamanPage() {
           <div><label className="label">Jenis</label>
             <select className="input" value={form.mode} onChange={(e) => setForm({ ...form, mode: e.target.value as Mode })}>
               <option value="baru">Pinjaman baru (dicicil)</option>
-              <option value="berjalan">Pinjaman yang sudah berjalan</option>
+              <option value="berjalan">Sudah berjalan (sisa)</option>
               <option value="kasbon">Kasbon (dipotong sekaligus)</option>
             </select></div>
           {form.mode !== "baru" && (
