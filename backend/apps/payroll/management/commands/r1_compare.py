@@ -5,7 +5,11 @@
 R1 (12 Nov 2026): SeeGaji's pay run next to the company's own payroll book, person by person.
 
     python manage.py r1_compare --book "path/10. Oct 2026 Rekapan Gaji DKCB.xlsx" --period 2026-10
-        [--org "DKCB"] [--sheet "Data Gaji (Real)"] [--out report.xlsx]
+        [--org "DKCB"] [--sheet "Data Gaji (Real)"] [--out report.xlsx] [--keputusan "earlier report.xlsx"]
+
+R1-3 (18 Nov 2026): sheet "Keputusan" = HR's decision per difference (Salah buku / Aturan belum ada / Tunggu
+jawaban HR / SeeGaji salah). Fill it in and pass the file back with --keputusan; a decision counts only while
+the difference is the same amount. See apps/payroll/r1_compare.py.
 
 Reads only. Writes one Excel file (default: next to the book, "R1 <period> SeeGaji vs buku.xlsx"):
   Ringkasan   one row per person: net in SeeGaji, net in the book, difference, status
@@ -37,6 +41,7 @@ class Command(BaseCommand):
         parser.add_argument("--org", default="", help="Company name (part of it); needed when there are several")
         parser.add_argument("--sheet", default="", help="Sheet name; default: the first sheet that looks like a register")
         parser.add_argument("--out", default="", help="Report path (.xlsx)")
+        parser.add_argument("--keputusan", default="", help="R1-3: an earlier report (or file) with the Keputusan sheet filled in")
 
     def handle(self, *args, **o):
         import openpyxl
@@ -56,11 +61,12 @@ class Command(BaseCommand):
         wb = openpyxl.load_workbook(o["book"], data_only=True, read_only=True)
         book, sheet = self._read(wb, o["sheet"])
         wb.close()
+        decisions = self._decisions(o["keputusan"]) if o["keputusan"] else []            # R1-3: read before writing
         lines = list(run.lines.select_related("employee").order_by("employee__full_name"))
         emp_names = [l.employee.full_name for l in lines]
         pairs, book_only, sg_only = r1.match_names([b.name for b in book], emp_names)
 
-        summary, diffs = [], []
+        summary, diffs, keputusan, unknown = [], [], [], []
         for i, b in enumerate(book):
             if i not in pairs:
                 continue
@@ -68,18 +74,40 @@ class Command(BaseCommand):
             sg = r1.seegaji_amounts(line.result, line.net)
             ds = r1.compare(b.amounts, sg)
             qty = self._quantities(line.result)
+            kinds, decided_text = [], {}
+            for d in ds:                                                                  # R1-3
+                if d.key == "net":
+                    continue
+                dec, state = r1.match_decision(b.name, d.label, d.delta, decisions)
+                kind = dec.kind if (dec and state == r1.DECIDED) else None
+                if kind == r1.UNKNOWN:
+                    unknown.append(f"{b.name} · {d.label}: '{dec.text}'")
+                    kind = None
+                kinds.append(kind)
+                if state == r1.DECIDED:
+                    text, note = dec.text, dec.note
+                    decided_text[d.key] = dec.text
+                elif state == r1.STALE:
+                    text = ""
+                    note = (f"Keputusan lama '{dec.text}' untuk selisih Rp {rp(dec.delta)} tidak dipakai: selisih "
+                            f"sekarang Rp {rp(d.delta)}." + (f" Catatan lama: {dec.note}" if dec.note else ""))
+                else:
+                    text, note = "", ""
+                keputusan.append((b.name, line.employee.employee_no, d.label, d.seegaji, d.book, d.delta, d.hint,
+                                  text, note, self._row_state(kind, state)))
             summary.append((b.no, b.name, line.employee.full_name, line.employee.employee_no, sg["net"],
                             b.amounts.get("net", r1.ZERO), sg["net"] - b.amounts.get("net", r1.ZERO), r1.status(ds),
-                            len([d for d in ds if d.key != "net"]), line.warning_count))
+                            len([d for d in ds if d.key != "net"]), line.warning_count, r1.person_state(kinds)))
             for d in ds:
                 diffs.append((b.name, line.employee.employee_no, d.label, qty.get(d.key, ""), d.seegaji, d.book,
-                              d.delta, d.hint, ""))
+                              d.delta, d.hint, decided_text.get(d.key, "")))
 
         out = o["out"] or os.path.join(os.path.dirname(os.path.abspath(o["book"])),
                                        f"R1 {o['period']} SeeGaji vs buku.xlsx")
         self._write(out, run, sheet, summary, diffs,
-                    [book[i] for i in book_only], [lines[j] for j in sg_only])
+                    [book[i] for i in book_only], [lines[j] for j in sg_only], keputusan)
         self._print(run, sheet, summary, diffs, [book[i] for i in book_only], [lines[j] for j in sg_only], out)
+        self._print_decisions(summary, keputusan, decisions, unknown)
 
     # ── input ──
     def _org(self, name):
@@ -103,6 +131,30 @@ class Command(BaseCommand):
                 return book, name
         raise CommandError("Tidak menemukan sheet register (baris judul dengan Nama, PENGHASILAN, PENGURANGAN, PENERIMAAN).")
 
+    def _decisions(self, path):
+        """R1-3: the Keputusan sheet of an earlier report (or the Selisih sheet, or any sheet with those columns)."""
+        import openpyxl
+        if not os.path.exists(path):
+            raise CommandError(f"File keputusan tidak ditemukan: {path}")
+        wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+        order = [n for n in ("Keputusan", "Selisih") if n in wb.sheetnames] + \
+                [n for n in wb.sheetnames if n not in ("Keputusan", "Selisih")]
+        try:
+            for name in order:
+                found = r1.read_decisions(wb[name].iter_rows(values_only=True))
+                if found:
+                    return found
+        finally:
+            wb.close()
+        raise CommandError("Tidak ada keputusan yang terisi di file itu (kolom Nama, Komponen, Selisih, Keputusan).")
+
+    @staticmethod
+    def _row_state(kind, state):
+        if state == r1.STALE:
+            return "terbuka: selisih berubah"
+        return {r1.EXPLAINED: "dijelaskan", r1.WAITING: "menunggu jawaban", r1.BUG: "terbuka: bug SeeGaji"}.get(
+            kind, "terbuka: belum diputuskan")
+
     def _quantities(self, result):
         """component -> '14.5 jam' style note from SeeGaji's own lines, to explain a difference."""
         out = {}
@@ -115,7 +167,7 @@ class Command(BaseCommand):
         return out
 
     # ── output ──
-    def _write(self, path, run, sheet, summary, diffs, book_only, sg_only):
+    def _write(self, path, run, sheet, summary, diffs, book_only, sg_only, keputusan=()):
         from openpyxl import Workbook
         from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -146,8 +198,8 @@ class Command(BaseCommand):
         ws = wb.active
         ws.title = "Ringkasan"
         table(ws, "R1 — SeeGaji vs buku gaji", ["No buku", "Nama di buku", "Nama di SeeGaji", "No. Karyawan",
-              "Diterima SeeGaji", "Diterima buku", "Selisih", "Status", "Jumlah komponen beda", "Peringatan slip"],
-              summary, {5, 6, 7}, [8, 26, 26, 12, 16, 16, 14, 34, 12, 10])
+              "Diterima SeeGaji", "Diterima buku", "Selisih", "Status", "Jumlah komponen beda", "Peringatan slip",
+              "Keputusan"], summary, {5, 6, 7}, [8, 26, 26, 12, 16, 16, 14, 34, 12, 10, 24])
         total = [sum(r[i] for r in summary) if summary else 0 for i in (4, 5, 6)]
         ws.append([])
         ws.append(["", "TOTAL", "", "", *[float(t) for t in total]])
@@ -158,8 +210,21 @@ class Command(BaseCommand):
 
         table(wb.create_sheet("Selisih"), "Selisih per komponen", ["Nama", "No. Karyawan", "Komponen",
               "Jumlah di SeeGaji", "SeeGaji (Rp)", "Buku (Rp)", "Selisih (Rp)", "Dugaan penyebab",
-              "Keputusan (bug SeeGaji / salah buku / aturan belum ada / data)"],
-              diffs, {5, 6, 7}, [26, 12, 30, 14, 15, 15, 14, 52, 40])
+              "Keputusan (lihat sheet Keputusan)"],
+              diffs, {5, 6, 7}, [26, 12, 30, 14, 15, 15, 14, 52, 28])
+
+        # R1-3: HR's decision per difference, carried from --keputusan; the dropdown keeps the words R1 understands
+        from openpyxl.worksheet.datavalidation import DataValidation
+        ws_k = wb.create_sheet("Keputusan")
+        table(ws_k, "Keputusan per selisih (isi kolom Keputusan, lalu jalankan R1 lagi dengan --keputusan file ini)",
+              ["Nama", "No. Karyawan", "Komponen", "SeeGaji (Rp)", "Buku (Rp)", "Selisih (Rp)", "Dugaan penyebab",
+               "Keputusan", "Catatan", "Status"],
+              list(keputusan), {4, 5, 6}, [26, 12, 30, 15, 15, 14, 44, 20, 50, 24])
+        if keputusan:
+            dv = DataValidation(type="list", formula1='"' + ",".join(r1.CHOICES) + '"', allow_blank=True)
+            dv.error, dv.prompt = "Pilih salah satu keputusan dari daftar.", ", ".join(r1.CHOICES)
+            ws_k.add_data_validation(dv)
+            dv.add(f"H5:H{4 + len(keputusan)}")
 
         names = [("Hanya di buku", b.name, b.section, float(b.amounts.get("net", 0))) for b in book_only]
         names += [("Hanya di SeeGaji", l.employee.full_name, l.employee.employee_no, float(l.net)) for l in sg_only]
@@ -182,4 +247,24 @@ class Command(BaseCommand):
         if sg_only:
             w("Hanya di SeeGaji: " + ", ".join(l.employee.full_name for l in sg_only))
         w(self.style.SUCCESS(f"\nLaporan: {out}"))
+        w("Sheet Keputusan: isi kolom Keputusan per selisih, lalu jalankan lagi dengan --keputusan \"<file itu>\".")
         w("Isinya gaji asli: simpan di luar repo, jangan di-commit.")
+
+    def _print_decisions(self, summary, keputusan, decisions, unknown):
+        """R1-3: one line on HR's decisions, then what is still open."""
+        w = self.stdout.write
+        states = [r[9] for r in keputusan]
+        count = lambda s: sum(1 for x in states if x == s)
+        opened = [r for r in keputusan if r[9].startswith("terbuka")]
+        w(f"\nKeputusan: {count('dijelaskan')} dijelaskan, {count('menunggu jawaban')} menunggu jawaban, "
+          f"{count('terbuka: belum diputuskan')} belum diputuskan, {count('terbuka: bug SeeGaji')} bug, "
+          f"{count('terbuka: selisih berubah')} selisih berubah"
+          + (f" (dibaca {len(decisions)} keputusan dari file)" if decisions else ""))
+        people = {}
+        for r in summary:
+            people[r[10]] = people.get(r[10], 0) + 1
+        w("Per orang: " + ", ".join(f"{n} {s}" for s, n in sorted(people.items(), key=lambda x: (x[0] != "cocok", x[0]))))
+        for r in opened:
+            w(f"  terbuka · {r[0]} · {r[2]}: selisih Rp {rp(r[5])} ({r[9][9:]})")
+        for u in unknown:
+            w(self.style.WARNING(f"  Keputusan tidak dikenal, dianggap belum diputuskan: {u}"))

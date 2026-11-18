@@ -9,6 +9,9 @@ Pure functions (no database), so every rule here is tested without real data:
   seegaji_amounts(result)  a PayRunLine.result -> {component: amount}
   match_names(book, emps)  book names -> employees (exact, same words, or close spelling)
   compare(book, sg)        -> Diff list for one person, each with a first-guess cause
+  read_decisions(rows)     R1-3: HR's "Keputusan" per difference, from an earlier report
+  match_decision(...)      R1-3: a decision counts only while the difference is the same amount
+  person_state(states)     R1-3: cocok / dijelaskan / menunggu jawaban / beda
 
 The book layout this reads (PT DKCB, "Data Gaji (Real)"): a header row with "Nama",
 "PENGHASILAN (A)", "PENGURANGAN (B)", "PENERIMAAN"; the component names in the row under it;
@@ -291,6 +294,89 @@ def compare(book_amounts, sg_amounts):
         if abs(sg - bk) > TOLERANCE:
             out.append(Diff(key, sg, bk, hint(key, sg, bk)))
     return out
+
+
+# ── R1-3: HR's decision on each difference ────────────────────────────────────
+
+CHOICES = ["Salah buku", "Aturan belum ada", "Tunggu jawaban HR", "SeeGaji salah"]
+EXPLAINED, WAITING, BUG, UNKNOWN = "explained", "waiting", "bug", "unknown"
+NEW, DECIDED, STALE = "new", "decided", "stale"
+
+
+def decision_kind(text):
+    """The Keputusan cell -> explained / waiting / bug / unknown, or None when empty."""
+    t = norm(text)
+    if not t:
+        return None
+    if "salahbuku" in t or "bukusalah" in t or "aturanbelum" in t or "belumada" in t:
+        return EXPLAINED
+    if "tunggu" in t or "menunggu" in t:
+        return WAITING
+    if "seegajisalah" in t or "bug" in t:
+        return BUG
+    return UNKNOWN
+
+
+@dataclass
+class Decision:
+    name: str
+    component: str
+    delta: Decimal
+    text: str
+    note: str = ""
+
+    @property
+    def kind(self):
+        return decision_kind(self.text)
+
+
+def _col(header, *starts):
+    for i, h in enumerate(header):
+        if any(norm(h).startswith(s) for s in starts):
+            return i
+    return None
+
+
+def read_decisions(rows):
+    """Rows of a "Keputusan" (or "Selisih") sheet -> Decision list (rows with a filled Keputusan only)."""
+    out, cols = [], None
+    for row in rows:
+        cells = list(row or [])
+        if cols is None:
+            c = {k: _col(cells, *s) for k, s in (("name", ("nama",)), ("component", ("komponen",)),
+                                                ("delta", ("selisih",)), ("text", ("keputusan",)),
+                                                ("note", ("catatan",)))}
+            if c["name"] is not None and c["component"] is not None and c["text"] is not None and c["delta"] is not None:
+                cols = c
+            continue
+        get = lambda k: cells[cols[k]] if cols[k] is not None and cols[k] < len(cells) else None
+        name, comp, text = get("name"), get("component"), get("text")
+        if not name or not comp or not str(text or "").strip():
+            continue
+        out.append(Decision(str(name).strip(), str(comp).strip(), to_dec(get("delta")), str(text).strip(),
+                            str(get("note") or "").strip()))
+    return out
+
+
+def match_decision(name, label, delta, decisions):
+    """-> (Decision or None, NEW / DECIDED / STALE). Same person + component; same amount within TOLERANCE."""
+    for d in decisions:
+        if norm(d.name) == norm(name) and norm(d.component) == norm(label):
+            return d, (DECIDED if abs(d.delta - delta) <= TOLERANCE else STALE)
+    return None, NEW
+
+
+def person_state(kinds):
+    """kinds: one per component difference (explained / waiting / bug / None = undecided or unknown)."""
+    if not kinds:
+        return "cocok"
+    if BUG in kinds:
+        return "beda: bug SeeGaji"
+    if any(k not in (EXPLAINED, WAITING) for k in kinds):
+        return "beda: belum diputuskan"
+    if WAITING in kinds:
+        return "menunggu jawaban"
+    return "dijelaskan"
 
 
 def status(diffs):
