@@ -4,8 +4,10 @@
 """
 G13 part 2 (15 Nov 2026) — Payroll → Pinjaman.
 
-GET   /api/hr/payroll/loans/?show=active|all
-POST  /api/hr/payroll/loans/       {employee, amount, installment, start_month "YYYY-MM", note}
+GET   /api/hr/payroll/loans/?show=active|all   -> loans, total_remaining, open_run (the oldest draft payroll: the
+      form's default "Mulai dipotong"), runs (month, name, locked: the form says which payroll deducts first)
+POST  /api/hr/payroll/loans/       {employee, amount, installment, start_month "YYYY-MM", note, original_amount?}
+      original_amount (G17-9, optional, for reading only): the loan's full amount / what a kasbon asked for.
       amount = what is STILL owed when recorded (Iqbal: 2.200.000 after September). installment = amount
       -> a kasbon, deducted in full in one month. A typed "Pinjaman" item already in that month's draft run is
       taken over (linked) instead of deducting twice.
@@ -85,6 +87,16 @@ def describe(loan):
         state, label = "paid", "Lunas"
     else:
         state, label = "active", "Berjalan"
+    plan = ""                                       # G17-9: what is still to come, in words
+    if state == "active":
+        taken = [L.pay_month(i.line.run) for i in reps]
+        rest = max(ZERO, loan.amount - paid - planned)
+        if rest > 0:
+            first = max(L.add_months(max(taken), 1), loan.start_month) if taken else loan.start_month
+            plan = ("Berikutnya " if taken else "") + L.plan_text(rest, loan.installment, first)
+        else:
+            end = max((L.pay_month(i.line.run) for i in reps if i.amount > 0), default=None)
+            plan = f"Lunas {L.month_text(end)}" if end else ""
     draft = next((i for i in reps if not i.line.run.is_locked), None)
     return {
         "id": str(loan.id),
@@ -92,7 +104,8 @@ def describe(loan):
                      "full_name": loan.employee.full_name},
         "amount": _money(loan.amount), "installment": _money(loan.installment), "kasbon": loan.is_kasbon,
         "start_month": loan.start_month.strftime("%Y-%m"), "start_label": month_label(loan.start_month),
-        "note": loan.note, "state": state, "state_label": label,
+        "note": loan.note, "state": state, "state_label": label, "plan": plan,
+        "original_amount": _money(loan.original_amount) if loan.original_amount is not None else None,
         "paid": _money(paid), "planned": _money(planned), "remaining": _money(remaining),
         "this_month": ({"run": str(draft.line.run_id), "run_name": draft.line.run.name, "amount": _money(draft.amount)}
                        if draft else None),
@@ -109,14 +122,22 @@ class LoanListView(APIView):
         rows = [describe(l) for l in qs]
         if request.query_params.get("show") != "all":
             rows = [r for r in rows if r["state"] == "active"]
+        runs = list(PayRun.objects.filter(organization=request.hr_org).order_by("-period_start")[:24])
+        draft = min((r for r in runs if not r.is_locked), key=lambda r: r.period_start, default=None)
         return Response({"success": True, "loans": rows,
-                         "total_remaining": _money(sum((Decimal(r["remaining"]) for r in rows), ZERO))})
+                         "total_remaining": _money(sum((Decimal(r["remaining"]) for r in rows), ZERO)),
+                         "open_run": ({"run": str(draft.id), "name": draft.name,
+                                       "month": L.pay_month(draft).strftime("%Y-%m")} if draft else None),
+                         "runs": [{"month": L.pay_month(r).strftime("%Y-%m"), "name": r.name, "locked": r.is_locked}
+                                  for r in runs]})
 
     def post(self, request):
         org, d = request.hr_org, request.data
         emp = Employee.objects.filter(organization=org, pk=d.get("employee")).first() if d.get("employee") else None
         amount, installment, start = _amount(d.get("amount")), _amount(d.get("installment")), _month(d.get("start_month"))
         note = str(d.get("note") or "").strip()[:120]
+        raw_original = d.get("original_amount")
+        original = None if raw_original in (None, "") else _amount(raw_original)
         if emp is None:
             return _err("Pilih karyawan.")
         if amount is None:
@@ -125,6 +146,10 @@ class LoanListView(APIView):
             return _err("Isi potongan per bulan (lebih dari 0).")
         if installment > amount:
             installment = amount
+        if raw_original not in (None, "") and original is None:
+            return _err("Jumlah awal / pengajuan tidak valid.")
+        if original is not None and original < amount:
+            return _err("Jumlah awal / pengajuan tidak boleh lebih kecil dari jumlah yang akan dipotong.")
         if start is None:
             return _err("Pilih bulan mulai dipotong.")
         locked = PayRun.objects.filter(organization=org, status=PayRun.Status.LOCKED,
@@ -133,7 +158,8 @@ class LoanListView(APIView):
             return _err(f"{locked.name} sudah dikunci. Mulai potong bulan berikutnya.")
         with transaction.atomic():
             loan = EmployeeLoan.objects.create(organization=org, employee=emp, amount=amount, installment=installment,
-                                               start_month=start, note=note, created_by=request.user)
+                                               start_month=start, note=note, created_by=request.user,
+                                               original_amount=original)
             adopted = False
             run = PayRun.objects.filter(organization=org, status=PayRun.Status.DRAFT,
                                         period_end__year=start.year, period_end__month=start.month).first()
@@ -148,9 +174,11 @@ class LoanListView(APIView):
             kind = "kasbon" if loan.is_kasbon else f"cicilan {installment:,.0f}/bulan"
             record_audit(organization=org, actor=request.user, action="payroll.loan_create", target=emp,
                          summary=f"{emp.full_name}: pinjaman Rp {amount:,.0f}, {kind}, mulai {month_label(start)}"
+                                 + (f" (awal Rp {original:,.0f})" if original is not None and original != amount else "")
                                  + (" (potongan yang sudah diketik dipakai)" if adopted else ""),
                          after={"loan": str(loan.id), "amount": str(amount), "installment": str(installment),
-                                "start": start.isoformat(), "note": note, "adopted": adopted})
+                                "start": start.isoformat(), "note": note, "adopted": adopted,
+                                "original": str(original) if original is not None else None})
         return Response({"success": True, "loan": describe(loan), "adopted": adopted}, status=status.HTTP_201_CREATED)
 
 
@@ -194,7 +222,13 @@ class LoanDetailView(APIView):
                     loan.installment = min(inst, loan.amount)
                 if "note" in d:
                     loan.note = str(d.get("note") or "").strip()[:120]
-                loan.save(update_fields=["installment", "note"])
+                if "original_amount" in d:              # G17-9: "" clears it
+                    raw = d.get("original_amount")
+                    original = None if raw in (None, "") else _amount(raw)
+                    if raw not in (None, "") and (original is None or original < loan.amount):
+                        return _err("Jumlah awal / pengajuan tidak valid atau lebih kecil dari jumlah yang dipotong.")
+                    loan.original_amount = original
+                loan.save(update_fields=["installment", "note", "original_amount"])
                 summary = f"cicilan Rp {loan.installment:,.0f}/bulan" + (f", catatan: {loan.note}" if loan.note else "")
             resync(org, loan.employee)
             record_audit(organization=org, actor=request.user, action="payroll.loan_update", target=loan.employee,
