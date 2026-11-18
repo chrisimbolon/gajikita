@@ -70,9 +70,10 @@ class SummaryTests(APITestCase):
         self.assertEqual(names, ["Budi", "Citra", "Andi"])
 
     def test_overtime_matches_the_lembur_page(self):
-        ot = self.client.get(URL).data["overtime"]
-        lembur = self.client.get("/api/hr/overtime/", {"month": "2026-10"}).data
-        self.assertEqual((ot["month"], ot["amount"], ot["minutes"], ot["people"]), ("2026-10", "165000", 180, 1))
+        ot = self.client.get(URL).data["overtime"]                     # G17-10: 28 Okt is in pay period November
+        lembur = self.client.get("/api/hr/overtime/", {"basis": "period"}).data
+        self.assertEqual((ot["month"], ot["start"], ot["end"]), ("2026-11", "2026-10-26", "2026-11-25"))
+        self.assertEqual((ot["month"], ot["amount"], ot["minutes"], ot["people"]), (lembur["month"], "165000", 180, 1))
         self.assertEqual(ot["amount"], lembur["totals"]["amount"])
         self.assertEqual(ot["sites"], [{"site": "Gerbang Tol KM 21", "minutes": 180, "amount": "165000", "share": 100}])
 

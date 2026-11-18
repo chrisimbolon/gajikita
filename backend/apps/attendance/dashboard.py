@@ -41,7 +41,9 @@ class SummaryView(APIView):
         queue = review_rows(org, 7, now)
         rows.sort(key=lambda r: (not r["needs_review"], _ORDER.get(r["status"], 10), r["employee"]["full_name"]))
 
-        ot = overtime_month(org, today.replace(day=1))
+        from apps.payroll.models import PayrollSettings                              # G17-10: the pay period
+        from apps.payroll.views import PERIOD, current_pay_month
+        ot = overtime_month(org, current_pay_month(today, PayrollSettings.for_org(org).period_start_day), PERIOD)
         top = sorted(ot["sites"], key=lambda s: Decimal(s["amount"]), reverse=True)[:4]
         biggest = Decimal(top[0]["amount"]) if top else Decimal("0")
         for s in top:
@@ -58,7 +60,7 @@ class SummaryView(APIView):
             "review": {"count": len(queue), "summary": review_summary(queue)},
             "today": rows[:TODAY_LIMIT],
             "today_total": len(rows),
-            "overtime": {"month": ot["month"], **ot["totals"], "sites": top},
+            "overtime": {"month": ot["month"], "start": ot["start"], "end": ot["end"], **ot["totals"], "sites": top},
             "leave": {"pending": LeaveRequest.objects.filter(organization=org, status=LeaveRequest.Status.PENDING).count(),
                       "today": counts.get("leave", 0)},
         })
