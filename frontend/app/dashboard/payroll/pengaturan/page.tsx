@@ -264,7 +264,8 @@ export default function PayrollSettingsPage() {
                  onChange={(e) => set("bpjs_base_includes_allowance", e.target.checked)} />
           Upah BPJS = gaji pokok + tunjangan tetap
         </label>
-        {money("minimum_wage", "UMK", "Untuk peringatan gaji di bawah UMK. 0 = tidak dicek.")}
+        {money("minimum_wage", "UMK", "Untuk catatan gaji di bawah UMK, hanya karyawan dengan masa kerja kurang dari "
+                                      + "1 tahun (UU No. 27/2026 Pasal 140). Ganti setiap Januari. 0 = tidak dicek.")}
       </Section>
 
       <Section title="Slip gaji" hint="Tampil di setiap slip yang dicetak.">
