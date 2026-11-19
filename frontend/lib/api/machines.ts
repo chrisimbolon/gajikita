@@ -13,7 +13,8 @@ export const AUTO_MACHINE = "auto";
 export const ALL_MACHINES = "all";
 export const MAIN_MACHINE_NAME = "Mesin utama";
 
-export interface MainMachine { name: string; employees: number; taps: number }
+export interface MainMachine { name: string; employees: number; taps: number;
+                              site: string | null; site_name: string; no_site: number }   // G17-12
 
 export interface Machine {
   id:          string;
@@ -24,6 +25,7 @@ export interface Machine {
   is_active:   boolean;
   employees:   number;        // employees with an ID on this machine
   taps:        number;        // imported taps from this machine
+  no_site:     number;        // G17-12: its taps without a location (on days not locked)
 }
 
 export interface MachineList { main: MainMachine; machines: Machine[] }
@@ -49,6 +51,19 @@ export const machineApi = {
   async update(id: string, body: Partial<MachineInput>): Promise<Machine[]> {
     const { data } = await api.patch(`/api/hr/fingerprint/machines/${id}/`, body);
     return data.machines;
+  },
+  // G17-12: where the main machine stands; fill old taps without a location (and put them back)
+  async setMainSite(site: string | null): Promise<MachineList> {
+    const { data } = await api.patch("/api/hr/fingerprint/machines/main/", { site });
+    return { main: data.main, machines: data.machines };
+  },
+  async fillSite(machine: string): Promise<{ filled: number; batch: string; site_name: string; list: MachineList }> {
+    const { data } = await api.post("/api/hr/fingerprint/machines/fill-site/", { machine, commit: true }, { timeout: 120000 });
+    return { filled: data.filled, batch: data.batch, site_name: data.site_name, list: { main: data.main, machines: data.machines } };
+  },
+  async undoFill(batch: string): Promise<{ undone: number; list: MachineList }> {
+    const { data } = await api.post("/api/hr/fingerprint/machines/fill-site/", { undo: batch }, { timeout: 120000 });
+    return { undone: data.undone, list: { main: data.main, machines: data.machines } };
   },
   async remove(id: string): Promise<Machine[]> {
     const { data } = await api.delete(`/api/hr/fingerprint/machines/${id}/`);
