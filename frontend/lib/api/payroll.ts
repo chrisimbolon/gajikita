@@ -58,6 +58,7 @@ export interface RunSummary {
   net:           string;
   employer_cost: string;
   warnings:      number;
+  notes?:        number;                  // G18-0: soft wage notes (not warnings)
   negative?:     number;                  // G17-0: people whose net pay is below zero (blocks locking)
   typed_items?:  number;                  // G13 part 2: lost when the run is deleted
   corrections?:  number;
@@ -73,6 +74,7 @@ export interface RegisterRow {
   deductions:    string;
   net:           string;
   warning_count: number;
+  note_count?:   number;                  // G18-0
   corrected:     boolean;
   present_days:  number;
   absent_days:   number;
@@ -121,7 +123,8 @@ export interface LineDetail {
   note:            string;
   override_fields: Record<string, string>;
   items:           PayItem[];
-  result:          { earnings: SlipLine[]; deductions: SlipLine[]; employer: SlipLine[]; warnings: string[] };
+  result:          { earnings: SlipLine[]; deductions: SlipLine[]; employer: SlipLine[]; warnings: string[];
+                     notes?: string[] };                       // G18-0
   gross:           string;
   deductions:      string;
   net:             string;
