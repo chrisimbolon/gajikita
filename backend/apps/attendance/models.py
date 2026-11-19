@@ -150,6 +150,26 @@ class FingerprintMachine(TenantScopedModel):
         return self.name
 
 
+class AttendanceSettings(TenantScopedModel):
+    """
+    G17-12 (19 Nov 2026): a company's attendance settings, one row per company (made on first use).
+    main_machine_site: where the main fingerprint machine stands (it has no FingerprintMachine row); new taps
+    from it get this location.
+    """
+    organization      = models.OneToOneField("organizations.Organization", on_delete=models.CASCADE,
+                                             related_name="attendance_settings")
+    main_machine_site = models.ForeignKey("sites.Site", null=True, blank=True, on_delete=models.SET_NULL,
+                                          related_name="+", verbose_name="Lokasi mesin utama")
+
+    class Meta:
+        verbose_name = verbose_name_plural = "Pengaturan absensi"
+
+    @classmethod
+    def for_org(cls, organization):
+        obj, _ = cls.objects.get_or_create(organization=organization)
+        return obj
+
+
 class EmployeeMachineId(TenantScopedModel):
     """An employee's ID on a FingerprintMachine (G12f.1a). Unique per machine; one per employee per machine."""
     id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
