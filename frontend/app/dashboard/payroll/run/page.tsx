@@ -10,7 +10,7 @@
 import { readErrors } from "@/lib/api/hr";
 import { LineDetail, RunDetail, dayLabel, payrollApi, periodLabel } from "@/lib/api/payroll";
 import { rupiah } from "@/lib/format";
-import { AlertTriangle, ArrowLeft, Download, Landmark, Loader2, Lock, Printer, RefreshCw, Table, Trash2, Unlock, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Download, Info, Landmark, Loader2, Lock, Printer, RefreshCw, Table, Trash2, Unlock, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -113,6 +113,16 @@ function LinePanel({ runId, lineId, locked, onClose, onChanged }: {
             {a.review_days > 0 && (
               <Link href="/dashboard/absensi/tinjau" style={{ fontSize: 13, fontWeight: 600 }}>Buka Perlu Tinjau →</Link>
             )}
+          </div>
+        )}
+
+        {(line.result.notes ?? []).length > 0 && (                          /* G18-0: soft, not a warning */
+          <div style={{ background: "#E7F1FB", borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
+            {(line.result.notes ?? []).map((n) => (
+              <div key={n} style={{ fontSize: 13, color: "var(--midnight)", marginBottom: 2 }}>
+                <Info size={12} style={{ verticalAlign: "-1px" }} /> {n}
+              </div>
+            ))}
           </div>
         )}
 
@@ -399,6 +409,13 @@ export default function PayRunPage() {
           Klik barisnya untuk melihat. Peringatan tidak menghalangi payroll.
         </div>
       )}
+      {(run.notes ?? 0) > 0 && (                                             /* G18-0 */
+        <div style={{ background: "#E7F1FB", color: "var(--midnight)", borderRadius: 8, padding: "10px 14px", fontSize: 13.5, marginBottom: 12 }}>
+          <Info size={14} style={{ verticalAlign: "-2px" }} /> {run.notes} catatan aturan upah (UU No. 27/2026) di{" "}
+          {data.rows.filter((r) => (r.note_count ?? 0) > 0).length} karyawan. Hanya info, tidak menghalangi payroll.
+          Klik barisnya bila ingin melihat.
+        </div>
+      )}
       {data.rows.some((r) => (r.exempt_days ?? 0) > 0) && (
         <div style={{ background: "#E7F1FB", color: "var(--midnight)", borderRadius: 8, padding: "10px 14px", fontSize: 13.5, marginBottom: 12 }}>
           <b>Dibayar tanpa absen (tidak wajib absen):</b>{" "}
@@ -436,7 +453,8 @@ export default function PayRunPage() {
                 {deductions.map((c) => <td key={c.code} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(r.amounts[c.code])}</td>)}
                 <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 800,
                              color: r.negative ? "var(--danger)" : undefined }}>{rupiah(r.net)}</td>
-                <td>{r.warning_count > 0 && <AlertTriangle size={14} style={{ color: "var(--hazard-dark)" }} />}</td>
+                <td>{r.warning_count > 0 ? <AlertTriangle size={14} style={{ color: "var(--hazard-dark)" }} />
+                     : (r.note_count ?? 0) > 0 ? <Info size={14} style={{ color: "var(--steel)" }} /> : null}</td>
               </tr>
             ))}
           </tbody>
