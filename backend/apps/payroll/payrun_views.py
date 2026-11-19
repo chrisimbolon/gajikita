@@ -129,6 +129,7 @@ def _run_summary(run):
         "net": _money(sum((l.net for l in lines), Decimal("0"))),
         "employer_cost": _money(sum((l.employer_cost for l in lines), Decimal("0"))),
         "warnings": sum(l.warning_count for l in lines),
+        "notes": sum(len((l.result or {}).get("notes", [])) for l in lines),       # G18-0: soft, never blocks
         "negative": sum(1 for l in lines if l.net < 0),                              # G17-0
         # G13 part 2: what deleting the run would throw away (loan deductions come back by themselves)
         "typed_items": PayRunItem.objects.filter(line__run=run, loan__isnull=True).count(),
@@ -157,6 +158,7 @@ def _register(run):
                          "full_name": l.employee.full_name},
             "amounts": amounts, "gross": _money(l.gross), "deductions": _money(l.deductions), "net": _money(l.net),
             "warning_count": l.warning_count, "corrected": bool(l.override),
+            "note_count": len((l.result or {}).get("notes", [])),                   # G18-0
             "present_days": a.get("present_days", 0), "absent_days": a.get("absent_days", 0),
             "review_days": a.get("review_days", 0),
             "exempt_days": a.get("exempt_days", 0), "exempt_reason": a.get("exempt_reason", ""),   # G12i
