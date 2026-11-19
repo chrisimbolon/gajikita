@@ -45,6 +45,13 @@ def tap_id(employee, at, kind):
     return uuid.uuid5(NAMESPACE, f"fp|{employee.id}|{at.isoformat()}|{kind}")
 
 
+def tap_site_id(machine, main_site_id, employee):
+    """G17-12: a fingerprint tap's location = its machine's (the main machine: the company setting), else the
+    employee's default site (as before)."""
+    site_id = machine.site_id if machine is not None else main_site_id
+    return site_id or employee.default_site_id
+
+
 def machine_names(machines):
     """{key: name} for MAIN and every machine of the company."""
     names = {MAIN: MAIN_NAME}
@@ -251,6 +258,9 @@ def apply(org, p, actor, filename=""):
     tz = timezone.get_current_timezone()
     now = timezone.now()
     days_touched, events_added = set(), 0
+    from .models import AttendanceSettings                                              # G17-12
+    main_site_id = (AttendanceSettings.objects.filter(organization=org)
+                    .values_list("main_machine_site_id", flat=True).first())
     with transaction.atomic():
         for x in p["people"]:
             emp = x["employee"]
@@ -265,10 +275,12 @@ def apply(org, p, actor, filename=""):
                     defaults={"organization": org, "shift": emp.default_shift})
                 if day.is_locked:
                     continue
+                machine = p["by_key"].get(x["tap_machine"].get(at, MAIN))                   # G12f.1a
                 ClockEvent.objects.create(
                     organization=org, day=day, employee=emp, kind=kind, source=ClockEvent.Source.FINGERPRINT,
-                    site=emp.default_site, occurred_at=timezone.make_aware(at, tz), received_at=now,
-                    flags=[], client_id=cid, machine=p["by_key"].get(x["tap_machine"].get(at, MAIN)))   # G12f.1a
+                    site_id=tap_site_id(machine, main_site_id, emp),                         # G17-12
+                    occurred_at=timezone.make_aware(at, tz), received_at=now,
+                    flags=[], client_id=cid, machine=machine)
                 days_touched.add((emp.id, s.work_date))
                 events_added += 1
         if events_added:
