@@ -50,9 +50,10 @@ class DkcbOctoberRegisterTests(SimpleTestCase):
 
     def test_compliance_warnings(self):
         slips = [dkcb_slip(r) for r in OCT_2026]
-        below_umk = sum(1 for s in slips if any("UMK" in w for w in s.warnings))
+        below_umk = sum(1 for s in slips if any("UMK" in w for w in s.warnings + s.notes))
         not_enrolled = sum(1 for s in slips if any("BPJS Ketenagakerjaan" in w for w in s.warnings))
-        self.assertEqual((below_umk, not_enrolled), (23, 3))
+        # G18-0: UMK is for masa kerja < 1 tahun (UU 27/2026 Pasal 140); the demo has no join dates -> no UMK note
+        self.assertEqual((below_umk, not_enrolled), (0, 3))
 
 
 class OvertimeRulesTests(SimpleTestCase):

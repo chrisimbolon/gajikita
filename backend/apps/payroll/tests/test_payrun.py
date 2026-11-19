@@ -192,7 +192,8 @@ class PayRunTests(APITestCase):
                                  format="json")
         self.assertEqual(resp.status_code, 400)                          # PP 35 needs the daily detail
         andi = self.line(run["id"], "Andi")
-        self.assertTrue(any("UMK" in w for w in andi["result"]["warnings"]))
+        # G18-0: Andi joined Jan 2025 (more than 1 year): no UMK warning or note (UU 27/2026 Pasal 140)
+        self.assertFalse(any("UMK" in w for w in andi["result"]["warnings"] + andi["result"]["notes"]))
 
     def test_workers_cannot_open_payroll(self):
         user = CustomUser.objects.create_user(email="w@beton.id", password="pass12345!", full_name="W", role="employee")
