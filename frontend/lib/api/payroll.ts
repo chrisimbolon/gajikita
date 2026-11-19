@@ -236,7 +236,8 @@ export const loanApi = {
     const { data } = await api.post("/api/hr/payroll/loans/", body, { timeout: 120000 });
     return data.loan;
   },
-  async updateLoan(id: string, body: { installment?: string; note?: string; original_amount?: string; run?: string; this_month?: string; action?: "cancel" }): Promise<Loan> {
+  async updateLoan(id: string, body: { installment?: string; note?: string; original_amount?: string; amount?: string; start_month?: string;   // G17-11
+                                       run?: string; this_month?: string; action?: "cancel" }): Promise<Loan> {
     const { data } = await api.patch(`/api/hr/payroll/loans/${id}/`, body, { timeout: 120000 });
     return data.loan;
   },
