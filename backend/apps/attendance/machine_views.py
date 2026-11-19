@@ -7,6 +7,9 @@ Fingerprint machines and each employee's ID per machine (G12f.1a, 9 Nov 2026).
   GET/POST     /api/hr/fingerprint/machines/              the main machine + the company's other machines / add one
   PATCH/DELETE /api/hr/fingerprint/machines/<id>/         rename, set site / Dept. labels, turn off / delete
                                                           (delete only while no employee ID and no tap uses it)
+  PATCH        /api/hr/fingerprint/machines/main/         G17-12: {site} = where the main machine stands
+  POST         /api/hr/fingerprint/machines/fill-site/    G17-12: {machine, commit} count / fill old taps without a
+                                                          location (never on a locked day); {undo: batch} put back
   GET/PUT      /api/hr/employees/<id>/machine-ids/        an employee's IDs on the other machines; PUT replaces
                                                           the whole list: [{"machine": id, "fingerprint_id": "2"}]
 
@@ -14,6 +17,8 @@ The main machine has no row: its IDs are "ID Mesin Fingerprint" on the employee,
 An ID is unique per machine, so 12 can be Herianto on the main machine and Tari on "Mesin Kantor".
 Every change is audited.
 """
+import uuid
+
 from django.db import transaction
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
@@ -22,13 +27,33 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.core.audit import record_audit
+from apps.core.models import AuditEntry                                                 # G17-12
 from apps.employees.models import Employee
 from apps.organizations.permissions import IsCompanyHR
 from apps.sites.models import Site
 
 from .fingerprint import clean_id
 from .machines import ALL, AUTO, AUTO_NAME, MAIN, MAIN_NAME, dept_conflicts, parse_dept_labels
-from .models import ClockEvent, EmployeeMachineId, FingerprintMachine
+from .models import AttendanceSettings, ClockEvent, EmployeeMachineId, FingerprintMachine
+
+FILL_ACTION = "attendance.machine_fill_site"                                             # G17-12
+
+
+def _no_site(org):
+    """Fingerprint taps without a location, on days that aren't locked (the only ones G17-12 ever fills)."""
+    return ClockEvent.objects.filter(organization=org, source=ClockEvent.Source.FINGERPRINT, site__isnull=True,
+                                     day__is_locked=False)
+
+
+def _main_row(org):
+    s = AttendanceSettings.objects.filter(organization=org).select_related("main_machine_site").first()
+    site = s.main_machine_site if s else None
+    return {"name": MAIN_NAME,
+            "employees": Employee.objects.filter(organization=org).exclude(fingerprint_id="").count(),
+            "taps": ClockEvent.objects.filter(organization=org, source=ClockEvent.Source.FINGERPRINT,
+                                              machine__isnull=True).count(),
+            "site": str(site.pk) if site else None, "site_name": site.name if site else "",          # G17-12
+            "no_site": _no_site(org).filter(machine__isnull=True).count()}
 
 
 def resolve_machine(org, value, allowed=(MAIN, AUTO)):
@@ -111,9 +136,11 @@ def _machine_rows(org):
                     .annotate(ids=Count("employee_ids")))
     taps = dict(ClockEvent.objects.filter(organization=org, machine__isnull=False).order_by()
                 .values("machine").annotate(n=Count("id")).values_list("machine", "n"))
+    no_site = dict(_no_site(org).filter(machine__isnull=False).order_by()                     # G17-12
+                   .values("machine").annotate(n=Count("id")).values_list("machine", "n"))
     return [{"id": str(m.pk), "name": m.name, "site": str(m.site_id) if m.site_id else None,
              "site_name": m.site.name if m.site_id else "", "dept_labels": m.dept_labels, "is_active": m.is_active,
-             "employees": m.ids, "taps": taps.get(m.pk, 0)} for m in machines]
+             "employees": m.ids, "taps": taps.get(m.pk, 0), "no_site": no_site.get(m.pk, 0)} for m in machines]
 
 
 def _snapshot(m):
@@ -126,11 +153,7 @@ class MachineListView(APIView):
 
     def get(self, request):
         org = request.hr_org
-        main = {"name": MAIN_NAME,
-                "employees": Employee.objects.filter(organization=org).exclude(fingerprint_id="").count(),
-                "taps": ClockEvent.objects.filter(organization=org, source=ClockEvent.Source.FINGERPRINT,
-                                                  machine__isnull=True).count()}
-        return Response({"success": True, "main": main, "machines": _machine_rows(org)})
+        return Response({"success": True, "main": _main_row(org), "machines": _machine_rows(org)})
 
     def post(self, request):
         ser = MachineSerializer(data=request.data, context={"org": request.hr_org})
@@ -141,6 +164,82 @@ class MachineListView(APIView):
                          target=m, summary=f"Mesin fingerprint ditambah: {m.name}", after=_snapshot(m))
         return Response({"success": True, "machines": _machine_rows(request.hr_org), "id": str(m.pk)},
                         status=status.HTTP_201_CREATED)
+
+
+class MainMachineView(APIView):
+    """G17-12: PATCH {site} — where the main machine stands (null = none)."""
+    permission_classes = [IsCompanyHR]
+
+    def patch(self, request):
+        org, raw = request.hr_org, request.data.get("site")
+        site = None
+        if raw not in (None, ""):
+            try:
+                site = Site.objects.filter(organization=org, pk=raw).first()
+            except Exception:                                   # not a UUID
+                site = None
+            if site is None:
+                return Response({"success": False, "message": "Lokasi tidak ditemukan. Pilih lagi."},
+                                status=status.HTTP_400_BAD_REQUEST)
+        cfg = AttendanceSettings.for_org(org)
+        before = cfg.main_machine_site.name if cfg.main_machine_site_id else ""
+        with transaction.atomic():
+            cfg.main_machine_site = site
+            cfg.save(update_fields=["main_machine_site"])
+            if (site.name if site else "") != before:
+                record_audit(organization=org, actor=request.user, action="attendance.main_machine_site", target=cfg,
+                             summary=f"Lokasi {MAIN_NAME}: {site.name if site else '-'}",
+                             before={"site": before}, after={"site": site.name if site else ""})
+        return Response({"success": True, "main": _main_row(org), "machines": _machine_rows(org)})
+
+
+class FillSiteView(APIView):
+    """
+    G17-12: POST {machine: "main" | id, commit} -> {count} or {filled, batch}; POST {undo: batch} -> {undone}.
+    Only taps without a location, never on a locked day; the machine's location (main: the company setting).
+    """
+    permission_classes = [IsCompanyHR]
+
+    def _bad(self, message):
+        return Response({"success": False, "message": message}, status=status.HTTP_400_BAD_REQUEST)
+
+    def post(self, request):
+        org, d = request.hr_org, request.data
+        if d.get("undo"):
+            batch = str(d["undo"])
+            entry = AuditEntry.objects.filter(organization=org, action=FILL_ACTION, data__after__batch=batch).first()
+            if entry is None:
+                return self._bad("Tidak ada yang bisa diurungkan.")
+            after = entry.data.get("after", {})
+            with transaction.atomic():
+                n = (ClockEvent.objects.filter(organization=org, pk__in=after.get("ids", []), site_id=after.get("site"),
+                                               day__is_locked=False).update(site=None))
+                record_audit(organization=org, actor=request.user, action=FILL_ACTION + "_undo", target=org,
+                             summary=f"Isi lokasi tap diurungkan: {n} tap ({after.get('machine', '')})",
+                             after={"batch": batch, "undone": n})
+            return Response({"success": True, "undone": n, "main": _main_row(org), "machines": _machine_rows(org)})
+        try:
+            machine = resolve_machine(org, d.get("machine"), allowed=(MAIN,))
+        except ValueError as err:
+            return self._bad(str(err))
+        site_id = (AttendanceSettings.objects.filter(organization=org).values_list("main_machine_site_id", flat=True)
+                   .first()) if machine == MAIN else machine.site_id
+        if not site_id:
+            return self._bad("Pilih dulu lokasi mesin ini, lalu simpan.")
+        site = Site.objects.get(pk=site_id)
+        qs = _no_site(org).filter(**({"machine__isnull": True} if machine == MAIN else {"machine": machine}))
+        if str(d.get("commit")).lower() not in ("1", "true"):
+            return Response({"success": True, "count": qs.count(), "site_name": site.name})
+        with transaction.atomic():
+            ids = [str(x) for x in qs.values_list("pk", flat=True)]
+            ClockEvent.objects.filter(pk__in=ids).update(site_id=site_id)
+            batch = uuid.uuid4().hex
+            label = machine_label(machine)
+            record_audit(organization=org, actor=request.user, action=FILL_ACTION, target=org,
+                         summary=f"Lokasi tap lama diisi: {len(ids)} tap {label} -> {site.name}",
+                         after={"batch": batch, "ids": ids, "site": str(site_id), "machine": label})
+        return Response({"success": True, "filled": len(ids), "batch": batch, "site_name": site.name,
+                         "main": _main_row(org), "machines": _machine_rows(org)})
 
 
 class MachineDetailView(APIView):
