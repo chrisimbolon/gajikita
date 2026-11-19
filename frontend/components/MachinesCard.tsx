@@ -4,9 +4,11 @@
 // Mesin utama = the IDs on each employee ("ID Mesin Fingerprint"); always there, not editable here.
 // Other machines: name, site, "Dept. di file" (for Anthony's combined report), on/off.
 // A machine with IDs or taps can only be turned off; an unused one can be deleted.
+// G17-12 (19 Nov 2026): Mesin utama gets a Lokasi; new taps take their machine's location; old taps without one
+// are filled once on request ("Isi dengan …", Urungkan).
 // =============================================================================
 import { Site, readErrors } from "@/lib/api/hr";
-import { Machine, MachineInput, MachineList, machineApi } from "@/lib/api/machines";
+import { MAIN_MACHINE, Machine, MachineInput, MachineList, machineApi } from "@/lib/api/machines";
 import { Fingerprint, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { DeptChips } from "@/components/DeptBox";                        // G12f.3.5
 import { useCallback, useEffect, useState } from "react";
@@ -64,7 +66,7 @@ export default function MachinesCard({ sites }: { sites: Site[] }) {
             <tbody>
               <tr>
                 <td style={{ fontWeight: 700 }}>{list.main.name}</td>
-                <td style={{ fontSize: 13, color: "var(--steel)" }}>-</td>
+                <td><MainSite current={list.main.site} sites={activeSites} onSaved={setList} /></td>
                 <td style={{ fontSize: 13, color: "var(--steel)" }}>semua yang lain</td>
                 <td>{list.main.employees}</td>
                 <td>{list.main.taps.toLocaleString("id-ID")}</td>
@@ -75,6 +77,7 @@ export default function MachinesCard({ sites }: { sites: Site[] }) {
               ))}
             </tbody>
           </table>
+          <FillOldTaps list={list} onChanged={setList} />
 
           <form onSubmit={add} style={{ display: "grid", gridTemplateColumns: "1.2fr 1fr 1.4fr auto", gap: 10, alignItems: "end",
                                         marginTop: 14, paddingTop: 12, borderTop: "1px solid var(--line)" }}>
@@ -110,6 +113,83 @@ export default function MachinesCard({ sites }: { sites: Site[] }) {
           <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 8 }}>{DEPT_HELP}</div>
         </>
       )}
+    </div>
+  );
+}
+
+// G17-12: the main machine's location (it has no row of its own)
+function MainSite({ current, sites, onSaved }: { current: string | null; sites: Site[]; onSaved: (l: MachineList) => void }) {
+  const [site, setSite] = useState<string | null>(current);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  useEffect(() => { setSite(current); }, [current]);
+  const save = async () => {
+    setBusy(true); setMsg(null);
+    try { onSaved(await machineApi.setMainSite(site)); } catch (err) { setMsg(readErrors(err).summary); } finally { setBusy(false); }
+  };
+  return (
+    <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+      <select className="input" value={site ?? ""} onChange={(e) => setSite(e.target.value || null)} style={{ minWidth: 150, padding: "4px 8px" }}>
+        <option value="">-</option>
+        {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+      </select>
+      {site !== current && (
+        <button className="btn-ghost" disabled={busy} onClick={save} style={{ padding: "4px 8px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}>
+          {busy ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : <Save size={13} />} Simpan
+        </button>
+      )}
+      {msg && <span style={{ color: "var(--danger)", fontSize: 12 }}>{msg}</span>}
+    </div>
+  );
+}
+
+// G17-12: old taps without a location, per machine that has one now: fill once, with Urungkan
+function FillOldTaps({ list, onChanged }: { list: MachineList; onChanged: (l: MachineList) => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [done, setDone] = useState<{ key: string; text: string; batch: string | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const rows = [
+    ...(list.main.site && list.main.no_site ? [{ key: MAIN_MACHINE, name: list.main.name, site: list.main.site_name, n: list.main.no_site }] : []),
+    ...list.machines.filter((m) => m.site && m.no_site).map((m) => ({ key: m.id, name: m.name, site: m.site_name, n: m.no_site })),
+  ];
+  if (rows.length === 0 && !done && !error) return null;
+  const fill = async (key: string) => {
+    setBusy(key); setError(null);
+    try {
+      const r = await machineApi.fillSite(key);
+      onChanged(r.list);
+      setDone({ key, text: `${r.filled.toLocaleString("id-ID")} tap lama sekarang di ${r.site_name}.`, batch: r.batch });
+    } catch (err) { setError(readErrors(err).summary); } finally { setBusy(null); }
+  };
+  const undo = async () => {
+    if (!done?.batch) return;
+    setBusy("undo"); setError(null);
+    try {
+      const r = await machineApi.undoFill(done.batch);
+      onChanged(r.list);
+      setDone({ key: done.key, text: `Diurungkan: ${r.undone.toLocaleString("id-ID")} tap kembali tanpa lokasi.`, batch: null });
+    } catch (err) { setError(readErrors(err).summary); } finally { setBusy(null); }
+  };
+  return (
+    <div style={{ marginTop: 12, padding: "10px 12px", background: "var(--paper)", borderRadius: 10, fontSize: 13.5, display: "grid", gap: 8 }}>
+      {rows.map((r) => (
+        <div key={r.key} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span><b>{r.name}</b>: {r.n.toLocaleString("id-ID")} tap lama belum punya lokasi.</span>
+          <button className="btn-ghost" disabled={!!busy} onClick={() => fill(r.key)} style={{ padding: "4px 10px", fontSize: 12.5 }}>
+            {busy === r.key ? <Loader2 size={13} style={{ animation: "spin 1s linear infinite" }} /> : null} Isi dengan {r.site}
+          </button>
+        </div>
+      ))}
+      {done && (
+        <div style={{ color: "var(--workshop)", fontWeight: 600, display: "flex", gap: 10, alignItems: "center" }}>
+          {done.text}
+          {done.batch && <button className="btn-ghost" disabled={!!busy} onClick={undo} style={{ padding: "3px 8px", fontSize: 12.5 }}>Urungkan</button>}
+        </div>
+      )}
+      {error && <div style={{ color: "var(--danger)" }}>{error}</div>}
+      <div style={{ fontSize: 12, color: "var(--steel)" }}>
+        Tap baru dari mesin otomatis dapat lokasi mesinnya. Hanya tap tanpa lokasi yang diisi; hari yang sudah dikunci tidak diubah.
+      </div>
     </div>
   );
 }
