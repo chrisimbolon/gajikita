@@ -411,9 +411,11 @@ export default function PayRunPage() {
       )}
       {(run.notes ?? 0) > 0 && (                                             /* G18-0 */
         <div style={{ background: "#E7F1FB", color: "var(--midnight)", borderRadius: 8, padding: "10px 14px", fontSize: 13.5, marginBottom: 12 }}>
-          <Info size={14} style={{ verticalAlign: "-2px" }} /> {run.notes} catatan aturan upah (UU No. 27/2026) di{" "}
-          {data.rows.filter((r) => (r.note_count ?? 0) > 0).length} karyawan. Hanya info, tidak menghalangi payroll.
-          Klik barisnya bila ingin melihat.
+          <Info size={14} style={{ verticalAlign: "-2px" }} /> <b>{run.notes} catatan aturan upah (UU No. 27/2026):</b>{" "}
+          {data.rows.filter((r) => (r.note_count ?? 0) > 0).map((r) => r.employee.full_name).join(" · ")}.
+          <div style={{ fontSize: 12.5, marginTop: 2 }}>
+            Hanya info, tidak menghalangi payroll. Klik barisnya (tanda <Info size={12} style={{ verticalAlign: "-1px" }} />) untuk melihat.
+          </div>
         </div>
       )}
       {data.rows.some((r) => (r.exempt_days ?? 0) > 0) && (
@@ -453,8 +455,10 @@ export default function PayRunPage() {
                 {deductions.map((c) => <td key={c.code} style={{ textAlign: "right", whiteSpace: "nowrap" }}>{money(r.amounts[c.code])}</td>)}
                 <td style={{ textAlign: "right", whiteSpace: "nowrap", fontWeight: 800,
                              color: r.negative ? "var(--danger)" : undefined }}>{rupiah(r.net)}</td>
-                <td>{r.warning_count > 0 ? <AlertTriangle size={14} style={{ color: "var(--hazard-dark)" }} />
-                     : (r.note_count ?? 0) > 0 ? <Info size={14} style={{ color: "var(--steel)" }} /> : null}</td>
+                <td style={{ whiteSpace: "nowrap" }}>
+                  {r.warning_count > 0 && <AlertTriangle size={14} style={{ color: "var(--hazard-dark)" }} />}
+                  {(r.note_count ?? 0) > 0 && <Info size={14} style={{ color: "#2563A8", marginLeft: 4 }} />}   {/* G18-0.1 */}
+                </td>
               </tr>
             ))}
           </tbody>
