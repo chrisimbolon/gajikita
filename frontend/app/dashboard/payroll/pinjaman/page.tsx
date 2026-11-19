@@ -10,7 +10,7 @@
 import { Employee, hrApi, readErrors } from "@/lib/api/hr";
 import { Loan, LoanOpenRun, LoanRun, loanApi as payrollApi } from "@/lib/api/payroll";
 import { rupiah } from "@/lib/format";
-import { ArrowLeft, Ban, Loader2, Plus, X } from "lucide-react";
+import { ArrowLeft, Ban, Loader2, Pencil, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -48,6 +48,26 @@ export default function PinjamanPage() {
   const [runs, setRuns] = useState<LoanRun[]>([]);
   const [openRun, setOpenRun] = useState<LoanOpenRun | null>(null);
   const [month, setMonth] = useState<Record<string, string>>({});       // loan id -> this month's amount typed
+  // G17-11: "Ubah" on a running loan
+  const [edit, setEdit] = useState<{ loan: Loan; amount: string; installment: string; original: string; start_month: string; note: string } | null>(null);
+  const plain = (v: string | null) => (v ? String(Math.round(Number(v))) : "");
+  const startEdit = (l: Loan) => {
+    setAdding(false);
+    setEdit({ loan: l, amount: plain(l.amount), installment: plain(l.installment), original: plain(l.original_amount),
+              start_month: l.start_month, note: l.note });
+  };
+  const saveEdit = () => {
+    if (!edit) return;
+    const l = edit.loan, body: Parameters<typeof payrollApi.updateLoan>[1] = {};
+    if (edit.amount !== plain(l.amount)) body.amount = edit.amount;
+    if (!l.kasbon && edit.installment !== plain(l.installment)) body.installment = edit.installment;
+    if (edit.original !== plain(l.original_amount)) body.original_amount = edit.original;
+    if (edit.start_month !== l.start_month) body.start_month = edit.start_month;
+    if (edit.note.trim() !== l.note) body.note = edit.note.trim();
+    if (Object.keys(body).length === 0) { setEdit(null); return; }
+    return act(async () => { await payrollApi.updateLoan(l.id, body); setEdit(null); },
+               `Pinjaman ${l.employee.full_name} diubah. Payroll yang masih draft sudah dihitung ulang.`);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -99,7 +119,7 @@ export default function PinjamanPage() {
           <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13.5 }}>
             <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} /> Tampilkan yang lunas / dibatalkan
           </label>
-          <button className="btn-rust" onClick={() => { if (!adding) setForm(emptyForm(openRun?.month ?? thisMonth())); setAdding(!adding); }}
+          <button className="btn-rust" onClick={() => { if (!adding) setForm(emptyForm(openRun?.month ?? thisMonth())); setEdit(null); setAdding(!adding); }}
                   style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <Plus size={15} /> Pinjaman baru
           </button>
@@ -110,6 +130,41 @@ export default function PinjamanPage() {
       {done && (
         <div className="card" style={{ padding: "10px 14px", marginBottom: 12, background: "var(--workshop-lt)", color: "var(--workshop)", fontWeight: 700, display: "flex" }}>
           {done}<button onClick={() => setDone(null)} aria-label="Tutup" style={{ marginLeft: "auto", background: "none", border: "none", color: "inherit" }}><X size={15} /></button>
+        </div>
+      )}
+
+      {edit && (
+        <div className="card" style={{ marginBottom: 14, display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", alignItems: "end",
+                                       borderLeft: "4px solid var(--rust)" }}>
+          <div style={{ gridColumn: "1 / -1", fontWeight: 700 }}>
+            Ubah {edit.loan.kasbon ? "kasbon" : "pinjaman"} · {edit.loan.employee.full_name}
+            {edit.loan.plan && <span style={{ fontWeight: 400, fontSize: 13, color: "var(--steel)" }}> · sekarang: {edit.loan.plan}</span>}
+          </div>
+          <div><label className="label">{edit.loan.kasbon ? "Disetujui (dipotong)" : "Sisa yang harus dibayar (saat dicatat)"}</label>
+            <input className="input" inputMode="numeric" value={show(edit.amount)} onChange={(e) => setEdit({ ...edit, amount: digits(e.target.value) })} /></div>
+          {!edit.loan.kasbon && (
+            <div><label className="label">Potongan per bulan</label>
+              <input className="input" inputMode="numeric" value={show(edit.installment)} onChange={(e) => setEdit({ ...edit, installment: digits(e.target.value) })} /></div>
+          )}
+          <div><label className="label">{edit.loan.kasbon ? "Pengajuan (opsional)" : "Jumlah pinjaman awal (opsional)"}</label>
+            <input className="input" inputMode="numeric" placeholder="kosong = tidak dicatat" value={show(edit.original)}
+                   onChange={(e) => setEdit({ ...edit, original: digits(e.target.value) })} /></div>
+          <div><label className="label">Mulai dipotong (bulan gaji)</label>
+            <input className="input" type="month" value={edit.start_month} disabled={Number(edit.loan.paid) > 0}
+                   onChange={(e) => setEdit({ ...edit, start_month: e.target.value })} />
+            {Number(edit.loan.paid) > 0 && <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>Sudah dipotong di payroll yang dikunci: tidak bisa dipindah.</div>}</div>
+          <div><label className="label">Catatan (opsional)</label>
+            <input className="input" value={edit.note} onChange={(e) => setEdit({ ...edit, note: e.target.value })} /></div>
+          <div style={{ gridColumn: "1 / -1", display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+            <button className="btn-rust" disabled={busy || !(Number(edit.amount) > 0) || (!edit.loan.kasbon && !(Number(edit.installment) > 0))} onClick={saveEdit}
+                    style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              {busy && <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} />} Simpan perubahan
+            </button>
+            <button className="btn-ghost" onClick={() => setEdit(null)}>Batal</button>
+            <span style={{ fontSize: 13, color: "var(--steel)" }}>
+              Payroll yang sudah dikunci tidak berubah. Potongan bulan ini ikut potongan baru, kecuali yang sudah diubah sendiri di &quot;Bulan ini&quot;.
+            </span>
+          </div>
         </div>
       )}
 
@@ -224,11 +279,17 @@ export default function PinjamanPage() {
                       {l.plan && <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3, whiteSpace: "nowrap" }}>{l.plan}</div>}</td>
                     <td>
                       {l.state === "active" && (
+                        <span style={{ display: "inline-flex", gap: 6 }}>
+                        <button className="btn-ghost" disabled={busy} title="Ubah pinjaman ini" onClick={() => startEdit(l)}
+                                style={{ padding: "3px 8px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}>
+                          <Pencil size={13} /> Ubah
+                        </button>
                         <button className="btn-ghost" disabled={busy} title="Hentikan pinjaman ini" style={{ padding: "3px 8px", fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}
                                 onClick={() => window.confirm(`Hentikan pinjaman ${l.employee.full_name}? Potongan di payroll yang belum dikunci ikut dihapus; yang sudah dikunci tetap.`)
                                                && act(() => payrollApi.updateLoan(l.id, { action: "cancel" }), `Pinjaman ${l.employee.full_name} dihentikan.`)}>
                           <Ban size={13} /> Hentikan
                         </button>
+                        </span>
                       )}
                     </td>
                   </tr>
