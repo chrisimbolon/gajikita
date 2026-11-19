@@ -18,6 +18,7 @@ What comes out
   Payslip        earning and deduction lines (each rounded to the rupiah, so the slip
                  adds up), gross, deductions, net, the employer's BPJS cost, and
                  compliance warnings. Warnings never stop a payroll run.
+                 Soft notes (G18-0, UU 27/2026 Pasal 140 / 150) are kept apart and never counted.
 
 Not here yet (later steps): PPh 21 (TER) - entered as a one-off deduction for now;
 BPJS Kesehatan and Jaminan Pensiun via payroll; THR; final pay on resignation.
@@ -94,6 +95,7 @@ class EmployeeTerms:
     check_minimum_wage: bool = True          # off for daily and piece-rate workers (G8b)
     jht_by_company: bool = False             # G13-3: the company pays the worker's JHT 2% (not taken from pay)
     attendance_bonus: Decimal = ZERO         # G13-3: tunjangan kehadiran, paid only for a perfect period
+    under_one_year: bool = None              # G18-0: masa kerja < 1 tahun at period end (None = unknown, no UMK note)
 
 
 @dataclass(frozen=True)
@@ -136,6 +138,7 @@ class Payslip:
     deductions: list = field(default_factory=list)
     employer: list = field(default_factory=list)       # company BPJS cost, not on the worker's net
     warnings: list = field(default_factory=list)
+    notes: list = field(default_factory=list)          # G18-0: soft notes, not warnings (not counted)
     gross: Decimal = ZERO
     total_deductions: Decimal = ZERO
     net: Decimal = ZERO
@@ -239,6 +242,42 @@ def attendance_lost(late_minutes, sick_days, unpaid_days):
     return why
 
 
+BASE_SHARE_MIN = Decimal("0.75")        # UU No. 27/2026 Pasal 150
+
+
+def _rp(value):
+    return f"Rp {rupiah(value):,.0f}".replace(",", ".")
+
+
+def serves_under_one_year(join_date, on):
+    """G18-0: True while the worker has been at the company less than 1 year on `on` (UU 27/2026 Pasal 140(1))."""
+    try:
+        anniversary = join_date.replace(year=join_date.year + 1)
+    except ValueError:                                   # joined 29 Feb
+        anniversary = Date(join_date.year + 1, 3, 1)
+    return on < anniversary
+
+
+def wage_notes(base, fixed_allowance, minimum_wage, under_one_year):
+    """
+    G18-0 (19 Nov 2026): soft notes from UU No. 27 Tahun 2026, for a monthly wage. They never change an amount.
+      Pasal 150: gaji pokok at least 75% of gaji pokok + tunjangan tetap (only when there is a tunjangan tetap).
+      Pasal 140: UMK is the lowest monthly wage (pokok + tunjangan tetap) for masa kerja < 1 tahun only.
+    """
+    notes = []
+    base, allowance = D(base), D(fixed_allowance)
+    total = base + allowance
+    if base > 0 and allowance > 0 and base < total * BASE_SHARE_MIN:
+        share = int(base * 100 / total)
+        notes.append(f"Info: gaji pokok {_rp(base)} = {share}% dari gaji pokok + tunjangan tetap ({_rp(total)}). "
+                     f"UU No. 27/2026 Pasal 150: gaji pokok paling sedikit 75%.")
+    umk = D(minimum_wage or 0)
+    if under_one_year and umk > 0 and total < umk:
+        notes.append(f"Info: masa kerja belum 1 tahun, gaji pokok + tunjangan tetap {_rp(total)} di bawah UMK "
+                     f"{_rp(umk)}. UU No. 27/2026 Pasal 140: UMK berlaku untuk masa kerja kurang dari 1 tahun.")
+    return notes
+
+
 def calculate(terms, period, rules):
     slip = Payslip()
     base = D(terms.base_salary)
@@ -338,9 +377,8 @@ def calculate(terms, period, rules):
     for x in period.deductions:
         deduct(x.code, x.label, x.amount, quantity=x.quantity, unit=x.unit, rate=x.rate)
 
-    if terms.check_minimum_wage and rules.minimum_wage and monthly_wage < D(rules.minimum_wage):
-        slip.warnings.append(f"Gaji pokok + tunjangan tetap Rp {monthly_wage:,.0f} di bawah UMK "
-                             f"Rp {D(rules.minimum_wage):,.0f}".replace(",", "."))
+    if terms.check_minimum_wage:                                                       # G18-0: soft, not a warning
+        slip.notes += wage_notes(base, terms.fixed_allowance, rules.minimum_wage, terms.under_one_year)
 
     slip.gross = sum((l.amount for l in slip.earnings), ZERO)
     slip.total_deductions = sum((l.amount for l in slip.deductions), ZERO)
