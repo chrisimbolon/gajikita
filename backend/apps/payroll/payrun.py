@@ -218,7 +218,10 @@ def calculate_line(line, cfg):
     terms = engine.EmployeeTerms(base_salary=base, fixed_allowance=allowance, bpjs_tk=emp.bpjs_tk_enrolled,
                                  overtime_eligible=terms_kw.pop("overtime_eligible", emp.overtime_eligible),
                                  jht_by_company=emp.jht_by_company,                                       # G13-3
-                                 attendance_bonus=Decimal(emp.attendance_bonus or 0), **terms_kw)
+                                 attendance_bonus=Decimal(emp.attendance_bonus or 0),
+                                 under_one_year=(engine.serves_under_one_year(emp.join_date, line.run.period_end)   # G18-0
+                                                 if emp.join_date else None),
+                                 **terms_kw)
 
     items = list(line.items.all())
     to_extra = lambda i: engine.Extra(i.code, i.label, i.amount, quantity=i.quantity, unit=i.unit)
@@ -269,7 +272,8 @@ def calculate_line(line, cfg):
                               "quantity": str(l.quantity) if l.quantity is not None else None, "unit": l.unit}
                              for l in lines]
     line.result = {"earnings": as_json(slip.earnings), "deductions": as_json(slip.deductions),
-                   "employer": as_json(slip.employer), "warnings": slip.warnings}
+                   "employer": as_json(slip.employer), "warnings": slip.warnings,
+                   "notes": slip.notes}                                         # G18-0: not counted
     line.gross, line.deductions, line.net = slip.gross, slip.total_deductions, slip.net
     line.employer_cost = sum((l.amount for l in slip.employer), Decimal("0"))
     line.warning_count = len(slip.warnings)
