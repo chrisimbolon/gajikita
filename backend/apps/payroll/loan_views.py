@@ -11,7 +11,8 @@ POST  /api/hr/payroll/loans/       {employee, amount, installment, start_month "
       amount = what is STILL owed when recorded (Iqbal: 2.200.000 after September). installment = amount
       -> a kasbon, deducted in full in one month. A typed "Pinjaman" item already in that month's draft run is
       taken over (linked) instead of deducting twice.
-PATCH /api/hr/payroll/loans/<id>/  {installment?, note?} | {run, this_month} (this month's amount, 0 = skip)
+PATCH /api/hr/payroll/loans/<id>/  {installment?, note?, original_amount?, amount?, start_month?}  (G17-11: amount
+      and start_month with guards, see _edit) | {run, this_month} (this month's amount, 0 = skip)
       | {action: "cancel"}
 Every change re-syncs the employee's draft runs (oldest first) and recalculates them; locked runs never change.
 """
@@ -182,13 +183,82 @@ class LoanListView(APIView):
         return Response({"success": True, "loan": describe(loan), "adopted": adopted}, status=status.HTTP_201_CREATED)
 
 
+def _edit(org, loan, d):
+    """
+    G17-11: change a running loan. -> (problem, summary); problem = a message for HR, nothing saved.
+    Everything is checked before anything is written. This month's draft deduction follows the new per-month
+    amount only where it still equals the old one (an amount HR typed for this month, e.g. 0 = tunda, is kept).
+    """
+    if loan.status == EmployeeLoan.Status.CANCELLED:
+        return "Pinjaman ini sudah dihentikan, tidak bisa diubah.", ""
+    locked_items = PayRunItem.objects.filter(loan=loan, line__run__status=PayRun.Status.LOCKED)
+    locked_paid = locked_items.aggregate(s=Sum("amount"))["s"] or ZERO
+    was_kasbon, old_installment = loan.is_kasbon, loan.installment
+    amount, start, installment = loan.amount, loan.start_month, loan.installment
+    original, note = loan.original_amount, loan.note
+    changes = []
+
+    if "amount" in d:
+        amount = _amount(d.get("amount"))
+        if amount is None:
+            return "Isi sisa yang harus dibayar (lebih dari 0).", ""
+        if amount < locked_paid:
+            return (f"Tidak bisa lebih kecil dari yang sudah dipotong di payroll yang dikunci "
+                    f"(Rp {locked_paid:,.0f}).".replace(",", "."), "")
+        if amount != loan.amount:
+            changes.append(f"sisa Rp {loan.amount:,.0f} -> Rp {amount:,.0f}")
+    if "start_month" in d:
+        start = _month(d.get("start_month"))
+        if start is None:
+            return "Pilih bulan mulai dipotong.", ""
+        if start != loan.start_month:
+            if locked_items.exists():
+                return "Sudah ada potongan di payroll yang dikunci, jadi bulan mulai tidak bisa diubah.", ""
+            locked = PayRun.objects.filter(organization=org, status=PayRun.Status.LOCKED,
+                                           period_end__year=start.year, period_end__month=start.month).first()
+            if locked:
+                return f"{locked.name} sudah dikunci. Pilih bulan berikutnya.", ""
+            changes.append(f"mulai {month_label(loan.start_month)} -> {month_label(start)}")
+    if "installment" in d and not was_kasbon:
+        installment = _amount(d.get("installment"))
+        if installment is None:
+            return "Isi potongan per bulan (lebih dari 0).", ""
+    installment = amount if was_kasbon else min(installment, amount)      # a kasbon stays whole
+    if installment != old_installment:
+        changes.append(f"potongan Rp {old_installment:,.0f} -> Rp {installment:,.0f}/bulan")
+    if "original_amount" in d:                                            # G17-9: "" clears it
+        raw = d.get("original_amount")
+        original = None if raw in (None, "") else _amount(raw)
+        if raw not in (None, "") and original is None:
+            return "Jumlah awal / pengajuan tidak valid.", ""
+        if original != loan.original_amount:
+            changes.append("jumlah awal " + (f"Rp {original:,.0f}" if original is not None else "dihapus"))
+    if original is not None and original < amount:
+        return "Jumlah awal / pengajuan tidak boleh lebih kecil dari sisa yang harus dibayar.", ""
+    if "note" in d:
+        note = str(d.get("note") or "").strip()[:120]
+        if note != loan.note:
+            changes.append(f"catatan: {note or '-'}")
+
+    loan.amount, loan.start_month, loan.installment = amount, start, installment
+    loan.original_amount, loan.note = original, note
+    loan.save(update_fields=["amount", "start_month", "installment", "original_amount", "note"])
+    if installment != old_installment:                    # drafts that still take the old amount follow
+        (PayRunItem.objects.filter(loan=loan, amount=old_installment)
+         .exclude(line__run__status=PayRun.Status.LOCKED).update(amount=installment))
+    return None, "; ".join(changes) or "tidak ada perubahan"
+
+
 class LoanDetailView(APIView):
     permission_classes = [IsCompanyHR]
 
     def patch(self, request, pk):
         org = request.hr_org
         loan = get_object_or_404(EmployeeLoan.objects.select_related("employee"), organization=org, pk=pk)
-        d, before = request.data, {"installment": str(loan.installment), "note": loan.note, "status": loan.status}
+        d = request.data
+        before = {"installment": str(loan.installment), "note": loan.note, "status": loan.status,         # G17-11
+                  "amount": str(loan.amount), "start_month": loan.start_month.isoformat(),
+                  "original_amount": str(loan.original_amount) if loan.original_amount is not None else None}
         with transaction.atomic():
             if d.get("action") == "cancel":
                 if PayRunItem.objects.filter(loan=loan, line__run__status=PayRun.Status.LOCKED).exists():
@@ -215,25 +285,15 @@ class LoanDetailView(APIView):
                 item.save(update_fields=["amount"])
                 summary = f"potongan {run.name}: Rp {value:,.0f}" + (" (ditunda bulan ini)" if not value else "")
             else:
-                if "installment" in d:
-                    inst = _amount(d.get("installment"))
-                    if inst is None:
-                        return _err("Isi potongan per bulan (lebih dari 0).")
-                    loan.installment = min(inst, loan.amount)
-                if "note" in d:
-                    loan.note = str(d.get("note") or "").strip()[:120]
-                if "original_amount" in d:              # G17-9: "" clears it
-                    raw = d.get("original_amount")
-                    original = None if raw in (None, "") else _amount(raw)
-                    if raw not in (None, "") and (original is None or original < loan.amount):
-                        return _err("Jumlah awal / pengajuan tidak valid atau lebih kecil dari jumlah yang dipotong.")
-                    loan.original_amount = original
-                loan.save(update_fields=["installment", "note", "original_amount"])
-                summary = f"cicilan Rp {loan.installment:,.0f}/bulan" + (f", catatan: {loan.note}" if loan.note else "")
+                problem, summary = _edit(org, loan, d)                                       # G17-11
+                if problem:
+                    return _err(problem)
             resync(org, loan.employee)
             record_audit(organization=org, actor=request.user, action="payroll.loan_update", target=loan.employee,
                          summary=f"{loan.employee.full_name}: {summary}"[:255], before=before,
                          after={"installment": str(loan.installment), "note": loan.note, "status": loan.status,
-                                "loan": str(loan.id)})
+                                "loan": str(loan.id), "amount": str(loan.amount),
+                                "start_month": loan.start_month.isoformat(),
+                                "original_amount": str(loan.original_amount) if loan.original_amount is not None else None})
         loan.refresh_from_db()
         return Response({"success": True, "loan": describe(loan)})
