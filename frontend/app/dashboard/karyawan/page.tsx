@@ -352,6 +352,16 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
       </div>
       {money("base_rate", form.pay_type === "daily" ? "Upah per hari" : form.pay_type === "piece" ? "Tarif per pekerjaan" : "Gaji pokok sebulan")}
       {money("fixed_allowance", "Tunjangan tetap sebulan")}
+      {(() => {                                                         // G18-0: a hint only, saving still works
+        const base = Number(form.base_rate || 0), allowance = Number(form.fixed_allowance || 0);
+        if (form.pay_type !== "monthly" || base <= 0 || allowance <= 0) return null;
+        const share = Math.floor((base * 100) / (base + allowance));
+        return share < 75 ? (
+          <div style={{ fontSize: 12.5, color: "var(--steel)", margin: "-6px 0 12px" }}>
+            Info: gaji pokok {share}% dari gaji pokok + tunjangan tetap. UU No. 27/2026 Pasal 150: paling sedikit 75%.
+          </div>
+        ) : null;
+      })()}
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12 }}>
         <input type="checkbox" checked={form.overtime_eligible} onChange={(e) => set("overtime_eligible", e.target.checked)} />
         Berhak upah lembur (PP 35/2021)
