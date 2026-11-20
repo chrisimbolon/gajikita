@@ -11,10 +11,12 @@ HR's leave screen (G7, 28 Oct 2026). All under /api/hr/leave/.
                             also ones waiting for a site manager
   GET  <id>/attachment/     the doctor's letter photo / PDF
   GET  balance/<employee>/  that employee's annual leave balance (for the paper-form dialog)
+  GET/PATCH settings/       G14-1: the company's leave rules (Pengaturan cuti)
 """
 import mimetypes
 import os
 
+from django.db import transaction
 from django.db.models import Count, Q
 from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404
@@ -24,10 +26,12 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.core.audit import record_audit
 from apps.employees.models import Employee
 from apps.organizations.permissions import IsCompanyHR
 
-from .models import LeaveRequest
+from . import rules
+from .models import LeaveRequest, LeaveSettings
 from .services import LeaveError, annual_balance, create_leave, decide_leave
 from .views import LeaveInputSerializer, _qs, choices_payload, error_response, leave_payload
 
@@ -63,7 +67,7 @@ class HrLeaveListView(APIView):
             "success": True,
             "status": wanted,
             "counts": {s: counts.get(s, 0) for s in LeaveRequest.Status.values},
-            **choices_payload(),
+            **choices_payload(org),
             "requests": [leave_payload(l) for l in qs[:LIST_LIMIT]],
         })
 
@@ -109,6 +113,46 @@ class HrLeaveAttachmentView(APIView):
                             content_type=mimetypes.guess_type(name)[0] or "application/octet-stream")
         resp["Cache-Control"] = "private, max-age=3600"
         return resp
+
+
+SETTING_FIELDS = ("collective_leave_reduces_annual", "paternity_extra_days", "menstrual_leave")
+SETTING_WORDS = {"collective_leave_reduces_annual": "cuti bersama mengurangi cuti tahunan",
+                 "paternity_extra_days": "tambahan cuti istri melahirkan", "menstrual_leave": "cuti haid"}
+
+
+def settings_json(cfg):
+    return {f: getattr(cfg, f) for f in SETTING_FIELDS}
+
+
+class LeaveSettingsInput(serializers.Serializer):
+    collective_leave_reduces_annual = serializers.BooleanField(required=False)
+    paternity_extra_days = serializers.IntegerField(required=False, min_value=0, max_value=rules.PATERNITY_EXTRA_MAX)
+    menstrual_leave = serializers.BooleanField(required=False)
+
+
+class HrLeaveSettingsView(APIView):
+    """G14-1: GET/PATCH /api/hr/leave/settings/. Every change goes to the audit log (shown on Aturan perusahaan vs UU)."""
+    permission_classes = [IsCompanyHR]
+
+    def get(self, request):
+        return Response({"success": True, "settings": settings_json(LeaveSettings.for_org(request.hr_org))})
+
+    def patch(self, request):
+        org = request.hr_org
+        ser = LeaveSettingsInput(data=request.data)
+        ser.is_valid(raise_exception=True)
+        cfg = LeaveSettings.for_org(org)
+        changed = {k: v for k, v in ser.validated_data.items() if getattr(cfg, k) != v}
+        if changed:
+            before = {k: getattr(cfg, k) for k in changed}
+            with transaction.atomic():
+                for k, v in changed.items():
+                    setattr(cfg, k, v)
+                cfg.save()
+                record_audit(organization=org, actor=request.user, action="leave.settings", target=org,
+                             summary="Pengaturan cuti diubah: " + ", ".join(SETTING_WORDS[k] for k in changed),
+                             before=before, after=changed)
+        return Response({"success": True, "settings": settings_json(cfg)})
 
 
 class HrLeaveBalanceView(APIView):

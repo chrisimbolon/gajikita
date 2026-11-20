@@ -21,7 +21,7 @@ from rest_framework.views import APIView
 from apps.attendance.views import NOT_AN_EMPLOYEE, _my_employee
 
 from . import rules
-from .models import LeaveRequest
+from .models import LeaveRequest, LeaveSettings
 from .services import LeaveError, annual_balance, can_approve_on_phone, create_leave, decide_leave
 
 
@@ -46,10 +46,17 @@ def leave_payload(l):
     }
 
 
-def choices_payload():
+def choices_payload(organization=None, employee=None):
+    """G14-1: the cuti khusus reasons and limits follow the company's Pengaturan cuti; cuti haid only for women."""
+    reasons = rules.SPECIAL_REASONS
+    if organization is not None:
+        cfg = LeaveSettings.for_org(organization)
+        reasons = rules.special_reasons(cfg.paternity_extra_days, cfg.menstrual_leave)
+    if employee is not None and employee.gender != "P":
+        reasons = {k: v for k, v in reasons.items() if k != rules.MENSTRUAL}
     return {
         "kinds": [{"value": k, "label": v, "paid": rules.PAID[k]} for k, v in rules.KIND_LABELS.items()],
-        "special_reasons": [{"value": k, "label": label, "days": days} for k, (label, days) in rules.SPECIAL_REASONS.items()],
+        "special_reasons": [{"value": k, "label": label, "days": days} for k, (label, days) in reasons.items()],
     }
 
 
@@ -91,7 +98,7 @@ class MyLeaveView(APIView):
             "employee": {"id": str(me.id), "full_name": me.full_name},
             "approver": me.mandor.full_name if me.mandor_id else None,
             "annual": annual_balance(me, timezone.localdate()),
-            **choices_payload(),
+            **choices_payload(me.organization, me),
             "requests": [leave_payload(l) for l in mine],
             "is_approver": me.crew.exists(),
             "to_approve": [leave_payload(l) for l in crew],

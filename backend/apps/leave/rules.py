@@ -4,6 +4,8 @@
 """
 Leave rules (G7, 28 Oct 2026). Pure Python, no Django: easy to test, easy to read.
 
+G14-1 (20 Nov 2026): cuti khusus follow UU No. 27/2026 Pasal 124 and 149 (istri melahirkan 2 days + the
+company's extra, istri keguguran 2 days, haid up to 2 days for women); see special_reasons().
 Defaults from UU 13/2003 (as amended by UU 6/2023), each to become a company
 setting once a customer tells us theirs:
   * Cuti tahunan: 12 working days a year, from the day the worker has worked 12 months.
@@ -30,16 +32,33 @@ KIND_LABELS = {
 }
 PAID = {ANNUAL: True, SICK: True, SPECIAL: True, UNPAID: False}
 
-# UU 13/2003 pasal 93 ayat (4): reason -> (label, days)
+MENSTRUAL = "menstrual"          # G14-1
+PATERNITY_EXTRA_MAX = 3         # G14-1: UU 27/2026 Pasal 124 ayat 1, "paling lama 3 hari berikutnya"
+
+# UU No. 27/2026 Pasal 149 ayat 2 (was UU 13/2003 pasal 93 ayat 4): reason -> (label, days)
 SPECIAL_REASONS = {
     "marriage":           ("Menikah", 3),
     "child_marriage":     ("Menikahkan anak", 2),
     "child_circumcision": ("Mengkhitankan anak", 2),
     "child_baptism":      ("Membaptiskan anak", 2),
-    "wife_birth":         ("Istri melahirkan atau keguguran", 2),
+    "wife_birth":         ("Istri melahirkan", 2),              # + the company's extra days (special_reasons)
+    "wife_miscarriage":   ("Istri keguguran", 2),               # G14-1: Pasal 124 ayat 2
     "family_death":       ("Suami/istri, orang tua/mertua, anak/menantu meninggal", 2),
     "household_death":    ("Anggota keluarga serumah meninggal", 1),
+    MENSTRUAL:            ("Haid (sakit, hari pertama dan kedua)", 2),   # G14-1: Pasal 120, 149 ayat 2 b; women only
 }
+
+
+def special_reasons(paternity_extra=PATERNITY_EXTRA_MAX, menstrual=True):
+    """G14-1: the reasons and day limits for one company (Pengaturan cuti)."""
+    out = {}
+    for key, (label, days) in SPECIAL_REASONS.items():
+        if key == MENSTRUAL and not menstrual:
+            continue
+        if key == "wife_birth":
+            days = 2 + max(0, min(int(paternity_extra or 0), PATERNITY_EXTRA_MAX))
+        out[key] = (label, days)
+    return out
 
 
 def label_of(kind, special_reason=""):
@@ -70,7 +89,7 @@ def annual_entitlement(join_date, on_date):
     return ANNUAL_DAYS if on_date >= one_year_after(join_date) else 0
 
 
-def check_request(*, kind, special_reason, start, end, days, annual_left, today, by_worker):
+def check_request(*, kind, special_reason, start, end, days, annual_left, today, by_worker, reasons=None):
     """
     Every reason this request can't be made, as {field: message}. Empty = fine.
     annual_left: annual days still free in the start date's year (only used for annual leave).
@@ -91,11 +110,12 @@ def check_request(*, kind, special_reason, start, end, days, annual_left, today,
     if days == 0:
         errors["end_date"] = "Semua tanggal itu hari libur shift, tidak perlu cuti."
         return errors
+    reasons = SPECIAL_REASONS if reasons is None else reasons           # G14-1: the company's reasons and limits
     if kind == SPECIAL:
-        if special_reason not in SPECIAL_REASONS:
+        if special_reason not in reasons:
             errors["special_reason"] = "Pilih alasan cuti khusus."
         else:
-            label, most = SPECIAL_REASONS[special_reason]
+            label, most = reasons[special_reason]
             if days > most:
                 errors["end_date"] = f"Cuti khusus \"{label.lower()}\" paling banyak {most} hari kerja (ini {days} hari)."
     if kind == ANNUAL and days > annual_left:
