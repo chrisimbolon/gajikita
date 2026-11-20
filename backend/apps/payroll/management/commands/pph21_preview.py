@@ -5,10 +5,10 @@
 G16-0 (19 Nov 2026): what PPh 21 SeeGaji WOULD take from each slip of a pay run. Read-only: nothing is saved
 and no slip changes. Compare with the payroll book before G16-1 switches it on.
 
-    python manage.py pph21_preview --period 2026-10 --org "KONSTRUCK" [--potong-telat] [--jht-perusahaan-bruto]
+    python manage.py pph21_preview --period 2026-10 --org "KONSTRUCK"
 
---potong-telat           late fines reduce bruto, like unpaid leave (open question for Pak Holan)
---jht-perusahaan-bruto   the employee's JHT 2% paid by the company counts as bruto (open question)
+G16-1 (20 Nov 2026): the rules come from Pengaturan payroll -> PPh 21 (late fines, company-paid JHT) and Pak Holan's
+answers (JP 1% paid by the company is bruto; tax paid by the company is grossed up).
 """
 from datetime import date
 from decimal import Decimal
@@ -17,7 +17,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from apps.organizations.models import Organization
 from apps.payroll import pph21 as P
-from apps.payroll.models import PayRun
+from apps.payroll.models import PayRun, PayrollSettings
 
 
 def rp(v):
@@ -30,9 +30,7 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--period", required=True, help="Pay month, e.g. 2026-10")
         parser.add_argument("--org", default="", help="Company name (part of it)")
-        parser.add_argument("--potong-telat", action="store_true", help="Late fines reduce bruto")
-        parser.add_argument("--jht-perusahaan-bruto", action="store_true",
-                            help="Company-paid employee JHT 2%% counts as bruto")
+        pass  # G16-1: the PPh 21 rules come from Pengaturan payroll (no more --potong-telat flags)
 
     def handle(self, *args, **o):
         qs = Organization.objects.all()
@@ -51,15 +49,20 @@ class Command(BaseCommand):
             raise CommandError(f"Belum ada pay run {o['period']} untuk {org.name}.")
         pay_date = date(y, m, 1)
         w = self.stdout.write
-        w(f"{run.name} · PPh 21 bulanan (TER) · hanya pratinjau, tidak ada yang disimpan\n")
+        cfg = PayrollSettings.for_org(org)
+        late, jht = cfg.pph21_late_reduces_bruto, cfg.pph21_company_jht_in_bruto
+        yes = lambda b: "ya" if b else "tidak"
+        w(f"{run.name} · PPh 21 bulanan (TER) · hanya pratinjau, tidak ada yang disimpan")
+        w(f"Aturan: potong telat: {yes(late)} · JHT 2% ditanggung perusahaan masuk bruto: {yes(jht)} · "
+          f"JP 1% ditanggung perusahaan masuk bruto: ya · PPh ditanggung perusahaan: gross-up\n")
         w(f"{'Nama':<28}{'PTKP':>6}{'TER':>4}{'Bruto':>14}{'Tarif':>7}{'PPh 21':>11}  Catatan")
         total, flags = Decimal("0"), {"default": 0, "npwp": 0}
         for line in run.lines.select_related("employee").order_by("employee__full_name"):
             e = line.employee
-            b = P.bruto_from_slip(line.result, late_reduces=o["potong_telat"],
-                                  company_jht_in_bruto=o["jht_perusahaan_bruto"])
             try:
-                rate, tax = P.monthly_pph(b.total, e.ptkp_status, pay_date)
+                m = P.monthly_for_slip(line.result, e.ptkp_status, by_company=e.pph21_by_company, late_reduces=late,
+                                       company_jht_in_bruto=jht, on=pay_date)
+                rate, tax = m.rate, m.tax
                 cat = P.ter_category(e.ptkp_status)
             except ValueError as err:
                 w(f"{e.full_name[:27]:<28}  {err}")
@@ -71,14 +74,14 @@ class Command(BaseCommand):
             if not (e.npwp or "").strip():
                 notes.append("tanpa NPWP")
                 flags["npwp"] += 1
-            if e.pph21_by_company:
-                g_rate, g_tax = P.gross_up(b.total, e.ptkp_status, pay_date)
-                notes.append(f"ditanggung perusahaan; gross-up {rp(g_tax)} ({g_rate * 100:.2f}%)")
-            if len(b.parts) > 1:
-                notes.append(" + ".join(f"{label} {rp(a)}" for label, a in b.parts[1:]))
+            if m.gross_up:
+                notes.append("ditanggung perusahaan, gross-up")
+            if len(m.parts) > 1:
+                notes.append(" + ".join(f"{label} {rp(a)}" for label, a in m.parts[1:]))
             total += tax
-            w(f"{e.full_name[:27]:<28}{e.ptkp_status:>6}{cat:>4}{rp(b.total):>14}{float(rate) * 100:>6.2f}%{rp(tax):>11}  "
+            w(f"{e.full_name[:27]:<28}{e.ptkp_status:>6}{cat:>4}{rp(m.bruto):>14}{float(rate) * 100:>6.2f}%{rp(tax):>11}  "
               + " · ".join(notes))
         w(f"\nTotal PPh 21: Rp {rp(total)}")
         w(f"PTKP masih TK/0: {flags['default']} orang (cek status K/TK di buku gaji). Tanpa NPWP: {flags['npwp']} orang.")
-        w("Belum dipakai di slip (G16-1 setelah jawaban Pak Holan). Upah BPJS mengikuti gaji pokok, belum upah lapor BPJS.")
+        w("Belum dipakai di slip. JKK/JKM dari upah yang dilaporkan ke BPJS (Karyawan), bila diisi. "
+          "Masa pajak menunggu jawaban Pak Holan (B1).")
