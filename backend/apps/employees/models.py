@@ -74,6 +74,11 @@ class Employee(TenantScopedModel):
     # G13-3: what the company pays for this person instead of taking it from the pay (DKCB: Anthony)
     jht_by_company    = models.BooleanField(default=False, verbose_name="JHT 2% ditanggung perusahaan")
     pph21_by_company  = models.BooleanField(default=False, verbose_name="PPh 21 ditanggung perusahaan")
+    # G16-1: the wage reported to BPJS Ketenagakerjaan (empty = gaji pokok + tunjangan tetap) and Jaminan Pensiun
+    bpjs_wage         = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True,
+                                            verbose_name="Upah dilaporkan ke BPJS",
+                                            help_text="Kosong = gaji pokok + tunjangan tetap")
+    jp_enrolled       = models.BooleanField(default=False, verbose_name="Ikut Jaminan Pensiun (JP)")
     # G13-3: tunjangan kehadiran, paid only for a perfect period (no late / early leave, no sick leave, no unpaid
     # day); 0 = none. Not a tunjangan tetap: it does not count for BPJS, THR or overtime.
     attendance_bonus  = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"),
