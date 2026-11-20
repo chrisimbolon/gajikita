@@ -151,7 +151,26 @@ export interface TransferList {
   problems: number;
 }
 
+// G18-1: "Aturan perusahaan vs UU" (backend/apps/payroll/law_check.py)
+export interface LawRow {
+  key:       string;
+  status:    "ok" | "differs" | "found" | "missing";
+  title:     string;
+  company:   string;
+  law:       string;
+  article:   string;
+  link:      string;
+  link_text: string;
+  people:    string[];
+  changed:   string;
+}
+export interface LawCheck { law: string; effective: string; as_of: string; rows: LawRow[] }
+
 export const payrollApi = {
+  async lawCheck(): Promise<LawCheck> {                                    // G18-1
+    const { data } = await api.get("/api/hr/payroll/law-check/");
+    return data;
+  },
   async slips(runId: string, lineId?: string): Promise<SlipBook> {
     const { data } = await api.get(`/api/hr/payroll/runs/${runId}/slips/`, { params: lineId ? { line: lineId } : {} });
     return data;
