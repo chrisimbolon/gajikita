@@ -120,6 +120,36 @@ def base_share_row(below):
                link="/dashboard/karyawan", link_text="Lihat")
 
 
+def bpjs_wage_row(below):
+    """G16-1: people whose wage reported to BPJS is under gaji pokok + tunjangan tetap."""
+    law = "Iuran BPJS Ketenagakerjaan dihitung dari upah sebulan: gaji pokok + tunjangan tetap"
+    if below:
+        return Row("bpjs_wage", FOUND, "Upah BPJS di bawah gaji",
+                   f"{len(below)} karyawan dilaporkan ke BPJS dengan upah lebih kecil dari gaji pokok + tunjangan tetap",
+                   law, "PP 44/2015 dan PP 46/2015", link="/dashboard/karyawan", link_text="Lihat",
+                   people=_names(below))
+    return Row("bpjs_wage", OK, "Upah BPJS", "Sama dengan gaji pokok + tunjangan tetap", law,
+               "PP 44/2015 dan PP 46/2015", link="/dashboard/karyawan", link_text="Lihat")
+
+
+def jp_row(enrolled, cap, changed=""):
+    """G16-1: Jaminan Pensiun; no row when nobody is in JP."""
+    if not enrolled:
+        return None
+    law = "Iuran JP 1% karyawan + 2% perusahaan, sampai batas upah yang ditetapkan BPJS setiap tahun"
+    if Decimal(cap or 0) <= 0:
+        return Row("jp", MISSING, "Jaminan Pensiun",
+                   f"{enrolled} karyawan ikut JP, batas upah JP belum diisi di Pengaturan payroll", law, "PP 45/2015",
+                   changed=changed)
+    return Row("jp", OK, "Jaminan Pensiun", f"{enrolled} karyawan ikut JP, batas upah {_rp(cap)}", law, "PP 45/2015",
+               changed=changed)
+
+
+def bpjs_below(rows):
+    """rows: (name, reported wage or None, gaji pokok + tunjangan tetap) -> names reported lower."""
+    return [name for name, reported, wage in rows if reported and Decimal(reported) < Decimal(wage or 0)]
+
+
 def people_checks(people, minimum_wage, today):
     """people: (name, join_date, base, fixed_allowance). -> (below_umk, below_share), lists of names."""
     umk = Decimal(minimum_wage or 0)
@@ -162,6 +192,11 @@ def build(org, today):
               for e in Employee.objects.filter(organization=org, status=Employee.Status.ACTIVE,
                                                pay_type=Employee.PayType.MONTHLY)]
     below_umk, below_share = people_checks(people, cfg.minimum_wage, today)
+    active = Employee.objects.filter(organization=org, status=Employee.Status.ACTIVE)                    # G16-1
+    reported = bpjs_below([(e.full_name, e.bpjs_wage, Decimal(e.base_rate or 0) + Decimal(e.fixed_allowance or 0))
+                           for e in active.filter(pay_type=Employee.PayType.MONTHLY, bpjs_tk_enrolled=True,
+                                                  bpjs_wage__isnull=False)])
+    in_jp = active.filter(bpjs_tk_enrolled=True, jp_enrolled=True).count()
     return [
         overtime_row(cfg.overtime_mode, cfg.flat_overtime_hour, _last_change(org, "overtime_mode")),
         annual_leave_row(),
@@ -171,6 +206,8 @@ def build(org, today):
         menstrual_row(leave.menstrual_leave, _last_change(org, "menstrual_leave", "leave.settings")),
         umk_row(cfg.minimum_wage, below_umk, _last_change(org, "minimum_wage")),
         base_share_row(below_share),
+        bpjs_wage_row(reported),                                                              # G16-1
+        jp_row(in_jp, cfg.jp_wage_cap, _last_change(org, "jp_wage_cap")),
     ]
 
 
@@ -180,6 +217,6 @@ class LawCheckView(APIView):
 
     def get(self, request):
         today = timezone.localdate()
-        rows = build(request.hr_org, today)
+        rows = [r for r in build(request.hr_org, today) if r is not None]                   # G16-1: jp_row may be None
         return Response({"success": True, "law": LAW, "effective": "2026-10-28", "as_of": today.isoformat(),
                          "rows": [asdict(r) for r in rows]})

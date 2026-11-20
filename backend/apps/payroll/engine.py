@@ -71,6 +71,11 @@ class PayrollRules:
     jkk: Decimal = Decimal("0.0024")       # risk group 1; set per company (DKCB: 0.0089, group 3)
     jkm: Decimal = Decimal("0.003")
     minimum_wage: Decimal = ZERO            # the company's UMK; 0 = don't check
+    # G16-1: Jaminan Pensiun, for employees in JP only. The wage cap comes from BPJS every year (0 = none entered).
+    jp_employee: Decimal = Decimal("0.01")
+    jp_company: Decimal = Decimal("0.02")
+    jp_wage_cap: Decimal = ZERO
+    jp_by_company: bool = False             # the company pays the employee's JP 1% (not taken from pay)
 
 
 @dataclass(frozen=True)
@@ -94,6 +99,8 @@ class EmployeeTerms:
     overtime_basis: Decimal = None           # PP 35 monthly wage when it isn't pokok + tunjangan (daily workers)
     check_minimum_wage: bool = True          # off for daily and piece-rate workers (G8b)
     jht_by_company: bool = False             # G13-3: the company pays the worker's JHT 2% (not taken from pay)
+    bpjs_wage: Decimal = None                # G16-1: the wage reported to BPJS TK; None = gaji pokok + tunjangan tetap
+    jp: bool = False                         # G16-1: in Jaminan Pensiun
     attendance_bonus: Decimal = ZERO         # G13-3: tunjangan kehadiran, paid only for a perfect period
     under_one_year: bool = None              # G18-0: masa kerja < 1 tahun at period end (None = unknown, no UMK note)
 
@@ -200,6 +207,8 @@ def daily_rate(base_salary, divisor):
 
 
 def bpjs_wage(terms, rules):
+    if terms.bpjs_wage is not None and D(terms.bpjs_wage) > 0:          # G16-1: the wage reported to BPJS
+        return D(terms.bpjs_wage)
     return D(terms.base_salary) + (D(terms.fixed_allowance) if rules.bpjs_base_includes_allowance else ZERO)
 
 
@@ -371,6 +380,19 @@ def calculate(terms, period, rules):
             amount = rupiah(wage * rate)
             if amount:
                 slip.employer.append(SlipLine(code, label, amount, rate=rate))
+        if terms.jp:                                                                   # G16-1: Jaminan Pensiun
+            cap = D(rules.jp_wage_cap or 0)
+            jp_wage = min(wage, cap) if cap > 0 else wage
+            if rules.jp_by_company:
+                amount = rupiah(jp_wage * rules.jp_employee)
+                if amount:
+                    slip.employer.append(SlipLine("jp_employee_company", "JP 1% karyawan (ditanggung perusahaan)",
+                                                  amount, rate=rules.jp_employee))
+            else:
+                deduct("jp_employee", "Iuran Jaminan Pensiun (JP 1%)", jp_wage * rules.jp_employee)
+            amount = rupiah(jp_wage * rules.jp_company)
+            if amount:
+                slip.employer.append(SlipLine("jp_company", "JP perusahaan", amount, rate=rules.jp_company))
     else:
         slip.warnings.append("Belum terdaftar BPJS Ketenagakerjaan.")
     deduct("loan", "Pinjaman", period.loan_repayment)

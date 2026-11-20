@@ -132,7 +132,8 @@ class Bruto:
     parts: list = field(default_factory=list)              # [(label, amount)], amounts signed
 
 
-def bruto_from_slip(result, *, late_reduces=False, company_jht_in_bruto=False, ignore_codes=()):
+def bruto_from_slip(result, *, late_reduces=False, company_jht_in_bruto=False, company_jp_in_bruto=True,
+                    ignore_codes=()):
     """
     A calculated slip (PayRunLine.result) -> the month's bruto for PPh 21.
     Earnings, minus unpaid leave (proved by Togar), minus late fines only when late_reduces (open question),
@@ -156,7 +157,33 @@ def bruto_from_slip(result, *, late_reduces=False, company_jht_in_bruto=False, i
         parts.append(("BPJS Kesehatan (perusahaan)", emp["bpjs_kes_company"]))
     if company_jht_in_bruto and emp.get("jht_employee_company"):
         parts.append(("JHT 2% karyawan dibayar perusahaan", emp["jht_employee_company"]))
+    if company_jp_in_bruto and emp.get("jp_employee_company"):                # G16-1: Pak Holan A3
+        parts.append(("JP 1% karyawan dibayar perusahaan", emp["jp_employee_company"]))
     return Bruto(sum((a for _, a in parts), ZERO), parts)
+
+
+@dataclass
+class Monthly:
+    bruto: Decimal                                        # including the tax allowance when grossed up
+    rate: Decimal
+    tax: Decimal
+    gross_up: bool
+    parts: list
+
+
+def monthly_for_slip(result, ptkp, *, by_company=False, late_reduces=True, company_jht_in_bruto=True,
+                     company_jp_in_bruto=True, on=None):
+    """
+    G16-1: one slip's PPh 21 for Jan-Nov, per Pak Holan (20 Nov 2026): late fines reduce bruto (A2), JP 1% / JHT 2%
+    paid by the company are bruto (A3, B2), tax paid by the company is grossed up (A1).
+    """
+    b = bruto_from_slip(result, late_reduces=late_reduces, company_jht_in_bruto=company_jht_in_bruto,
+                        company_jp_in_bruto=company_jp_in_bruto)
+    if by_company:
+        rate, tax = gross_up(b.total, ptkp, on)
+        return Monthly(b.total + tax, rate, tax, True, b.parts + [("Tunjangan PPh 21 (gross-up)", tax)])
+    rate, tax = monthly_pph(b.total, ptkp, on)
+    return Monthly(b.total, rate, tax, False, b.parts)
 
 
 def ptkp_amount(ptkp, on=None):
