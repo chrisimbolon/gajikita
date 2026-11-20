@@ -35,6 +35,10 @@ export interface PayrollSettings {
   bpjs_base_includes_allowance: boolean;
   jkk_rate:                     string;
   minimum_wage:                 string;
+  jp_wage_cap?:                 string;   // G16-1: 0 = not entered
+  jp_employee_by_company?:      boolean;  // G16-1
+  pph21_late_reduces_bruto?:    boolean;  // G16-1
+  pph21_company_jht_in_bruto?:  boolean;  // G16-1
   slip_address:                 string;
   slip_place:                   string;
   slip_signer:                  string;
