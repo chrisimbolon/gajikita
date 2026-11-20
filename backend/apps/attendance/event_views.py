@@ -36,6 +36,7 @@ def event_json(x):
     return {
         "id": str(x.pk), "start": x.start.isoformat(), "end": x.end.isoformat(), "kind": x.kind,
         "kind_label": LABELS.get(x.kind, x.kind), "reason": x.reason, "everyone": x.everyone,
+        "collective_leave": x.collective_leave,                                                  # G14-1
         "days": (x.end - x.start).days + 1,
         "sites": [{"id": str(s.pk), "name": s.name} for s in sites],
         "employees": [{"id": str(e.pk), "employee_no": e.employee_no, "full_name": e.full_name} for e in people],
@@ -79,7 +80,18 @@ def _long_problem(d, fields, x=None):
 
 
 def _summary(x):
-    return f"{LABELS.get(x.kind, x.kind)} {_d(x.start)} s/d {_d(x.end)} ({x.reason}) · {event_json(x)['who']}"
+    extra = " · cuti bersama" if x.collective_leave else ""
+    return f"{LABELS.get(x.kind, x.kind)}{extra} {_d(x.start)} s/d {_d(x.end)} ({x.reason}) · {event_json(x)['who']}"
+
+
+def _recount(org, *ranges):
+    """G14-1: a Libur day is not a leave day: recount active leave in the dates that changed."""
+    from datetime import date
+    from apps.leave.services import recount_leave
+    for start, end in ranges:
+        if isinstance(start, str):
+            start, end = date.fromisoformat(start), date.fromisoformat(end)
+        recount_leave(org, start, end)
 
 
 class EventInput(serializers.Serializer):
@@ -88,6 +100,7 @@ class EventInput(serializers.Serializer):
     kind = serializers.ChoiceField(choices=list(LABELS), required=False)
     reason = serializers.CharField(max_length=200, required=False)
     everyone = serializers.BooleanField(required=False)
+    collective_leave = serializers.BooleanField(required=False)                  # G14-1
     site_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     employee_ids = serializers.ListField(child=serializers.UUIDField(), required=False)
     confirm_long = serializers.BooleanField(required=False)                    # G17-7.2
@@ -126,7 +139,9 @@ def _resolve(org, d, x=None):
             return "Ada lokasi atau karyawan yang tidak ditemukan di perusahaan ini."
         if not sites and not people:
             return "Pilih minimal satu lokasi atau satu karyawan, atau pilih Semua karyawan."
-    return ({"start": start, "end": end, "kind": kind, "reason": reason, "everyone": everyone}, sites, people)
+    collective = d.get("collective_leave", x.collective_leave if x else False)               # G14-1: Libur only
+    return ({"start": start, "end": end, "kind": kind, "reason": reason, "everyone": everyone,
+             "collective_leave": bool(collective) and kind == CompanyEvent.Kind.HOLIDAY}, sites, people)
 
 
 def _locked_problem(org, old, new):
@@ -169,6 +184,7 @@ class EventListView(APIView):
             x.employees.set(people)
             record_audit(organization=org, actor=request.user, action="attendance.event_create", target=org,
                          summary=f"Kejadian: {_summary(x)}", after=event_json(x))
+            _recount(org, (x.start, x.end))                                          # G14-1
         body = _list(org)
         body["event"] = event_json(x)
         return Response(body, status=status.HTTP_201_CREATED)
@@ -204,6 +220,7 @@ class EventDetailView(APIView):
             x = CompanyEvent.objects.prefetch_related("sites", "employees").get(pk=x.pk)
             record_audit(organization=org, actor=request.user, action="attendance.event_update", target=org,
                          summary=f"Kejadian diubah: {_summary(x)}", before=before, after=event_json(x))
+            _recount(org, (before["start"], before["end"]), (x.start, x.end))         # G14-1
         body = _list(org)
         body["event"] = event_json(x)
         return Response(body)
@@ -219,4 +236,5 @@ class EventDetailView(APIView):
             x.delete()
             record_audit(organization=org, actor=request.user, action="attendance.event_delete", target=org,
                          summary=f"Kejadian dihapus: {text}", before=before)
+            _recount(org, (before["start"], before["end"]))                           # G14-1
         return Response(_list(org))
