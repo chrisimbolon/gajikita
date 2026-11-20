@@ -278,8 +278,35 @@ export default function PayrollSettingsPage() {
                  onChange={(e) => set("bpjs_base_includes_allowance", e.target.checked)} />
           Upah BPJS = gaji pokok + tunjangan tetap
         </label>
+        {/* G16-1: Jaminan Pensiun (only for employees ticked "Ikut JP" in Karyawan) */}
+        <label>
+          <div className="label">JP 1% karyawan</div>
+          <select className="input" style={{ width: "100%" }} value={form.jp_employee_by_company ? "company" : "employee"}
+                  onChange={(e) => set("jp_employee_by_company", e.target.value === "company")}>
+            <option value="employee">Dipotong dari gaji</option>
+            <option value="company">Ditanggung perusahaan</option>
+          </select>
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+            Hanya untuk karyawan yang dicentang &quot;Ikut Jaminan Pensiun&quot;. JP perusahaan 2%.
+          </div>
+        </label>
+        {money("jp_wage_cap", "Batas upah JP", "Dari surat BPJS Ketenagakerjaan, berubah setiap tahun. 0 = belum diisi.")}
         {money("minimum_wage", "UMK", "Untuk catatan gaji di bawah UMK, hanya karyawan dengan masa kerja kurang dari "
                                       + "1 tahun (UU No. 27/2026 Pasal 140). Ganti setiap Januari. 0 = tidak dicek.")}
+      </Section>
+
+      {/* G16-1: PPh 21 rules (Pak Holan, 20 Nov 2026); used when PPh 21 is switched on */}
+      <Section title="PPh 21" hint="Belum dipakai di slip. Dipakai saat PPh 21 dinyalakan.">
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+          <input type="checkbox" checked={form.pph21_late_reduces_bruto ?? true}
+                 onChange={(e) => set("pph21_late_reduces_bruto", e.target.checked)} />
+          Potongan keterlambatan mengurangi bruto
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+          <input type="checkbox" checked={form.pph21_company_jht_in_bruto ?? true}
+                 onChange={(e) => set("pph21_company_jht_in_bruto", e.target.checked)} />
+          JHT 2% karyawan yang ditanggung perusahaan masuk bruto
+        </label>
       </Section>
 
       <Section title="Slip gaji" hint="Tampil di setiap slip yang dicetak.">
