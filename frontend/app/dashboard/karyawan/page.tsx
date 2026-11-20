@@ -35,7 +35,7 @@ function npwpText(value: string): string {
 const blank = (): Form => ({
   employee_no: "", full_name: "", position: "", fingerprint_id: "", probation_end_date: "", nik: "", npwp: "", ptkp_status: "TK/0", gender: "", join_date: todayISO(), end_date: "",
   employment_type: "pkwtt", pay_type: "monthly", base_rate: "0", fixed_allowance: "0", overtime_eligible: true, bpjs_tk_enrolled: true, meal_rule: "",
-  jht_by_company: false, pph21_by_company: false, attendance_bonus: "0",                       // G13-3
+  jht_by_company: false, pph21_by_company: false, attendance_bonus: "0", bpjs_wage: null, jp_enrolled: false,                       // G13-3
   bank_name: "", bank_account_no: "",
   bank_account_name: "", bpjs_kesehatan_no: "", bpjs_tk_no: "", phone: "", sites: [], default_site: null,
   default_shift: null, mandor: null, status: "active",
@@ -48,6 +48,7 @@ const fromEmployee = (e: Employee): Form => ({
   base_rate: e.base_rate, fixed_allowance: e.fixed_allowance, overtime_eligible: e.overtime_eligible,
   bpjs_tk_enrolled: e.bpjs_tk_enrolled, meal_rule: e.meal_rule ?? "",
   jht_by_company: !!e.jht_by_company, pph21_by_company: !!e.pph21_by_company, attendance_bonus: e.attendance_bonus ?? "0",
+  bpjs_wage: e.bpjs_wage ?? null, jp_enrolled: !!e.jp_enrolled,                                   // G16-1
   bank_name: e.bank_name, bank_account_no: e.bank_account_no,
   bank_account_name: e.bank_account_name, bpjs_kesehatan_no: e.bpjs_kesehatan_no, bpjs_tk_no: e.bpjs_tk_no,
   phone: e.phone, sites: e.sites.map(String), default_site: e.default_site, default_shift: e.default_shift,
@@ -206,7 +207,7 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
 
   const save = async () => {
     setSaving(true); setErrors({}); setSummary(null);
-    const body: Partial<EmployeeInput> = { ...form, end_date: form.end_date || null, probation_end_date: form.probation_end_date || null, base_rate: form.base_rate || "0",
+    const body: Partial<EmployeeInput> = { ...form, end_date: form.end_date || null, probation_end_date: form.probation_end_date || null, bpjs_wage: form.bpjs_wage || null, base_rate: form.base_rate || "0",
                                          fixed_allowance: form.fixed_allowance || "0", attendance_bonus: form.attendance_bonus || "0" };
     try {
       let emp = employee ? await hrApi.updateEmployee(employee.id, body) : await hrApi.createEmployee(body);
@@ -247,7 +248,7 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
     </div>
   );
 
-  const money = (key: "base_rate" | "fixed_allowance" | "attendance_bonus", label: string) => (
+  const money = (key: "base_rate" | "fixed_allowance" | "attendance_bonus" | "bpjs_wage", label: string) => (
     <div style={{ marginBottom: 12 }}>
       <label className="label">{label}</label>
       <div style={{ position: "relative" }}>
@@ -377,6 +378,21 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
           <input type="checkbox" checked={!!form.jht_by_company} onChange={(e) => set("jht_by_company", e.target.checked)} />
           JHT 2% ditanggung perusahaan (tidak dipotong dari gaji)
         </label>
+      )}
+      {/* G16-1: Jaminan Pensiun and the wage reported to BPJS */}
+      {form.bpjs_tk_enrolled && (
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, margin: "-4px 0 12px 26px" }}>
+          <input type="checkbox" checked={!!form.jp_enrolled} onChange={(e) => set("jp_enrolled", e.target.checked)} />
+          Ikut Jaminan Pensiun (JP 1% karyawan + 2% perusahaan)
+        </label>
+      )}
+      {form.bpjs_tk_enrolled && (
+        <div style={{ marginLeft: 26 }}>
+          {money("bpjs_wage", "Upah dilaporkan ke BPJS")}
+          <div style={{ fontSize: 12.5, color: "var(--steel)", margin: "-6px 0 12px" }}>
+            Kosong = gaji pokok + tunjangan tetap. Bila diisi, JHT, JKK, JKM dan JP dihitung dari angka ini.
+          </div>
+        </div>
       )}
       <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginBottom: 12 }}>
         <input type="checkbox" checked={!!form.pph21_by_company} onChange={(e) => set("pph21_by_company", e.target.checked)} />
