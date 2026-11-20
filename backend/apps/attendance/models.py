@@ -280,6 +280,9 @@ class CompanyEvent(TenantScopedModel):
     kind       = models.CharField(max_length=10, choices=Kind.choices, verbose_name="Jenis")
     reason     = models.CharField(max_length=200, verbose_name="Alasan", help_text="mis. Mati lampu")
     everyone   = models.BooleanField(default=True, verbose_name="Semua karyawan")
+    # G14-1: a Libur that is the government's cuti bersama (UU 27/2026 Pasal 118 ayat 6; Pengaturan cuti decides
+    # whether it takes annual leave)
+    collective_leave = models.BooleanField(default=False, verbose_name="Cuti bersama")
     sites      = models.ManyToManyField("sites.Site", blank=True, related_name="+", verbose_name="Lokasi")
     employees  = models.ManyToManyField("employees.Employee", blank=True, related_name="+", verbose_name="Karyawan")
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
