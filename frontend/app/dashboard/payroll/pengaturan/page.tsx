@@ -6,7 +6,7 @@
 // =============================================================================
 import { readErrors } from "@/lib/api/hr";
 import { DKCB_NIGHT_RULES, NightRule, PayrollSettings, payrollApi } from "@/lib/api/payroll";
-import { ArrowLeft, Loader2, Save } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Info, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -98,7 +98,10 @@ export default function PayrollSettingsPage() {
       <Link href="/dashboard/payroll" style={{ fontSize: 13.5, display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <ArrowLeft size={14} /> Payroll
       </Link>
-      <h1 className="display" style={{ fontSize: 28, marginBottom: 14, textTransform: "none" }}>Pengaturan payroll</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
+        <h1 className="display" style={{ fontSize: 28, textTransform: "none" }}>Pengaturan payroll</h1>
+        <Link href="/dashboard/payroll/aturan-uu" style={{ fontSize: 13.5, fontWeight: 600 }}>Aturan perusahaan vs UU →</Link>
+      </div>
 
       <Section title="Periode" hint="Misalnya periode 26 s/d 25 dan gajian tanggal 5 bulan berikutnya.">
         {number("period_start_day", "Periode mulai tanggal", "1 = per bulan kalender")}
@@ -120,6 +123,17 @@ export default function PayrollSettingsPage() {
             <option value="pp35">Sesuai PP 35/2021 (1/173 × upah, 1,5× / 2×)</option>
             <option value="flat">Tarif tetap perusahaan</option>
           </select>
+          {/* G18-1: the law, next to the switch */}
+          {form.overtime_mode === "flat" ? (
+            <div style={{ fontSize: 12, color: "#2563A8", marginTop: 3 }}>
+              <Info size={12} style={{ verticalAlign: "-1px" }} /> Berbeda dari PP 35/2021 (UU No. 27/2026 Pasal 116 dan 125).
+              SeeGaji tetap memberi peringatan di slip bila lebih rendah.
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "#2E7D4F", marginTop: 3 }}>
+              <CheckCircle2 size={12} style={{ verticalAlign: "-1px" }} /> Sesuai PP 35/2021 (UU No. 27/2026 Pasal 116 dan 125)
+            </div>
+          )}
         </label>
         <label>
           <div className="label">Pembulatan jam lembur</div>
