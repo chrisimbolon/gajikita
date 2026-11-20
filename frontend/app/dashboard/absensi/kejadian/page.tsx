@@ -25,7 +25,7 @@ const KINDS: { key: EventKind; label: string; help: string }[] = [
 ];
 
 const blank = (): EventInput => ({ start: todayISO(), end: todayISO(), kind: "gangguan", reason: "", everyone: true,
-                                    site_ids: [], employee_ids: [] });
+                                    site_ids: [], employee_ids: [], collective_leave: false });
 
 export default function KejadianPage() {
   const [events, setEvents] = useState<CompanyEvent[]>([]);
@@ -53,7 +53,7 @@ export default function KejadianPage() {
 
   const edit = (e: CompanyEvent | null) => {
     setEditId(e?.id ?? null);
-    setForm(e ? { start: e.start, end: e.end, kind: e.kind, reason: e.reason, everyone: e.everyone,
+    setForm(e ? { start: e.start, end: e.end, kind: e.kind, reason: e.reason, everyone: e.everyone, collective_leave: !!e.collective_leave,
                   site_ids: e.sites.map((s) => s.id), employee_ids: e.employees.map((p) => p.id) } : blank());
     setMsg(null); setSearch("");
   };
@@ -143,7 +143,7 @@ export default function KejadianPage() {
                       <span className="pill" style={{ background: e.kind === "libur" ? "var(--paper-3)" : "var(--hazard-light)",
                                                       fontSize: 12, fontWeight: 700 }}>
                         {e.kind === "libur" ? <CalendarX2 size={12} style={{ verticalAlign: "-2px" }} /> : <Zap size={12} style={{ verticalAlign: "-2px" }} />}{" "}
-                        {e.kind_label}
+                        {e.kind_label}{e.collective_leave && " · cuti bersama"}
                       </span>
                     </td>
                     <td style={{ fontWeight: 600 }}>{e.reason}</td>
@@ -177,6 +177,19 @@ export default function KejadianPage() {
             ))}
           </div>
           <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 6 }}>{kind.help}</div>
+          {form.kind === "libur" && (                                                    /* G14-1 */
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 10, fontSize: 14 }}>
+              <input type="checkbox" checked={!!form.collective_leave} style={{ marginTop: 3 }}
+                     onChange={(e) => setForm({ ...form, collective_leave: e.target.checked })} />
+              <span>
+                Ini <b>cuti bersama</b> dari pemerintah
+                <span style={{ display: "block", fontSize: 12.5, color: "var(--steel)" }}>
+                  UU No. 27/2026 Pasal 118 ayat 6: tidak mengurangi cuti tahunan. Bila perusahaan memilih lain, atur di
+                  Cuti &amp; Izin → Pengaturan cuti.
+                </span>
+              </span>
+            </label>
+          )}
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 12 }}>
             <div>

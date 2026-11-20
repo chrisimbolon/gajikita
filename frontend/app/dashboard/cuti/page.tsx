@@ -12,6 +12,7 @@ import {
 } from "@/lib/api/leave";
 import { dateTimeWIB, todayISO } from "@/lib/format";
 import { AlertTriangle, FilePlus2, Loader2, Paperclip, Search, X } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
 const TABS: { key: LeaveStatus | "all"; label: string }[] = [
@@ -255,6 +256,7 @@ export default function CutiPage() {
             Pengajuan dari HP karyawan menunggu atasannya (mandor) atau HR. Cuti yang disetujui tampil di Absensi
             sebagai cuti, bukan tidak hadir.
           </p>
+          <Link href="/dashboard/cuti/pengaturan" style={{ fontSize: 13.5, fontWeight: 600 }}>Pengaturan cuti →</Link>
         </div>
         <button className="btn-rust" onClick={() => setPaper(true)} disabled={!data}
                 style={{ display: "flex", alignItems: "center", gap: 6 }}><FilePlus2 size={16} /> Catat formulir</button>
