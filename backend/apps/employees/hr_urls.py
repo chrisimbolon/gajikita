@@ -11,6 +11,7 @@ from apps.payroll.payrun_views import (ItemDeleteView, LineDetailView, LineItems
 from apps.payroll.slip_views import SlipsView, TransfersView
 from apps.payroll.item_grid import ItemGridView                                            # G13
 from apps.payroll.loan_views import LoanDetailView, LoanListView                            # G13 part 2
+from apps.payroll.law_check import LawCheckView                                            # G18-1
 from apps.leave.hr_views import HrLeaveAttachmentView, HrLeaveBalanceView, HrLeaveDecideView, HrLeaveListView
 
 from .hr_views import EmployeeDetailView, EmployeeListView, EmployeeLoginView
@@ -89,6 +90,7 @@ urlpatterns = [
     path("leave/balance/<uuid:employee_id>/",  HrLeaveBalanceView.as_view(),    name="hr-leave-balance"),
     # payroll (G8b part 1)
     path("payroll/settings/",                                    SettingsView.as_view(),       name="hr-payroll-settings"),
+    path("payroll/law-check/",                                   LawCheckView.as_view(),       name="hr-payroll-law-check"),   # G18-1
     path("payroll/loans/",                                       LoanListView.as_view(),       name="hr-payroll-loans"),
     path("payroll/loans/<uuid:pk>/",                             LoanDetailView.as_view(),     name="hr-payroll-loan"),
     path("payroll/runs/",                                        RunListView.as_view(),        name="hr-payroll-runs"),
