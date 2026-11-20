@@ -218,6 +218,8 @@ def calculate_line(line, cfg):
     terms = engine.EmployeeTerms(base_salary=base, fixed_allowance=allowance, bpjs_tk=emp.bpjs_tk_enrolled,
                                  overtime_eligible=terms_kw.pop("overtime_eligible", emp.overtime_eligible),
                                  jht_by_company=emp.jht_by_company,                                       # G13-3
+                                 bpjs_wage=Decimal(emp.bpjs_wage) if emp.bpjs_wage else None,             # G16-1
+                                 jp=emp.jp_enrolled,
                                  attendance_bonus=Decimal(emp.attendance_bonus or 0),
                                  under_one_year=(engine.serves_under_one_year(emp.join_date, line.run.period_end)   # G18-0
                                                  if emp.join_date else None),

@@ -56,6 +56,18 @@ class SettingsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Pilih tanggal 1 sampai 28.")
         return v
 
+    def validate_jp_wage_cap(self, v):                                                  # G16-1
+        if v < 0:
+            raise serializers.ValidationError("Batas upah JP tidak boleh minus.")
+        return v
+
+    def _rate(self, v):
+        if not 0 <= v <= Decimal("0.1"):
+            raise serializers.ValidationError("Isi persen antara 0 dan 10%.")
+        return v
+
+    validate_jp_employee_rate = validate_jp_company_rate = _rate                       # G16-1
+
     def validate_overtime_min_minutes(self, v):                                         # G12e
         if v > 240:
             raise serializers.ValidationError("Paling lama 240 menit.")
