@@ -83,3 +83,26 @@ class LeaveRequest(TenantScopedModel):
     @property
     def paid(self):
         return rules.PAID.get(self.kind, True)
+
+
+class LeaveSettings(TenantScopedModel):
+    """
+    G14-1 (20 Nov 2026): a company's leave rules, one row per company (made on first use). The defaults are
+    UU No. 27 Tahun 2026; a company may choose otherwise and "Aturan perusahaan vs UU" shows the difference.
+    """
+    organization = models.OneToOneField("organizations.Organization", on_delete=models.CASCADE,
+                                        related_name="leave_settings")
+    collective_leave_reduces_annual = models.BooleanField(default=False,
+                                                          verbose_name="Cuti bersama mengurangi cuti tahunan")
+    paternity_extra_days = models.PositiveSmallIntegerField(default=rules.PATERNITY_EXTRA_MAX,
+                                                            verbose_name="Tambahan cuti istri melahirkan (hari)")
+    menstrual_leave = models.BooleanField(default=True, verbose_name="Cuti haid")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "Pengaturan cuti"
+
+    @classmethod
+    def for_org(cls, organization):
+        obj, _ = cls.objects.get_or_create(organization=organization)
+        return obj
