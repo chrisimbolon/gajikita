@@ -38,7 +38,25 @@ export interface LeaveChoices {
   special_reasons: { value: string; label: string; days: number }[];
 }
 
-export interface AnnualBalance { year: number; entitled: number; used: number; left: number; from_date: string }
+export interface AnnualBalance { year: number; entitled: number; used: number; left: number; from_date: string;
+                                 collective?: number }    // G14-1: cuti bersama days counted in "used"
+
+// G14-1: the company's leave rules (defaults = UU No. 27/2026). Mirrors backend/apps/leave/hr_views.py.
+export interface LeaveSettings {
+  collective_leave_reduces_annual: boolean;
+  paternity_extra_days:            number;
+  menstrual_leave:                 boolean;
+}
+export const leaveSettingsApi = {
+  async get(): Promise<LeaveSettings> {
+    const { data } = await api.get("/api/hr/leave/settings/");
+    return data.settings;
+  },
+  async save(body: Partial<LeaveSettings>): Promise<LeaveSettings> {
+    const { data } = await api.patch("/api/hr/leave/settings/", body);
+    return data.settings;
+  },
+};
 
 export interface MyLeave extends LeaveChoices {
   employee:    { id: string; full_name: string };

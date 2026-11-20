@@ -16,6 +16,7 @@ export interface CompanyEvent {
   kind_label: string;
   reason:     string;
   everyone:   boolean;
+  collective_leave?: boolean;                               // G14-1: Libur = cuti bersama
   days:       number;
   sites:      { id: string; name: string }[];
   employees:  { id: string; employee_no: string; full_name: string }[];
@@ -26,6 +27,7 @@ export interface CompanyEvent {
 export interface EventInput {
   start: string; end: string; kind: EventKind; reason: string;
   everyone: boolean; site_ids: string[]; employee_ids: string[];
+  collective_leave?: boolean;                               // G14-1
   confirm_long?: boolean;                                   // G17-7.2: "yes, this long range is right"
 }
 

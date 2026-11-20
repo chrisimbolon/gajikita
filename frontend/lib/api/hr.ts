@@ -56,6 +56,7 @@ export interface Employee {
   nik:               string;
   npwp:              string;
   ptkp_status:       string;
+  gender?:           "" | "L" | "P";                     // G14-1
   join_date:         string;
   end_date:          string | null;
   employment_type:   keyof typeof EMPLOYMENT_TYPE_LABEL;
