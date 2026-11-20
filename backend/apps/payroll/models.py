@@ -81,6 +81,18 @@ class PayrollSettings(TenantScopedModel):
                                             help_text="0.0024 / 0.0054 / 0.0089 / 0.0127 / 0.0174 (kelompok risiko 1-5)")
     minimum_wage      = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"),
                                             verbose_name="UMK", help_text="0 = tidak dicek")
+    # G16-1: Jaminan Pensiun, for employees ticked "Ikut JP"
+    jp_employee_rate  = models.DecimalField(max_digits=6, decimal_places=4, default=Decimal("0.0100"))
+    jp_company_rate   = models.DecimalField(max_digits=6, decimal_places=4, default=Decimal("0.0200"))
+    jp_wage_cap       = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"),
+                                            verbose_name="Batas upah JP",
+                                            help_text="Dari surat BPJS Ketenagakerjaan, berubah tiap tahun. 0 = belum diisi")
+    jp_employee_by_company = models.BooleanField(default=False, verbose_name="JP 1% karyawan ditanggung perusahaan")
+    # G16-1: PPh 21 (Pak Holan, 20 Nov 2026); used by pph21_preview now, by the slip when PPh 21 is switched on
+    pph21_late_reduces_bruto = models.BooleanField(default=True,
+                                                   verbose_name="Potongan keterlambatan mengurangi bruto PPh 21")
+    pph21_company_jht_in_bruto = models.BooleanField(
+        default=True, verbose_name="JHT 2% karyawan yang ditanggung perusahaan masuk bruto PPh 21")
     # on the printed slip (G8b part 2)
     slip_address      = models.TextField(blank=True, default="", verbose_name="Alamat di slip")
     slip_place        = models.CharField(max_length=60, blank=True, default="", verbose_name="Tempat di slip")
@@ -105,6 +117,8 @@ class PayrollSettings(TenantScopedModel):
             late_fine_per_minute=self.late_fine_per_minute, late_tolerance_minutes=self.late_tolerance_minutes,
             bpjs_base_includes_allowance=self.bpjs_base_includes_allowance, jkk=self.jkk_rate,
             minimum_wage=self.minimum_wage,
+            jp_employee=self.jp_employee_rate, jp_company=self.jp_company_rate,                # G16-1
+            jp_wage_cap=self.jp_wage_cap, jp_by_company=self.jp_employee_by_company,
         )
 
 
