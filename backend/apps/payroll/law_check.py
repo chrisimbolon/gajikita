@@ -23,6 +23,7 @@ from .engine import BASE_SHARE_MIN, serves_under_one_year
 LAW = "UU No. 27 Tahun 2026"
 OK, DIFFERS, FOUND, MISSING = "ok", "differs", "found", "missing"
 SETTINGS_LINK = "/dashboard/payroll/pengaturan"
+LEAVE_LINK = "/dashboard/cuti/pengaturan"              # G14-1
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
 
 
@@ -51,13 +52,42 @@ def _names(people):
 # ── row builders (pure) ──
 
 def overtime_row(mode, flat_hour, changed=""):
-    law = "1/173 upah sebulan; jam lembur pertama 1,5×, berikutnya 2× (PP 35/2021)"
+    law = "1/173 upah sebulan; jam lembur pertama 1,5×, berikutnya 2×"
+    article = "PP 35/2021, Pasal 116 dan 125"                       # G14-1: one bracket on the page, not two
     if mode == "flat":
         return Row("overtime", DIFFERS, "Upah lembur",
                    f"Tarif tetap perusahaan {_rp(flat_hour or 0)} per jam. SeeGaji tetap membandingkan setiap slip "
                    f"dengan PP 35/2021 dan memberi peringatan bila lebih rendah.",
-                   law, "Pasal 116 dan 125", changed=changed)
-    return Row("overtime", OK, "Upah lembur", "Sesuai PP 35/2021", law, "Pasal 116 dan 125", changed=changed)
+                   law, article, changed=changed)
+    return Row("overtime", OK, "Upah lembur", "Sesuai PP 35/2021", law, article, changed=changed)
+
+
+def collective_row(reduces, changed=""):
+    """G14-1: cuti bersama and annual leave."""
+    law = "Cuti bersama dari pemerintah tidak mengurangi cuti tahunan"
+    if reduces:
+        return Row("collective_leave", DIFFERS, "Cuti bersama", "Mengurangi cuti tahunan karyawan", law,
+                   "Pasal 118 ayat 6", link=LEAVE_LINK, changed=changed)
+    return Row("collective_leave", OK, "Cuti bersama", "Tidak mengurangi cuti tahunan", law, "Pasal 118 ayat 6",
+               link=LEAVE_LINK, changed=changed)
+
+
+def paternity_row(extra, changed=""):
+    """G14-1: the 3 extra days are the company's choice ("dapat diberikan"), so any setting follows the law."""
+    company = f"Istri melahirkan 2 + {extra} hari" if extra else "Istri melahirkan 2 hari"
+    return Row("paternity", OK, "Cuti pendampingan istri", company + "; istri keguguran 2 hari",
+               "Istri melahirkan 2 hari, dapat ditambah paling lama 3 hari; istri keguguran 2 hari", "Pasal 124",
+               link=LEAVE_LINK, changed=changed)
+
+
+def menstrual_row(on, changed=""):
+    """G14-1: cuti haid."""
+    law = "Pekerja perempuan yang sakit saat haid tidak wajib bekerja paling lama 2 hari, tetap dibayar"
+    if on:
+        return Row("menstrual", OK, "Cuti haid", "Paling lama 2 hari sebulan, dibayar", law,
+                   "Pasal 120 dan 149 ayat 2", link=LEAVE_LINK, changed=changed)
+    return Row("menstrual", DIFFERS, "Cuti haid", "Tidak bisa diajukan di SeeGaji", law, "Pasal 120 dan 149 ayat 2",
+               link=LEAVE_LINK, changed=changed)
 
 
 def annual_leave_row(days=12):
@@ -113,9 +143,9 @@ def changed_text(actor, at):
 
 # ── the database ──
 
-def _last_change(org, field_name):
+def _last_change(org, field_name, action="payroll.settings"):
     from apps.core.models import AuditEntry
-    for entry in (AuditEntry.objects.filter(organization=org, action="payroll.settings")
+    for entry in (AuditEntry.objects.filter(organization=org, action=action)
                   .select_related("actor").order_by("-created_at")[:200]):
         if field_name in ((entry.data or {}).get("after") or {}):
             return changed_text(entry.actor.full_name if entry.actor else "Sistem", entry.created_at)
@@ -124,8 +154,10 @@ def _last_change(org, field_name):
 
 def build(org, today):
     from apps.employees.models import Employee
+    from apps.leave.models import LeaveSettings
     from .models import PayrollSettings
     cfg = PayrollSettings.for_org(org)
+    leave = LeaveSettings.for_org(org)                                                       # G14-1
     people = [(e.full_name, e.join_date, e.base_rate, e.fixed_allowance)
               for e in Employee.objects.filter(organization=org, status=Employee.Status.ACTIVE,
                                                pay_type=Employee.PayType.MONTHLY)]
@@ -133,6 +165,10 @@ def build(org, today):
     return [
         overtime_row(cfg.overtime_mode, cfg.flat_overtime_hour, _last_change(org, "overtime_mode")),
         annual_leave_row(),
+        collective_row(leave.collective_leave_reduces_annual,
+                       _last_change(org, "collective_leave_reduces_annual", "leave.settings")),
+        paternity_row(leave.paternity_extra_days, _last_change(org, "paternity_extra_days", "leave.settings")),
+        menstrual_row(leave.menstrual_leave, _last_change(org, "menstrual_leave", "leave.settings")),
         umk_row(cfg.minimum_wage, below_umk, _last_change(org, "minimum_wage")),
         base_share_row(below_share),
     ]
