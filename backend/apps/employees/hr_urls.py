@@ -13,6 +13,7 @@ from apps.payroll.item_grid import ItemGridView                                 
 from apps.payroll.loan_views import LoanDetailView, LoanListView                            # G13 part 2
 from apps.payroll.law_check import LawCheckView                                            # G18-1
 from apps.leave.hr_views import HrLeaveAttachmentView, HrLeaveBalanceView, HrLeaveDecideView, HrLeaveListView
+from apps.leave.hr_views import HrLeaveSettingsView                                      # G14-1
 
 from .hr_views import EmployeeDetailView, EmployeeListView, EmployeeLoginView
 from .import_views import EmployeeImportView, EmployeeTemplateView
@@ -86,6 +87,7 @@ urlpatterns = [
     # cuti & izin (G7)
     path("leave/",                             HrLeaveListView.as_view(),       name="hr-leave"),
     path("leave/<uuid:pk>/decide/",            HrLeaveDecideView.as_view(),     name="hr-leave-decide"),
+    path("leave/settings/",                    HrLeaveSettingsView.as_view(),   name="hr-leave-settings"),   # G14-1
     path("leave/<uuid:pk>/attachment/",        HrLeaveAttachmentView.as_view(), name="hr-leave-attachment"),
     path("leave/balance/<uuid:employee_id>/",  HrLeaveBalanceView.as_view(),    name="hr-leave-balance"),
     # payroll (G8b part 1)
