@@ -54,6 +54,9 @@ class Employee(TenantScopedModel):
     nik             = models.CharField(max_length=16, blank=True, default="", verbose_name="NIK (KTP)")
     npwp            = models.CharField(max_length=20, blank=True, default="", verbose_name="NPWP")
     ptkp_status     = models.CharField(max_length=4, choices=PTKP.choices, default=PTKP.TK0, verbose_name="Status PTKP")
+    # G14-1: for cuti haid (and later cuti melahirkan, PTKP of married women); empty = not filled in yet
+    gender          = models.CharField(max_length=1, blank=True, default="", verbose_name="Jenis Kelamin",
+                                       choices=[("", "Belum diisi"), ("L", "Laki-laki"), ("P", "Perempuan")])
     join_date       = models.DateField(verbose_name="Tanggal Masuk")
     end_date        = models.DateField(null=True, blank=True, verbose_name="Tanggal Keluar")
     employment_type = models.CharField(max_length=20, choices=EmploymentType.choices, default=EmploymentType.PKWTT,
