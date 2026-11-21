@@ -93,6 +93,9 @@ class PayrollSettings(TenantScopedModel):
                                                    verbose_name="Potongan keterlambatan mengurangi bruto PPh 21")
     pph21_company_jht_in_bruto = models.BooleanField(
         default=True, verbose_name="JHT 2% karyawan yang ditanggung perusahaan masuk bruto PPh 21")
+    # G16-2: which month a payroll belongs to for PPh 21 (and so which payroll settles the year in December)
+    pph21_tax_month = models.CharField(max_length=12, default="paid", verbose_name="Masa pajak ikut",
+                                       choices=[("paid", "Bulan dibayar"), ("period_end", "Bulan periode berakhir")])
     # on the printed slip (G8b part 2)
     slip_address      = models.TextField(blank=True, default="", verbose_name="Alamat di slip")
     slip_place        = models.CharField(max_length=60, blank=True, default="", verbose_name="Tempat di slip")
@@ -120,6 +123,33 @@ class PayrollSettings(TenantScopedModel):
             jp_employee=self.jp_employee_rate, jp_company=self.jp_company_rate,                # G16-1
             jp_wage_cap=self.jp_wage_cap, jp_by_company=self.jp_employee_by_company,
         )
+
+
+class Pph21Opening(TenantScopedModel):
+    """
+    G16-2 (21 Nov 2026): saldo awal PPh 21 — one employee's tax months in a year before the company's first SeeGaji
+    payroll (from the old book or Coretax bukti potong). Used by the yearly PPh 21 (pph21_year.py).
+    """
+    class Source(models.TextChoices):
+        MANUAL = "manual", "Diisi HR"
+        CSV    = "csv",    "File CSV"
+
+    id       = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee = models.ForeignKey("employees.Employee", on_delete=models.CASCADE, related_name="pph21_openings")
+    year     = models.PositiveSmallIntegerField(verbose_name="Tahun")
+    months   = models.PositiveSmallIntegerField(default=0, verbose_name="Jumlah bulan")
+    bruto    = models.DecimalField(max_digits=16, decimal_places=2, default=Decimal("0"), verbose_name="Bruto")
+    pph      = models.DecimalField(max_digits=16, decimal_places=2, default=Decimal("0"), verbose_name="PPh 21 dipotong")
+    iuran    = models.DecimalField(max_digits=16, decimal_places=2, default=Decimal("0"),
+                                   verbose_name="Iuran JHT/JP karyawan")
+    note     = models.CharField(max_length=200, blank=True, default="")
+    source   = models.CharField(max_length=10, choices=Source.choices, default=Source.MANUAL)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "Saldo awal PPh 21"
+        unique_together = [("employee", "year")]
+        ordering = ["year", "employee__full_name"]
 
 
 class PayRun(TenantScopedModel):
