@@ -68,7 +68,7 @@ class Command(BaseCommand):
                 w(f"{e.full_name[:27]:<28}  {err}")
                 continue
             notes = []
-            if e.ptkp_status == "TK/0":
+            if e.ptkp_status == "TK/0" and not e.ptkp_checked:                  # G16-2: ticked = checked
                 notes.append("PTKP TK/0 (bawaan?) cek")
                 flags["default"] += 1
             if not (e.npwp or "").strip():
@@ -82,6 +82,7 @@ class Command(BaseCommand):
             w(f"{e.full_name[:27]:<28}{e.ptkp_status:>6}{cat:>4}{rp(m.bruto):>14}{float(rate) * 100:>6.2f}%{rp(tax):>11}  "
               + " · ".join(notes))
         w(f"\nTotal PPh 21: Rp {rp(total)}")
-        w(f"PTKP masih TK/0: {flags['default']} orang (cek status K/TK di buku gaji). Tanpa NPWP: {flags['npwp']} orang.")
+        w(f"PTKP TK/0 belum dicek: {flags['default']} orang (centang \"Status PTKP sudah dicek\" di Karyawan). "
+          f"Tanpa NPWP: {flags['npwp']} orang (NIK cukup).")
         w("Belum dipakai di slip. JKK/JKM dari upah yang dilaporkan ke BPJS (Karyawan), bila diisi. "
           "Masa pajak menunggu jawaban Pak Holan (B1).")
