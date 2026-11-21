@@ -57,6 +57,8 @@ class Employee(TenantScopedModel):
     # G14-1: for cuti haid (and later cuti melahirkan, PTKP of married women); empty = not filled in yet
     gender          = models.CharField(max_length=1, blank=True, default="", verbose_name="Jenis Kelamin",
                                        choices=[("", "Belum diisi"), ("L", "Laki-laki"), ("P", "Perempuan")])
+    # G16-2: HR has checked the PTKP status (as of 1 January); stops the "TK/0 bawaan?" reminder
+    ptkp_checked    = models.BooleanField(default=False, verbose_name="Status PTKP sudah dicek")
     join_date       = models.DateField(verbose_name="Tanggal Masuk")
     end_date        = models.DateField(null=True, blank=True, verbose_name="Tanggal Keluar")
     employment_type = models.CharField(max_length=20, choices=EmploymentType.choices, default=EmploymentType.PKWTT,
