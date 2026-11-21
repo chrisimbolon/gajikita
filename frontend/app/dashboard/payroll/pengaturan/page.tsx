@@ -100,7 +100,10 @@ export default function PayrollSettingsPage() {
       </Link>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12, flexWrap: "wrap", marginBottom: 14 }}>
         <h1 className="display" style={{ fontSize: 28, textTransform: "none" }}>Pengaturan payroll</h1>
-        <Link href="/dashboard/payroll/aturan-uu" style={{ fontSize: 13.5, fontWeight: 600 }}>Aturan perusahaan vs UU →</Link>
+        <span style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <Link href="/dashboard/payroll/saldo-pph21" style={{ fontSize: 13.5, fontWeight: 600 }}>Saldo awal PPh 21 →</Link>
+          <Link href="/dashboard/payroll/aturan-uu" style={{ fontSize: 13.5, fontWeight: 600 }}>Aturan perusahaan vs UU →</Link>
+        </span>
       </div>
 
       <Section title="Periode" hint="Misalnya periode 26 s/d 25 dan gajian tanggal 5 bulan berikutnya.">
@@ -306,6 +309,17 @@ export default function PayrollSettingsPage() {
           <input type="checkbox" checked={form.pph21_company_jht_in_bruto ?? true}
                  onChange={(e) => set("pph21_company_jht_in_bruto", e.target.checked)} />
           JHT 2% karyawan yang ditanggung perusahaan masuk bruto
+        </label>
+        <label>
+          <div className="label">Masa pajak ikut</div>
+          <select className="input" style={{ width: "100%" }} value={form.pph21_tax_month ?? "paid"}
+                  onChange={(e) => set("pph21_tax_month", e.target.value as "paid" | "period_end")}>
+            <option value="paid">Bulan dibayar (gaji dibayar 5 Des = masa Desember)</option>
+            <option value="period_end">Bulan periode berakhir (periode s/d 25 Nov = masa November)</option>
+          </select>
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+            Menentukan payroll mana yang menghitung PPh 21 setahun (masa Desember).
+          </div>
         </label>
       </Section>
 
