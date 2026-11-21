@@ -45,6 +45,7 @@ class Command(BaseCommand):
         w(f"{'Nama':<26}{'PTKP':>6}{'Bln':>4}{'Bruto':>14}{'Iuran':>11}{'PKP':>13}{'Pajak':>11}{'Dipotong':>11}"
           f"{'Sisa':>11}  Catatan")
         due = refund = Decimal("0")
+        incomplete = 0                                                              # G16-2.1
         for r in rows:
             e, a = r.employee, r.annual
             if a is None:
@@ -53,7 +54,9 @@ class Command(BaseCommand):
             notes = list(r.notes)
             if r.allowance:
                 notes.append(f"tunjangan PPh {rp(r.allowance)}")
-            if a.due > 0:
+            if r.incomplete:                                                        # G16-2.1: not in the totals
+                incomplete += 1
+            elif a.due > 0:
                 due += a.due
             else:
                 refund += -a.due
@@ -61,4 +64,6 @@ class Command(BaseCommand):
               f"{rp(a.tax_year):>11}{rp(a.paid):>11}{rp(a.due):>11}  " + " · ".join(notes))
         w(f"\nKurang potong (dipotong di payroll masa Desember): Rp {rp(due)}")
         w(f"Lebih potong (dikembalikan ke karyawan): Rp {rp(refund)}")
+        if incomplete:
+            w(f"Belum lengkap, tidak dijumlah: {incomplete} orang. Isi Payroll -> Pengaturan -> Saldo awal PPh 21 dulu.")
         w("Belum dipakai di slip. Sisa minus = kelebihan, dikembalikan paling lambat akhir bulan berikutnya.")
