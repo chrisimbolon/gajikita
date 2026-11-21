@@ -67,6 +67,7 @@ export interface Employee {
   pph21_by_company?: boolean;
   bpjs_wage?:        string | null;             // G16-1: reported to BPJS; null = gaji pokok + tunjangan tetap
   jp_enrolled?:      boolean;                   // G16-1
+  ptkp_checked?:     boolean;                   // G16-2
   attendance_bonus?: string;
   overtime_eligible: boolean;
   bpjs_tk_enrolled:  boolean;
