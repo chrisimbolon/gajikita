@@ -104,7 +104,18 @@ class OpeningApiTests(base.PayRunTests):
         self.assertIn("masa Nov 2026", text)
         self.assertIn("Payroll masa Desember: belum ada", text)
         self.assertIn("Andi", text)
-        self.assertIn("saldo awal kosong", text)                                 # Budi has none
+        self.assertIn("BELUM LENGKAP: isi saldo awal", text)                     # Budi: joined 2025, none yet
+        self.assertIn("Belum lengkap, tidak dijumlah: 1 orang", text)
+
+    def test_people_who_joined_in_a_seegaji_month_need_no_saldo_awal(self):
+        from apps.employees.models import Employee
+        Employee.objects.filter(pk=self.budi.pk).update(join_date=date(2026, 9, 26))
+        self.make_run()
+        out = StringIO()
+        call_command("pph21_annual_preview", year=2026, org="Beton", stdout=out)
+        text = out.getvalue()
+        self.assertIn("saldo awal tidak perlu", text)
+        self.assertIn("Belum lengkap, tidak dijumlah: 1 orang", text)            # Andi still is
 
     def test_ptkp_checked_on_the_employee(self):
         r = self.client.patch(f"/api/hr/employees/{self.andi.pk}/", {"ptkp_checked": True}, format="json")
