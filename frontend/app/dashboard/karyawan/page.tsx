@@ -33,7 +33,7 @@ function npwpText(value: string): string {
 }
 
 const blank = (): Form => ({
-  employee_no: "", full_name: "", position: "", fingerprint_id: "", probation_end_date: "", nik: "", npwp: "", ptkp_status: "TK/0", gender: "", join_date: todayISO(), end_date: "",
+  employee_no: "", full_name: "", position: "", fingerprint_id: "", probation_end_date: "", nik: "", npwp: "", ptkp_status: "TK/0", gender: "", ptkp_checked: false, join_date: todayISO(), end_date: "",
   employment_type: "pkwtt", pay_type: "monthly", base_rate: "0", fixed_allowance: "0", overtime_eligible: true, bpjs_tk_enrolled: true, meal_rule: "",
   jht_by_company: false, pph21_by_company: false, attendance_bonus: "0", bpjs_wage: null, jp_enrolled: false,                       // G13-3
   bank_name: "", bank_account_no: "",
@@ -43,7 +43,7 @@ const blank = (): Form => ({
 
 const fromEmployee = (e: Employee): Form => ({
   employee_no: e.employee_no, full_name: e.full_name, position: e.position, fingerprint_id: e.fingerprint_id,
-  probation_end_date: e.probation_end_date ?? "", nik: e.nik, npwp: e.npwp, ptkp_status: e.ptkp_status, gender: e.gender ?? "",
+  probation_end_date: e.probation_end_date ?? "", nik: e.nik, npwp: e.npwp, ptkp_status: e.ptkp_status, gender: e.gender ?? "", ptkp_checked: !!e.ptkp_checked,
   join_date: e.join_date, end_date: e.end_date ?? "", employment_type: e.employment_type, pay_type: e.pay_type,
   base_rate: e.base_rate, fixed_allowance: e.fixed_allowance, overtime_eligible: e.overtime_eligible,
   bpjs_tk_enrolled: e.bpjs_tk_enrolled, meal_rule: e.meal_rule ?? "",
@@ -309,6 +309,11 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
         {text("employee_no", "No. karyawan", { placeholder: "BWI-001" })}
         {select("ptkp_status", "Status PTKP", PTKP_OPTIONS.map((p): [string, string] => [p, p]))}
       </div>
+      {/* G16-2 */}
+      <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, margin: "-4px 0 12px" }}>
+        <input type="checkbox" checked={!!form.ptkp_checked} onChange={(e) => set("ptkp_checked", e.target.checked)} />
+        Status PTKP sudah dicek <span style={{ color: "var(--steel)", fontSize: 12.5 }}>(per 1 Januari)</span>
+      </label>
       {text("full_name", "Nama lengkap")}
       {select("gender", "Jenis kelamin", [["", "Belum diisi"], ["L", "Laki-laki"], ["P", "Perempuan"]])}
       {text("position", "Jabatan", { placeholder: "Driver TM" })}
