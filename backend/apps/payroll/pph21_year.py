@@ -184,6 +184,7 @@ class YearRow:
     annual: object = None
     allowance: Decimal = ZERO                # gross-up in the December payroll (tax paid by the company)
     notes: list = field(default_factory=list)
+    incomplete: bool = False                 # G16-2.1: worked before SeeGaji this year but no saldo awal yet
 
 
 def year_runs(organization, year, mode):
@@ -242,8 +243,13 @@ def year_rows(organization, year):
         e = r.employee
         if r.months > 12:
             r.notes.append(f"{r.months} bulan: saldo awal tumpang tindih dengan payroll SeeGaji?")
+        first = runs[0].period_start if runs else None                                 # G16-2.1
         if r.opening is None:
-            r.notes.append("saldo awal kosong")
+            if first and e.join_date and e.join_date < first:
+                r.incomplete = True
+                r.notes.insert(0, "BELUM LENGKAP: isi saldo awal")
+            else:
+                r.notes.append("saldo awal tidak perlu (masuk di bulan SeeGaji)")
         try:
             if e.pph21_by_company and r.in_december:
                 r.annual, r.allowance = annual_gross_up(r.bruto, min(r.months, 12) or 1, r.iuran, e.ptkp_status,
