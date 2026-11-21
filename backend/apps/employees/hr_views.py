@@ -38,7 +38,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
     class Meta:
         model = Employee
         fields = [
-            "id", "employee_no", "full_name", "position", "nik", "npwp", "ptkp_status", "gender", "join_date", "end_date",
+            "id", "employee_no", "full_name", "position", "nik", "npwp", "ptkp_status", "gender", "ptkp_checked", "join_date", "end_date",
             "employment_type", "pay_type", "base_rate", "fixed_allowance", "overtime_eligible", "bpjs_tk_enrolled", "meal_rule", "bank_name", "bank_account_no", "bank_account_name",
             "jht_by_company", "pph21_by_company", "attendance_bonus", "bpjs_wage", "jp_enrolled",                                   # G13-3
             "bpjs_kesehatan_no", "bpjs_tk_no", "phone", "fingerprint_id", "probation_end_date", "sites", "default_site", "default_shift", "mandor",
