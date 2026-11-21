@@ -314,11 +314,12 @@ export default function PayrollSettingsPage() {
           <div className="label">Masa pajak ikut</div>
           <select className="input" style={{ width: "100%" }} value={form.pph21_tax_month ?? "paid"}
                   onChange={(e) => set("pph21_tax_month", e.target.value as "paid" | "period_end")}>
-            <option value="paid">Bulan dibayar (gaji dibayar 5 Des = masa Desember)</option>
-            <option value="period_end">Bulan periode berakhir (periode s/d 25 Nov = masa November)</option>
+            <option value="paid">Bulan dibayar</option>
+            <option value="period_end">Bulan periode berakhir</option>
           </select>
           <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
-            Menentukan payroll mana yang menghitung PPh 21 setahun (masa Desember).
+            Contoh periode s/d 25 Nov dibayar 5 Des: bulan dibayar = masa Desember, bulan periode berakhir = masa
+            November. Masa Desember menghitung PPh 21 setahun.
           </div>
         </label>
       </Section>
