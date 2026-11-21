@@ -39,6 +39,7 @@ export interface PayrollSettings {
   jp_employee_by_company?:      boolean;  // G16-1
   pph21_late_reduces_bruto?:    boolean;  // G16-1
   pph21_company_jht_in_bruto?:  boolean;  // G16-1
+  pph21_tax_month?:             "paid" | "period_end";   // G16-2
   slip_address:                 string;
   slip_place:                   string;
   slip_signer:                  string;
@@ -170,7 +171,41 @@ export interface LawRow {
 }
 export interface LawCheck { law: string; effective: string; as_of: string; rows: LawRow[] }
 
+// G16-2: saldo awal PPh 21 (backend/apps/payroll/opening_views.py)
+export interface OpeningRow {
+  employee: { id: string; employee_no: string; full_name: string; status: string };
+  months: number; bruto: string; pph: string; iuran: string; note: string; saved: boolean;
+}
+export interface OpeningList {
+  year: number; tax_month: "paid" | "period_end"; tax_month_label: string;
+  runs: { name: string; masa: string }[]; december_run: string | null;
+  rows: OpeningRow[]; totals: { people: number; bruto: string; pph: string };
+}
+export interface OpeningImport {
+  year: number; saved: boolean; errors: number;
+  rows: { line: number; employee_no: string; full_name: string; months: number; bruto: string; pph: string;
+          iuran: string; errors: string[] }[];
+  totals: { people: number; bruto: string; pph: string };
+}
+
 export const payrollApi = {
+  async openings(year: number): Promise<OpeningList> {                    // G16-2
+    const { data } = await api.get("/api/hr/payroll/pph21-opening/", { params: { year } });
+    return data;
+  },
+  async saveOpening(body: { employee_id: string; year: number; months: number; bruto: string; pph: string;
+                            iuran: string }): Promise<OpeningList> {
+    const { data } = await api.patch("/api/hr/payroll/pph21-opening/", body);
+    return data;
+  },
+  async importOpenings(year: number, file: File, commit: boolean): Promise<OpeningImport> {
+    const form = new FormData();
+    form.append("year", String(year));
+    form.append("commit", commit ? "1" : "0");
+    form.append("file", file);
+    const { data } = await api.post("/api/hr/payroll/pph21-opening/import/", form);
+    return data;
+  },
   async lawCheck(): Promise<LawCheck> {                                    // G18-1
     const { data } = await api.get("/api/hr/payroll/law-check/");
     return data;
