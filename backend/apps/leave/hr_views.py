@@ -115,9 +115,12 @@ class HrLeaveAttachmentView(APIView):
         return resp
 
 
-SETTING_FIELDS = ("collective_leave_reduces_annual", "paternity_extra_days", "menstrual_leave")
+SETTING_FIELDS = ("collective_leave_reduces_annual", "paternity_extra_days", "menstrual_leave",
+                  "maternity_extension_pay", "long_rest", "long_leave_keeps_attendance_bonus")          # G14-2
 SETTING_WORDS = {"collective_leave_reduces_annual": "cuti bersama mengurangi cuti tahunan",
-                 "paternity_extra_days": "tambahan cuti istri melahirkan", "menstrual_leave": "cuti haid"}
+                 "paternity_extra_days": "tambahan cuti istri melahirkan", "menstrual_leave": "cuti haid",
+                 "maternity_extension_pay": "upah perpanjangan cuti melahirkan", "long_rest": "istirahat panjang",
+                 "long_leave_keeps_attendance_bonus": "tunjangan kehadiran saat cuti panjang"}
 
 
 def settings_json(cfg):
@@ -128,6 +131,9 @@ class LeaveSettingsInput(serializers.Serializer):
     collective_leave_reduces_annual = serializers.BooleanField(required=False)
     paternity_extra_days = serializers.IntegerField(required=False, min_value=0, max_value=rules.PATERNITY_EXTRA_MAX)
     menstrual_leave = serializers.BooleanField(required=False)
+    maternity_extension_pay = serializers.IntegerField(required=False, min_value=0, max_value=100)      # G14-2
+    long_rest = serializers.BooleanField(required=False)
+    long_leave_keeps_attendance_bonus = serializers.BooleanField(required=False)
 
 
 class HrLeaveSettingsView(APIView):
