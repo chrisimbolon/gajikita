@@ -98,7 +98,9 @@ class LeaveUu27Tests(base.LeaveApiTests):
     def test_settings_api_and_law_check_rows(self):
         self.as_("hr")
         self.assertEqual(self.client.get(SETTINGS).data["settings"],
-                         {"collective_leave_reduces_annual": False, "paternity_extra_days": 3, "menstrual_leave": True})
+                         {"collective_leave_reduces_annual": False, "paternity_extra_days": 3, "menstrual_leave": True,
+                          "maternity_extension_pay": 75, "long_rest": True,                       # G14-2
+                          "long_leave_keeps_attendance_bonus": False})
         self.assertEqual(self.client.patch(SETTINGS, {"paternity_extra_days": 4}, format="json").status_code, 400)
         rows = {r["key"]: r for r in self.client.get("/api/hr/payroll/law-check/").data["rows"]}
         self.assertEqual([rows[k]["status"] for k in ("collective_leave", "paternity", "menstrual")], ["ok", "ok", "ok"])
