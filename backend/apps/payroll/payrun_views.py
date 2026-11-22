@@ -104,11 +104,19 @@ class SettingsSerializer(serializers.ModelSerializer):
         return attrs
 
 
+def _readiness(org):
+    """G16-3: shown next to "Hitung PPh 21 di slip"."""
+    from django.utils import timezone
+    from .pph21_slip import readiness
+    return readiness(org, timezone.localdate())
+
+
 class SettingsView(APIView):
     permission_classes = [IsCompanyHR]
 
     def get(self, request):
-        return Response({"success": True, "settings": SettingsSerializer(PayrollSettings.for_org(request.hr_org)).data})
+        return Response({"success": True, "settings": SettingsSerializer(PayrollSettings.for_org(request.hr_org)).data,
+                         "pph21_readiness": _readiness(request.hr_org)})                      # G16-3
 
     def patch(self, request):
         cfg = PayrollSettings.for_org(request.hr_org)
@@ -121,7 +129,7 @@ class SettingsView(APIView):
             record_audit(organization=request.hr_org, actor=request.user, action="payroll.settings", target=cfg,
                          summary="Pengaturan payroll diubah: " + ", ".join(changed),
                          before={k: before[k] for k in changed}, after=changed)
-        return Response({"success": True, "settings": ser.data})
+        return Response({"success": True, "settings": ser.data, "pph21_readiness": _readiness(request.hr_org)})
 
 
 # ── runs ──
