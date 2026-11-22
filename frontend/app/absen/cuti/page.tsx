@@ -23,6 +23,9 @@ const KIND_HINT: Record<LeaveKind, string> = {
   sick:    "Dibayar. Lampirkan foto surat dokter jika ada.",
   special: "Dibayar. Menikah, keluarga meninggal, istri melahirkan…",
   unpaid:  "Tidak dibayar. Gaji hari itu dipotong.",
+  maternity: "Dicatat HR.",                // G14-2: HR records these, never asked from the phone
+  miscarry:  "Dicatat HR.",
+  long_rest: "Dicatat HR.",
 };
 
 function StatusPill({ l }: { l: Leave }) {
