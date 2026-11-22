@@ -90,6 +90,10 @@ class LeaveApiTests(APITestCase):
         self.as_(self.budi)
         self.assertEqual(self.client.get(MINE).data["annual"], {"year": 2026, "entitled": 12, "used": 6, "left": 6,
                                                                 "collective": 0,          # G14-1
+                                                                "long_rest_year": False,  # G14-2
+                                                                "long_rest": {"on": True, "from_date": None,
+                                                                              "next_date": "2030-01-06", "days": 0,
+                                                                              "taken": 0, "left": 0},
                                                                 "from_date": "2026-01-06"})
 
     def test_only_the_workers_own_mandor_can_decide(self):
