@@ -5,7 +5,7 @@
 // rates, and GajiKita then shows a warning on every slip where that pays less.
 // =============================================================================
 import { readErrors } from "@/lib/api/hr";
-import { DKCB_NIGHT_RULES, NightRule, PayrollSettings, payrollApi } from "@/lib/api/payroll";
+import { DKCB_NIGHT_RULES, NightRule, PayrollSettings, Pph21Readiness, payrollApi } from "@/lib/api/payroll";
 import { ArrowLeft, CheckCircle2, Info, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -42,6 +42,8 @@ export default function PayrollSettingsPage() {
   useEffect(() => {
     payrollApi.settings().then(setForm).catch((err) => setMessage({ ok: false, text: readErrors(err).summary }));
   }, []);
+  const [ready, setReady] = useState<Pph21Readiness | null>(null);                    // G16-3
+  useEffect(() => { payrollApi.pph21Readiness().then(setReady).catch(() => setReady(null)); }, []);
 
   if (!form) {
     return <div style={{ padding: 24, color: "var(--steel)" }}>{message?.text ?? <Loader2 size={16} style={{ animation: "spin 1s linear infinite" }} />}</div>;
@@ -299,7 +301,26 @@ export default function PayrollSettingsPage() {
       </Section>
 
       {/* G16-1: PPh 21 rules (Pak Holan, 20 Nov 2026); used when PPh 21 is switched on */}
-      <Section title="PPh 21" hint="Belum dipakai di slip. Dipakai saat PPh 21 dinyalakan.">
+      <Section title="PPh 21" hint={form.pph21_enabled ? "PPh 21 dihitung di slip payroll draft (setelah Hitung ulang)."
+                                                         : "Belum dipakai di slip. Dipakai saat PPh 21 dinyalakan."}>
+        {/* G16-3: the switch, with what is still missing next to it */}
+        <div>
+          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700 }}>
+            <input type="checkbox" checked={!!form.pph21_enabled} onChange={(e) => set("pph21_enabled", e.target.checked)} />
+            Hitung PPh 21 di slip
+          </label>
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+            Berlaku untuk payroll draft setelah Hitung ulang. Payroll terkunci tidak berubah.
+          </div>
+          {ready && (ready.missing_opening > 0 || ready.ptkp_unchecked > 0) && (
+            <div style={{ fontSize: 12.5, color: "#2563A8", marginTop: 6 }}>
+              <Info size={12} style={{ verticalAlign: "-1px" }} /> Sebelum dinyalakan:
+              {ready.missing_opening > 0 && <> saldo awal PPh 21 {ready.year} belum diisi untuk {ready.missing_opening} karyawan
+                (<Link href="/dashboard/payroll/saldo-pph21">isi</Link>);</>}
+              {ready.ptkp_unchecked > 0 && <> status PTKP belum dicek untuk {ready.ptkp_unchecked} karyawan.</>}
+            </div>
+          )}
+        </div>
         <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
           <input type="checkbox" checked={form.pph21_late_reduces_bruto ?? true}
                  onChange={(e) => set("pph21_late_reduces_bruto", e.target.checked)} />

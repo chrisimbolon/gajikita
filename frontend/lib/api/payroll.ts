@@ -40,6 +40,7 @@ export interface PayrollSettings {
   pph21_late_reduces_bruto?:    boolean;  // G16-1
   pph21_company_jht_in_bruto?:  boolean;  // G16-1
   pph21_tax_month?:             "paid" | "period_end";   // G16-2
+  pph21_enabled?:               boolean;  // G16-3: PPh 21 on the slip
   slip_address:                 string;
   slip_place:                   string;
   slip_signer:                  string;
@@ -188,7 +189,14 @@ export interface OpeningImport {
   totals: { people: number; bruto: string; pph: string };
 }
 
+// G16-3: shown next to the "Hitung PPh 21 di slip" switch
+export interface Pph21Readiness { year: number; missing_opening: number; ptkp_unchecked: number; december_run: string | null }
+
 export const payrollApi = {
+  async pph21Readiness(): Promise<Pph21Readiness> {                       // G16-3
+    const { data } = await api.get("/api/hr/payroll/settings/");
+    return data.pph21_readiness;
+  },
   async openings(year: number): Promise<OpeningList> {                    // G16-2
     const { data } = await api.get("/api/hr/payroll/pph21-opening/", { params: { year } });
     return data;
