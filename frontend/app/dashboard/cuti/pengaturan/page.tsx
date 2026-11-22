@@ -105,6 +105,54 @@ export default function LeaveSettingsPage() {
             <Law ok={form.menstrual_leave} text="UU No. 27/2026 Pasal 120 dan 149 ayat 2 huruf b" />
           </div>
 
+          {/* G14-2 */}
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "var(--midnight)" }}>Cuti melahirkan dan istirahat keguguran</div>
+            <div style={{ fontSize: 13, color: "var(--steel)", margin: "2px 0 10px" }}>
+              Cuti melahirkan 3 bulan dibayar penuh, bisa diperpanjang sampai 3 bulan dengan surat dokter. Istirahat
+              keguguran 1,5 bulan (atau sesuai surat dokter / bidan), dibayar penuh. Dicatat HR di Cuti &amp; Izin.
+            </div>
+            <label className="label" htmlFor="maternity">Upah bulan ke-5 dan ke-6 (perpanjangan)</label>
+            <select id="maternity" className="input" style={{ width: "100%" }} value={form.maternity_extension_pay}
+                    onChange={(e) => setForm({ ...form, maternity_extension_pay: Number(e.target.value) })}>
+              {Array.from(new Set([75, 80, 90, 100, form.maternity_extension_pay])).sort((a, b) => a - b).map((n) => (
+                <option key={n} value={n}>{n}% dari gaji pokok + tunjangan tetap{n === 75 ? " (UU)" : ""}</option>
+              ))}
+            </select>
+            <Law ok={form.maternity_extension_pay >= 75}
+                 text="UU No. 27/2026 Pasal 123 ayat 3 (bulan ke-4 penuh, bulan ke-5 dan ke-6 paling sedikit 75%)" />
+          </div>
+
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "var(--midnight)" }}>Istirahat panjang</div>
+            <div style={{ fontSize: 13, color: "var(--steel)", margin: "2px 0 10px" }}>
+              30 hari kalender, dibayar, setiap kali karyawan genap 5 tahun bekerja berturut-turut. Berlaku sampai
+              5 tahun berikutnya. Di tahun istirahat panjang diambil, tidak ada cuti tahunan.
+            </div>
+            <label className="label" htmlFor="longrest">Istirahat panjang diberikan</label>
+            <select id="longrest" className="input" style={{ width: "100%" }} value={form.long_rest ? "yes" : "no"}
+                    onChange={(e) => setForm({ ...form, long_rest: e.target.value === "yes" })}>
+              <option value="yes">Ya</option>
+              <option value="no">Tidak</option>
+            </select>
+            <Law ok={form.long_rest} text="UU No. 27/2026 Pasal 118 ayat 2 huruf c dan ayat 4" />
+          </div>
+
+          <div className="card" style={{ marginBottom: 14 }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "var(--midnight)" }}>Tunjangan kehadiran saat cuti panjang</div>
+            <div style={{ fontSize: 13, color: "var(--steel)", margin: "2px 0 10px" }}>
+              Untuk periode yang ada cuti melahirkan, istirahat keguguran, atau istirahat panjang. Aturan perusahaan
+              (tunjangan kehadiran bukan bagian upah tetap).
+            </div>
+            <label className="label" htmlFor="bonus">Tunjangan kehadiran</label>
+            <select id="bonus" className="input" style={{ width: "100%" }}
+                    value={form.long_leave_keeps_attendance_bonus ? "yes" : "no"}
+                    onChange={(e) => setForm({ ...form, long_leave_keeps_attendance_bonus: e.target.value === "yes" })}>
+              <option value="no">Tidak dibayar di periode itu</option>
+              <option value="yes">Tetap dibayar</option>
+            </select>
+          </div>
+
           <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <button className="btn-rust" onClick={save} disabled={busy} style={{ display: "flex", alignItems: "center", gap: 6 }}>
               {busy ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Save size={15} />} Simpan

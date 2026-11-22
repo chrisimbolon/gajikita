@@ -30,6 +30,9 @@ const CODE_STYLE: Record<string, { bg: string; fg: string }> = {
   C:  { bg: "var(--midnight-soft)", fg: "var(--midnight)" },
   S:  { bg: "var(--midnight-soft)", fg: "var(--midnight)" },
   CK: { bg: "var(--midnight-soft)", fg: "var(--midnight)" },
+  CM: { bg: "var(--midnight-soft)", fg: "var(--midnight)" },      // G14-2: cuti melahirkan
+  IK: { bg: "var(--midnight-soft)", fg: "var(--midnight)" },      // G14-2: istirahat keguguran
+  IP: { bg: "var(--midnight-soft)", fg: "var(--midnight)" },      // G14-2: istirahat panjang
   I:  { bg: "var(--midnight-soft)", fg: "var(--midnight)" },
   L:  { bg: "var(--paper-2)", fg: "var(--steel)" },
   DL: { bg: "#E7F1FB", fg: "var(--midnight)" },                    // G12i: tidak wajib absen
