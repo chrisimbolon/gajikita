@@ -93,6 +93,8 @@ class PayrollSettings(TenantScopedModel):
                                                    verbose_name="Potongan keterlambatan mengurangi bruto PPh 21")
     pph21_company_jht_in_bruto = models.BooleanField(
         default=True, verbose_name="JHT 2% karyawan yang ditanggung perusahaan masuk bruto PPh 21")
+    # G16-3: PPh 21 on the slip (off until the company is ready; locked payrolls never change)
+    pph21_enabled = models.BooleanField(default=False, verbose_name="Hitung PPh 21 di slip")
     # G16-2: which month a payroll belongs to for PPh 21 (and so which payroll settles the year in December)
     pph21_tax_month = models.CharField(max_length=12, default="paid", verbose_name="Masa pajak ikut",
                                        choices=[("paid", "Bulan dibayar"), ("period_end", "Bulan periode berakhir")])
