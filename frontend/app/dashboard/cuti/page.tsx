@@ -94,8 +94,9 @@ function PaperFormDialog({ data, onClose, onDone }: { data: HrLeaveList; onClose
         kind, special_reason: special, start_date: start, end_date: end < start ? start : end, reason,
         attachment: file ? { blob: file, name: file.name } : null,
       });
+      const notes = l.notes ?? [];                                                         // G14-2.2
       onDone(`${l.employee.full_name}: ${l.label} ${periodText(l.start_date, l.end_date)} (${l.days} hari ${
-        l.calendar_days ? "kalender" : "kerja"}) dicatat dan disetujui.`);
+        l.calendar_days ? "kalender" : "kerja"}) dicatat dan disetujui.${notes.length ? ` Catatan: ${notes.join(" ")}` : ""}`);
     } catch (err) {
       setErrors(readErrors(err));
       setBusy(false);
