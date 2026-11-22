@@ -8,10 +8,11 @@
 // =============================================================================
 import { Employee, hrApi, readErrors } from "@/lib/api/hr";
 import {
-  AnnualBalance, HrLeaveList, Leave, LeaveKind, LeaveStatus, LEAVE_STATUS_STYLE, hrLeaveApi, periodText,
+  AnnualBalance, CALENDAR_KINDS, HrLeaveList, Leave, LeaveKind, LeaveStatus, LEAVE_STATUS_STYLE, defaultEnd,
+  hrLeaveApi, periodText,
 } from "@/lib/api/leave";
 import { dateTimeWIB, todayISO } from "@/lib/format";
-import { AlertTriangle, FilePlus2, Loader2, Paperclip, Search, X } from "lucide-react";
+import { AlertTriangle, FilePlus2, Info, Loader2, Paperclip, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 
@@ -93,7 +94,8 @@ function PaperFormDialog({ data, onClose, onDone }: { data: HrLeaveList; onClose
         kind, special_reason: special, start_date: start, end_date: end < start ? start : end, reason,
         attachment: file ? { blob: file, name: file.name } : null,
       });
-      onDone(`${l.employee.full_name}: ${l.label} ${periodText(l.start_date, l.end_date)} (${l.days} hari kerja) dicatat dan disetujui.`);
+      onDone(`${l.employee.full_name}: ${l.label} ${periodText(l.start_date, l.end_date)} (${l.days} hari ${
+        l.calendar_days ? "kalender" : "kerja"}) dicatat dan disetujui.`);
     } catch (err) {
       setErrors(readErrors(err));
       setBusy(false);
@@ -125,13 +127,40 @@ function PaperFormDialog({ data, onClose, onDone }: { data: HrLeaveList; onClose
 
         <label style={{ display: "block", marginBottom: 12 }}>
           <div className="label">Jenis</div>
-          <select className="input" value={kind} onChange={(e) => setKind(e.target.value as LeaveKind)} style={{ width: "100%" }}>
+          <select className="input" value={kind} style={{ width: "100%" }}
+                  onChange={(e) => {
+                    const k = e.target.value as LeaveKind;
+                    setKind(k);
+                    if (CALENDAR_KINDS.includes(k)) setEnd(defaultEnd(k, start));      // G14-2
+                  }}>
             {data.kinds.map((k) => <option key={k.value} value={k.value}>{k.label}{k.paid ? "" : " (tidak dibayar)"}</option>)}
           </select>
           {kind === "annual" && balance && (
             <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 4 }}>
-              {balance.entitled > 0 ? `Sisa cuti tahunan ${balance.year}: ${balance.left} dari ${balance.entitled} hari`
-                                    : `Belum berhak cuti tahunan (mulai ${periodText(balance.from_date, balance.from_date)})`}
+              {balance.long_rest_year ? `Tahun ${balance.year} ada istirahat panjang: tidak ada cuti tahunan (Pasal 118 ayat 4)`
+                : balance.entitled > 0 ? `Sisa cuti tahunan ${balance.year}: ${balance.left} dari ${balance.entitled} hari`
+                                       : `Belum berhak cuti tahunan (mulai ${periodText(balance.from_date, balance.from_date)})`}
+            </div>
+          )}
+          {/* G14-2: what the law gives, in one line */}
+          {kind === "maternity" && (
+            <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 4 }}>
+              3 bulan dibayar penuh. Bisa diperpanjang sampai 6 bulan dengan surat dokter: bulan ke-4 penuh, bulan ke-5
+              dan ke-6 dibayar {data.maternity_extension_pay ?? 75}%. Dihitung hari kalender.
+            </div>
+          )}
+          {kind === "miscarry" && (
+            <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 4 }}>
+              1,5 bulan dibayar penuh, atau sesuai surat dokter / bidan. Dihitung hari kalender.
+            </div>
+          )}
+          {kind === "long_rest" && balance?.long_rest && (
+            <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 4 }}>
+              {balance.long_rest.from_date
+                ? `Sisa istirahat panjang ${balance.long_rest.left} dari ${balance.long_rest.days} hari kalender (berhak sejak ${
+                    periodText(balance.long_rest.from_date, balance.long_rest.from_date)}). Tahun ini tidak ada cuti tahunan.`
+                : `Belum berhak istirahat panjang (mulai ${balance.long_rest.next_date
+                    ? periodText(balance.long_rest.next_date, balance.long_rest.next_date) : "-"}, setelah 5 tahun bekerja).`}
             </div>
           )}
         </label>
@@ -151,7 +180,12 @@ function PaperFormDialog({ data, onClose, onDone }: { data: HrLeaveList; onClose
           <label>
             <div className="label">Mulai</div>
             <input className="input" type="date" value={start} style={{ width: "100%" }}
-                   onChange={(e) => { setStart(e.target.value); if (e.target.value > end) setEnd(e.target.value); }} />
+                   onChange={(e) => {
+                     const v = e.target.value;
+                     setStart(v);
+                     if (CALENDAR_KINDS.includes(kind)) setEnd(defaultEnd(kind, v));               // G14-2
+                     else if (v > end) setEnd(v);
+                   }} />
             {field("start_date")}
           </label>
           <label>
@@ -312,7 +346,7 @@ export default function CutiPage() {
                   <td><div>{l.label}</div>
                     {!l.paid && <div style={{ fontSize: 12, color: "var(--hazard-dark)" }}>tidak dibayar</div>}</td>
                   <td style={{ whiteSpace: "nowrap" }}>{periodText(l.start_date, l.end_date)}</td>
-                  <td>{l.days}</td>
+                  <td>{l.days}{l.calendar_days && <div style={{ fontSize: 12, color: "var(--steel)" }}>hari kalender</div>}</td>
                   <td style={{ fontSize: 13, maxWidth: 260 }}>
                     {l.reason || <span style={{ color: "var(--steel)" }}>-</span>}
                     {l.has_attachment && (
@@ -321,6 +355,11 @@ export default function CutiPage() {
                         <Paperclip size={13} /> Lihat lampiran
                       </button>
                     )}
+                    {(l.notes ?? []).map((n) => (                                                  // G14-2
+                      <div key={n} style={{ color: "#2563A8", fontSize: 12.5, marginTop: 4 }}>
+                        <Info size={12} style={{ verticalAlign: "-1px" }} /> {n}
+                      </div>
+                    ))}
                     {l.sick_note_missing && (
                       <div style={{ color: "var(--hazard-dark)", fontSize: 12.5, marginTop: 4 }}>
                         <AlertTriangle size={12} style={{ verticalAlign: "-1px" }} /> Sakit &gt; 2 hari tanpa surat dokter
