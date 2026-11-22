@@ -232,7 +232,7 @@ def year_rows(organization, year):
                 continue
             r.bruto += m.bruto                         # includes that month's tax allowance when grossed up
             taken = withheld_from_slip(line.result)
-            if taken is None or e.pph21_by_company:
+            if taken is None:                          # G16-3: a PPh line on the slip is what was withheld
                 r.withheld += m.tax
                 if "PPh bulan SeeGaji = perkiraan TER" not in r.notes:
                     r.notes.append("PPh bulan SeeGaji = perkiraan TER")
