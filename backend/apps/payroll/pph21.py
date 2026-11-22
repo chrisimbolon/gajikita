@@ -133,7 +133,7 @@ class Bruto:
 
 
 def bruto_from_slip(result, *, late_reduces=False, company_jht_in_bruto=False, company_jp_in_bruto=True,
-                    ignore_codes=()):
+                    ignore_codes=("pph21_allowance", "pph21_refund")):     # G16-3: the PPh lines are not bruto
     """
     A calculated slip (PayRunLine.result) -> the month's bruto for PPh 21.
     Earnings, minus unpaid leave (proved by Togar), minus late fines only when late_reduces (open question),
