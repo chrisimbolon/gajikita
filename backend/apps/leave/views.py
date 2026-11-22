@@ -22,7 +22,9 @@ from apps.attendance.views import NOT_AN_EMPLOYEE, _my_employee
 
 from . import rules
 from .models import LeaveRequest, LeaveSettings
-from .services import LeaveError, annual_balance, can_approve_on_phone, create_leave, decide_leave
+from django.db.models import Sum
+
+from .services import ACTIVE, LeaveError, annual_balance, can_approve_on_phone, create_leave, decide_leave
 
 
 def leave_payload(l):
@@ -36,6 +38,8 @@ def leave_payload(l):
         "reason": l.reason,
         "has_attachment": bool(l.attachment),
         "sick_note_missing": rules.sick_note_missing(l.kind, l.days, bool(l.attachment)),
+        "calendar_days": l.kind in rules.CALENDAR_KINDS,                                   # G14-2
+        "notes": leave_notes(l),
         "status": l.status, "status_label": l.get_status_display(),
         "source": l.source, "source_label": l.get_source_display(),
         "approver": mandor.full_name if mandor else None,
@@ -46,17 +50,38 @@ def leave_payload(l):
     }
 
 
+def leave_notes(l):
+    """G14-2: soft notes for HR on cuti melahirkan, istirahat keguguran and istirahat panjang. Never a refusal."""
+    if l.kind not in rules.CALENDAR_KINDS:
+        return []
+    used = 0
+    if l.kind == rules.LONG_REST:
+        used = (LeaveRequest.objects.filter(employee_id=l.employee_id, kind=rules.ANNUAL, status__in=ACTIVE,
+                                            start_date__year=l.start_date.year)
+                .aggregate(n=Sum("days"))["n"] or 0)
+    return rules.leave_notes(l.kind, l.start_date, l.end_date, bool(l.attachment), annual_used_that_year=used)
+
+
 def choices_payload(organization=None, employee=None):
-    """G14-1: the cuti khusus reasons and limits follow the company's Pengaturan cuti; cuti haid only for women."""
-    reasons = rules.SPECIAL_REASONS
+    """G14-1: the cuti khusus reasons and limits follow the company's Pengaturan cuti; cuti haid only for women.
+    G14-2: the phone never offers the kinds HR records (cuti melahirkan, istirahat keguguran / panjang);
+    istirahat panjang only when it is switched on."""
+    reasons, hidden, extra = rules.SPECIAL_REASONS, set(), {}
     if organization is not None:
         cfg = LeaveSettings.for_org(organization)
         reasons = rules.special_reasons(cfg.paternity_extra_days, cfg.menstrual_leave)
-    if employee is not None and employee.gender != "P":
-        reasons = {k: v for k, v in reasons.items() if k != rules.MENSTRUAL}
+        if not cfg.long_rest:
+            hidden.add(rules.LONG_REST)
+        extra["maternity_extension_pay"] = cfg.maternity_extension_pay
+    if employee is not None:
+        hidden |= set(rules.HR_ONLY)
+        if employee.gender != "P":
+            reasons = {k: v for k, v in reasons.items() if k != rules.MENSTRUAL}
     return {
-        "kinds": [{"value": k, "label": v, "paid": rules.PAID[k]} for k, v in rules.KIND_LABELS.items()],
+        "kinds": [{"value": k, "label": v, "paid": rules.PAID[k]} for k, v in rules.KIND_LABELS.items()
+                  if k not in hidden],
         "special_reasons": [{"value": k, "label": label, "days": days} for k, (label, days) in reasons.items()],
+        **extra,
     }
 
 
