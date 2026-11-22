@@ -85,13 +85,24 @@ def _days_by_employee(org, start, end, employee_ids):
 
 
 def _leaves_by_employee(org, start, end, employee_ids):
-    """{employee_id: {date: (kind, label)}} for approved leave in the period."""
+    """
+    {employee_id: {date: (kind, label, pay_pct, loses_bonus)}} for approved leave in the period.
+    G14-2: pay_pct < 100 on cuti melahirkan days from month 5 (UU 27/2026 Pasal 123 ayat 3, Pengaturan cuti);
+    loses_bonus on cuti melahirkan / istirahat keguguran / istirahat panjang days unless the company keeps the
+    attendance bonus.
+    """
+    from apps.leave import rules as leave_rules
+    from apps.leave.models import LeaveSettings
+    cfg = LeaveSettings.for_org(org)
     out = defaultdict(dict)
     qs = LeaveRequest.objects.filter(organization=org, employee_id__in=employee_ids, status=LeaveRequest.Status.APPROVED,
                                      start_date__lte=end, end_date__gte=start)
     for l in qs:
+        cut_from = leave_rules.maternity_reduced_from(l.start_date) if l.kind == leave_rules.MATERNITY else None
+        loses = l.kind in leave_rules.CALENDAR_KINDS and not cfg.long_leave_keeps_attendance_bonus
         for d in _dates(max(l.start_date, start), min(l.end_date, end)):
-            out[l.employee_id][d] = (l.kind, l.label)
+            pct = cfg.maternity_extension_pay if (cut_from and d >= cut_from) else 100
+            out[l.employee_id][d] = (l.kind, l.label, pct, loses)
     return out
 
 
@@ -108,6 +119,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             "disrupted_days": 0, "disrupted_reason": "", "holiday_days": 0, "holiday_reason": "",   # G17-2
             "permit_half_days": 0, "overtime_open_days": 0,                          # G17-4, G17-7
             "sick_days": 0,                                                           # G13-3
+            "reduced_pay_days": 0, "reduced_pay_pct": 100, "long_leave_days": 0,      # G14-2
             "long_halves": 0, "long_days": 0, "long_limit": cfg.long_late_half_day_minutes}   # G13-4
     leave_count = Counter()
     meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
@@ -122,6 +134,9 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
         working = shift is None or shift.is_working_day(d)
         day, leave = days.get(d), leaves.get(d)
         label = leave[1] if leave else ""
+        if leave and len(leave) > 2 and leave[2] < 100:            # G14-2: cuti melahirkan months 5-6 (calendar days)
+            nums["reduced_pay_days"] += 1
+            nums["reduced_pay_pct"] = leave[2]
         r = evaluate(day, now, leave=label, ctx=ctx) if day else evaluate_missing(emp, d, now, leave=label, ctx=ctx)
         if r.holiday:                                       # G17-2: not a working day; worked = rest-day pay
             working = False
@@ -136,6 +151,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             leave_count[label] += 1
             if leave and leave[0] == SICK:                                          # G13-3
                 nums["sick_days"] += 1
+            if len(leave) > 3 and leave[3]:                                          # G14-2: attendance bonus
+                nums["long_leave_days"] += 1
             if leave[0] == UNPAID:
                 nums["unpaid_leave_days"] += 1
             else:
@@ -238,6 +255,10 @@ def calculate_line(line, cfg):
         meal_days=pick("meal_days"), breakfast_days=pick("breakfast_days"),               # G12e
         late_minutes=pick("late_minutes"), unpaid_days=unpaid,
         sick_days=_dec(nums.get("sick_days", 0)) or Decimal("0"), attendance_unpaid_days=unpaid_for_bonus,   # G13-3
+        reduced_pay_days=(pick("reduced_pay_days") if emp.pay_type == Employee.PayType.MONTHLY      # G14-2
+                          else Decimal("0")),
+        reduced_pay_pct=_dec(nums.get("reduced_pay_pct", 100)) or Decimal("0"),
+        long_leave_days=_dec(nums.get("long_leave_days", 0)) or Decimal("0"),
         additions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.EARNING and i.amount),
         deductions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.DEDUCTION and i.amount),   # 0 = skipped
     )
@@ -267,6 +288,14 @@ def calculate_line(line, cfg):
     if nums.get("exempt_days"):                                                      # G12i: never silent
         slip.warnings.insert(0, f"Tidak wajib absen ({nums.get('exempt_reason') or '-'}): {nums['exempt_days']} hari "
                                 f"kerja dihitung hadir tanpa tap. Pastikan masih berlaku.")
+    if nums.get("reduced_pay_days") and emp.pay_type != Employee.PayType.MONTHLY:     # G14-2
+        slip.notes.append(f"Cuti melahirkan bulan ke-5–6 ({nums['reduced_pay_days']} hari): upah "
+                          f"{nums.get('reduced_pay_pct', 100)}% tidak dihitung otomatis untuk pekerja harian / borongan.")
+    if nums.get("sick_days"):                                     # G14-2: UU 27/2026 Pasal 149 ayat 3, a note only
+        from apps.leave.services import long_sick_note
+        note = long_sick_note(emp, line.run.period_start, line.run.period_end)
+        if note:
+            slip.notes.append(note)
     worked_days, absent = nums.get("working_days", 0), nums.get("absent_days", 0)
     if worked_days and absent * 2 >= worked_days:
         slip.warnings.insert(0, f"Tidak hadir {absent} dari {worked_days} hari kerja di periode ini.")
