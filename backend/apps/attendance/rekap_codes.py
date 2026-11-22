@@ -16,12 +16,14 @@ CODES = {
     Status.DAY_OFF_WORK: "LK", Status.REJECTED: "X", Status.EXEMPT: "DL",           # G12i: dinas luar
     Status.NO_CLOCK_IN: "TM",                                                         # G17-1
 }
-LEAVE_CODES = {"annual": "C", "sick": "S", "special": "CK", "unpaid": "I"}
+LEAVE_CODES = {"annual": "C", "sick": "S", "special": "CK", "unpaid": "I",
+               "maternity": "CM", "miscarry": "IK", "long_rest": "IP"}                     # G14-2
 OUTSIDE = "-"
 
 LEGEND = [
     ("H", "Hadir"), ("T", "Terlambat"), ("PC", "Pulang cepat"), ("TP", "Tidak absen pulang"), ("TM", "Tidak absen masuk"), ("K", "Sedang bekerja"),
     ("A", "Tidak hadir"), ("C", "Cuti tahunan"), ("S", "Sakit"), ("CK", "Cuti khusus"), ("I", "Izin tanpa upah"),
+    ("CM", "Cuti melahirkan"), ("IK", "Istirahat keguguran"), ("IP", "Istirahat panjang"),           # G14-2
     ("L", "Libur"), ("LK", "Masuk di hari libur"), ("X", "Ditolak HR"), ("DL", "Tidak wajib absen (dihitung hadir)"),
     ("-", "Belum / sudah tidak bekerja"),
 ]
