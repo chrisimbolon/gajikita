@@ -90,6 +90,30 @@ def menstrual_row(on, changed=""):
                link=LEAVE_LINK, changed=changed)
 
 
+def maternity_row(pct, changed=""):
+    """G14-2: the pay for months 5 and 6 of cuti melahirkan (paying more than the law is fine)."""
+    law = "3 bulan dibayar penuh; perpanjangan sampai 3 bulan dengan surat dokter: bulan ke-4 penuh, ke-5 dan ke-6 75%"
+    article = "Pasal 121 dan 123"
+    company = f"Bulan ke-5 dan ke-6 dibayar {pct}%; istirahat keguguran 1,5 bulan dibayar penuh"
+    return Row("maternity", OK if pct >= 75 else DIFFERS, "Cuti melahirkan", company, law, article,
+               link=LEAVE_LINK, changed=changed)
+
+
+def long_rest_row(on, due, changed=""):
+    """G14-2: istirahat panjang; due = names who have earned it and not taken it yet."""
+    law = ("30 hari kalender setelah 5 tahun bekerja berturut-turut (dan kelipatannya), dibayar; "
+           "tahun itu tanpa cuti tahunan")
+    article = "Pasal 118 ayat 2 huruf c dan ayat 4"
+    if not on:
+        return Row("long_rest", DIFFERS, "Istirahat panjang", "Tidak diberikan di SeeGaji", law, article,
+                   link=LEAVE_LINK, changed=changed)
+    company = "30 hari kalender setiap 5 tahun"
+    if due:
+        company += f"; {len(due)} karyawan berhak dan belum mengambil"
+    return Row("long_rest", OK, "Istirahat panjang", company, law, article, link=LEAVE_LINK, people=_names(due),
+               changed=changed)
+
+
 def annual_leave_row(days=12):
     return Row("annual_leave", OK, "Cuti tahunan", f"{days} hari kerja setelah 12 bulan bekerja",
                "Paling sedikit 12 hari kerja setelah 12 bulan bekerja terus-menerus", "Pasal 118 ayat 5",
@@ -197,6 +221,16 @@ def build(org, today):
                            for e in active.filter(pay_type=Employee.PayType.MONTHLY, bpjs_tk_enrolled=True,
                                                   bpjs_wage__isnull=False)])
     in_jp = active.filter(bpjs_tk_enrolled=True, jp_enrolled=True).count()
+    from apps.leave import rules as leave_rules                                               # G14-2
+    from apps.leave.models import LeaveRequest
+    rests = list(LeaveRequest.objects.filter(organization=org, kind=leave_rules.LONG_REST,
+                                             status__in=(LeaveRequest.Status.PENDING, LeaveRequest.Status.APPROVED))
+                 .values_list("employee_id", "start_date"))
+    due = []
+    for e in active.exclude(join_date__isnull=True):
+        since = leave_rules.long_rest_since(e.join_date, today)
+        if since and not any(who == e.id and start >= since for who, start in rests):
+            due.append(e.full_name)
     return [
         overtime_row(cfg.overtime_mode, cfg.flat_overtime_hour, _last_change(org, "overtime_mode")),
         annual_leave_row(),
@@ -204,6 +238,9 @@ def build(org, today):
                        _last_change(org, "collective_leave_reduces_annual", "leave.settings")),
         paternity_row(leave.paternity_extra_days, _last_change(org, "paternity_extra_days", "leave.settings")),
         menstrual_row(leave.menstrual_leave, _last_change(org, "menstrual_leave", "leave.settings")),
+        maternity_row(leave.maternity_extension_pay,                                          # G14-2
+                      _last_change(org, "maternity_extension_pay", "leave.settings")),
+        long_rest_row(leave.long_rest, due, _last_change(org, "long_rest", "leave.settings")),
         umk_row(cfg.minimum_wage, below_umk, _last_change(org, "minimum_wage")),
         base_share_row(below_share),
         bpjs_wage_row(reported),                                                              # G16-1
