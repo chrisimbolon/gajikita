@@ -5,7 +5,8 @@
 // =============================================================================
 import api from "@/lib/api";
 
-export type LeaveKind = "annual" | "sick" | "special" | "unpaid";
+export type LeaveKind = "annual" | "sick" | "special" | "unpaid"
+                      | "maternity" | "miscarry" | "long_rest";          // G14-2: recorded by HR only
 export type LeaveStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 export interface Leave {
@@ -31,21 +32,60 @@ export interface Leave {
   decided_by:        string | null;
   decided_at:        string | null;
   decision_note:     string;
+  calendar_days?:    boolean;           // G14-2: melahirkan / keguguran / istirahat panjang
+  notes?:            string[];          // G14-2: soft notes for HR (missing letter...)
 }
 
 export interface LeaveChoices {
   kinds:           { value: LeaveKind; label: string; paid: boolean }[];
   special_reasons: { value: string; label: string; days: number }[];
+  maternity_extension_pay?: number;     // G14-2: % paid in months 5-6 (HR only)
 }
 
 export interface AnnualBalance { year: number; entitled: number; used: number; left: number; from_date: string;
-                                 collective?: number }    // G14-1: cuti bersama days counted in "used"
+                                 collective?: number;     // G14-1: cuti bersama days counted in "used"
+                                 long_rest_year?: boolean; long_rest?: LongRestBalance }   // G14-2
+
+// G14-2: istirahat panjang, 30 calendar days at every 5 years (UU 27/2026 Pasal 118 ayat 2 c)
+export interface LongRestBalance { on: boolean; from_date: string | null; next_date: string | null;
+                                   days: number; taken: number; left: number }
+
+export const CALENDAR_KINDS: LeaveKind[] = ["maternity", "miscarry", "long_rest"];
+
+function iso(y: number, m: number, d: number): string {
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function addMonthsISO(start: string, n: number): string {
+  const [y, m, d] = start.split("-").map(Number);
+  const total = m - 1 + n;
+  const yy = y + Math.floor(total / 12), mm = (total % 12) + 1;
+  const last = new Date(Date.UTC(yy, mm, 0)).getUTCDate();
+  return iso(yy, mm, Math.min(d, last));
+}
+
+function addDaysISO(start: string, n: number): string {
+  const [y, m, d] = start.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d + n));
+  return iso(t.getUTCFullYear(), t.getUTCMonth() + 1, t.getUTCDate());
+}
+
+/** G14-2: the end date HR sees first (mirrors rules.default_end): 3 months, 1,5 months, 30 days. */
+export function defaultEnd(kind: LeaveKind, start: string): string {
+  if (kind === "maternity") return addDaysISO(addMonthsISO(start, 3), -1);
+  if (kind === "miscarry") return addDaysISO(addMonthsISO(start, 1), 14);
+  if (kind === "long_rest") return addDaysISO(start, 29);
+  return start;
+}
 
 // G14-1: the company's leave rules (defaults = UU No. 27/2026). Mirrors backend/apps/leave/hr_views.py.
 export interface LeaveSettings {
   collective_leave_reduces_annual: boolean;
   paternity_extra_days:            number;
   menstrual_leave:                 boolean;
+  maternity_extension_pay:         number;    // G14-2: % in months 5-6 (law 75)
+  long_rest:                       boolean;   // G14-2
+  long_leave_keeps_attendance_bonus: boolean; // G14-2
 }
 export const leaveSettingsApi = {
   async get(): Promise<LeaveSettings> {
