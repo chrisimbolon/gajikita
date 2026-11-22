@@ -242,6 +242,9 @@ def calculate_line(line, cfg):
         deductions=tuple(to_extra(i) for i in items if i.kind == PayRunItem.Kind.DEDUCTION and i.amount),   # 0 = skipped
     )
     slip = engine.calculate(terms, period, rules)
+    if cfg.pph21_enabled:                                                            # G16-3: off by default
+        from .pph21_slip import add_pph21
+        add_pph21(slip, line, cfg)
     if nums.get("overtime_open_days"):             # G17-7: late / one tap are facts; only overtime waits for HR
         slip.warnings.insert(0, f"Lembur {nums['overtime_open_days']} hari belum diputuskan HR: belum dibayar "
                                 f"(Perlu Tinjau → Lembur).")
