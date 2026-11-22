@@ -31,6 +31,9 @@ class LeaveRequest(TenantScopedModel):
         SICK    = rules.SICK,    rules.KIND_LABELS[rules.SICK]
         SPECIAL = rules.SPECIAL, rules.KIND_LABELS[rules.SPECIAL]
         UNPAID  = rules.UNPAID,  rules.KIND_LABELS[rules.UNPAID]
+        MATERNITY = rules.MATERNITY, rules.KIND_LABELS[rules.MATERNITY]      # G14-2
+        MISCARRY  = rules.MISCARRY,  rules.KIND_LABELS[rules.MISCARRY]
+        LONG_REST = rules.LONG_REST, rules.KIND_LABELS[rules.LONG_REST]
 
     class Status(models.TextChoices):
         PENDING   = "pending",   "Menunggu persetujuan"
@@ -97,6 +100,12 @@ class LeaveSettings(TenantScopedModel):
     paternity_extra_days = models.PositiveSmallIntegerField(default=rules.PATERNITY_EXTRA_MAX,
                                                             verbose_name="Tambahan cuti istri melahirkan (hari)")
     menstrual_leave = models.BooleanField(default=True, verbose_name="Cuti haid")
+    # G14-2: UU 27/2026 Pasal 123 ayat 3 and 118 ayat 2 c
+    maternity_extension_pay = models.PositiveSmallIntegerField(
+        default=rules.MATERNITY_LAW_PAY, verbose_name="Upah perpanjangan cuti melahirkan bulan ke-5 dan ke-6 (%)")
+    long_rest = models.BooleanField(default=True, verbose_name="Istirahat panjang")
+    long_leave_keeps_attendance_bonus = models.BooleanField(
+        default=False, verbose_name="Tunjangan kehadiran tetap dibayar saat cuti melahirkan / istirahat")
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
