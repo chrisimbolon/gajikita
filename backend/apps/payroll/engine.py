@@ -127,6 +127,9 @@ class PeriodInput:
     deductions: tuple = ()                   # Extra: one-off deductions (PPh 21 for now, "Lainnya")
     sick_days: Decimal = ZERO                # G13-3: approved sick leave (with a doctor's letter) in the period
     attendance_unpaid_days: Decimal = None   # G13-3: unpaid days for the attendance bonus (None = unpaid_days)
+    reduced_pay_days: Decimal = ZERO         # G14-2: cuti melahirkan days in months 5-6 (calendar days)
+    reduced_pay_pct: Decimal = Decimal("100")    # G14-2: what the company pays for them (law: 75)
+    long_leave_days: Decimal = ZERO          # G14-2: melahirkan / keguguran / istirahat panjang days (attendance bonus)
 
 
 @dataclass
@@ -234,7 +237,7 @@ def _days(n):
     return (f"{whole}½" if whole else "½") if half else f"{n:g}".replace(".", ",")
 
 
-def attendance_lost(late_minutes, sick_days, unpaid_days):
+def attendance_lost(late_minutes, sick_days, unpaid_days, long_leave_days=0):
     """
     G13-3: why the tunjangan kehadiran is not paid this period ([] = paid). DKCB's Note sheet: "no late, no MC,
     no UL". Late = chargeable late / early-leave minutes (after the tolerance; forgiven days don't count);
@@ -248,6 +251,8 @@ def attendance_lost(late_minutes, sick_days, unpaid_days):
         why.append(f"sakit {_days(sick_days)} hari")
     if D(unpaid_days) > 0:
         why.append(f"tidak masuk tanpa upah {_days(unpaid_days)} hari")
+    if D(long_leave_days) > 0:                                                         # G14-2
+        why.append(f"cuti melahirkan / istirahat {_days(long_leave_days)} hari")
     return why
 
 
@@ -353,7 +358,7 @@ def calculate(terms, period, rules):
         earn(x.code, x.label, x.amount, quantity=x.quantity, unit=x.unit, rate=x.rate)
     if D(terms.attendance_bonus) > 0:                                                  # G13-3
         unpaid_for_bonus = period.unpaid_days if period.attendance_unpaid_days is None else period.attendance_unpaid_days
-        why = attendance_lost(period.late_minutes, period.sick_days, unpaid_for_bonus)
+        why = attendance_lost(period.late_minutes, period.sick_days, unpaid_for_bonus, period.long_leave_days)
         if why:
             slip.warnings.append(f"Tunjangan kehadiran Rp {rupiah(terms.attendance_bonus):,.0f} hangus: "
                                  .replace(",", ".") + ", ".join(why) + ".")
@@ -366,6 +371,12 @@ def calculate(terms, period, rules):
     per_day = daily_rate(base, rules.daily_divisor)
     deduct("unpaid_leave", "Potongan unpaid leave", D(period.unpaid_days) * per_day,
            quantity=D(period.unpaid_days), unit="hari", rate=rupiah(per_day))
+    pct = D(period.reduced_pay_pct)
+    if D(period.reduced_pay_days) > 0 and pct < 100:                     # G14-2: UU 27/2026 Pasal 123 ayat 3
+        cut_per_day = daily_rate(monthly_wage, rules.daily_divisor) * (100 - pct) / 100
+        deduct("maternity_cut", f"Upah cuti melahirkan bulan ke-5–6 (dibayar {pct:.0f}%)",
+               D(period.reduced_pay_days) * cut_per_day, quantity=D(period.reduced_pay_days), unit="hari",
+               rate=rupiah(cut_per_day))
     wage = bpjs_wage(terms, rules)
     if terms.bpjs_tk:
         if terms.jht_by_company:                                                       # G13-3
