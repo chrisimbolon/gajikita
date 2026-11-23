@@ -47,10 +47,16 @@ class NightContext:
     G12e: what evaluate() needs from the company and from the day before, loaded once per screen:
     the night-overtime rows, the overtime minimum, and every previous day's last clock-out.
     """
-    def __init__(self, rules=(), overtime_min=OVERTIME_MIN_MINUTES, prev=None, exempt=None, events=()):
+    def __init__(self, rules=(), overtime_min=OVERTIME_MIN_MINUTES, prev=None, exempt=None, events=(),
+                 spl=None, spl_mode=False):
         self.rules, self.overtime_min, self._prev = rules, overtime_min, prev or {}
         self._exempt = exempt or {}                         # G12i: {employee_id: [(start, end, reason)]}
         self._events = events                               # G17-2: [company_events.Event]
+        self._spl, self.spl_mode = spl or {}, spl_mode      # G17-E1: {(employee_id, date): SplRef}, setting
+
+    def spl_for(self, employee_id, date):
+        """G17-E1: the SPL covering this person that day, or None."""
+        return self._spl.get((employee_id, date))
 
     def event_for(self, employee_id, site_id, date):
         """G17-2: (kind, reason) of the company event covering this person that day, or None."""
@@ -83,8 +89,11 @@ def night_context(organization_id, employee_ids, start, end):
     events = [x.as_rule() for x in CompanyEvent.objects.filter(organization_id=organization_id, start__lte=end,
                                                                 end__gte=start).prefetch_related("sites", "employees")]
     cfg = PayrollSettings.objects.filter(organization_id=organization_id).first()
+    from .spl import SPL, spl_index                              # G17-E1: one query
+    spl = spl_index(organization_id, employee_ids, start, end)
+    spl_mode = cfg is not None and cfg.overtime_source == SPL
     if cfg is None:
-        return NightContext(exempt=exempt, events=events)
+        return NightContext(exempt=exempt, events=events, spl=spl)
     try:
         rules = night_rules.parse_rules(cfg.night_ot_rules)
     except night_rules.RuleError:
@@ -110,7 +119,7 @@ def night_context(organization_id, employee_ids, start, end):
                 st, et = v["employee__default_shift__start_time"], v["employee__default_shift__end_time"]
             crosses = st is not None and et is not None and et <= st
             prev[(v["employee_id"], v["date"])] = (last_out, crosses)
-    return NightContext(rules, cfg.overtime_min_minutes, prev, exempt=exempt, events=events)
+    return NightContext(rules, cfg.overtime_min_minutes, prev, exempt=exempt, events=events, spl=spl, spl_mode=spl_mode)
 
 
 def evaluate(day, now=None, shift=None, leave=None, ctx=None):
@@ -132,6 +141,8 @@ def evaluate(day, now=None, shift=None, leave=None, ctx=None):
         exempt=ctx.exempt_for(day.employee_id, day.date),                                 # G12i
         event=ctx.event_for(day.employee_id, day.employee.default_site_id, day.date),       # G17-2
         half_leave=day.half_day_leave,                                                     # G17-4
+        spl=getattr(ctx, "spl_for", lambda *a: None)(day.employee_id, day.date),           # G17-E1
+        spl_mode=getattr(ctx, "spl_mode", False),
     )
 
 

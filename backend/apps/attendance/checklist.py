@@ -159,8 +159,8 @@ def build(org, month=None, now=None):
                     "note": note_of(emp.id, d)}
             # overtime still open
             proposed = r.overtime_proposed_minutes or 0
-            if proposed and not day.decision and day.overtime_approved_minutes is None:
-                rest = Status.DAY_OFF_WORK in r.tags
+            if proposed and not day.decision and day.overtime_approved_minutes is None and not r.overtime_spl_minutes:
+                rest = Status.DAY_OFF_WORK in r.tags                    # G17-E1: a day paid by an SPL is not open
                 p = ot.setdefault(emp.id, {"employee": _emp(emp), "days": [], "proposed": 0})
                 p["days"].append({**base, "proposed": proposed,
                                   "suggested": capped_overtime(proposed, None if rest else cap) or 0, "rest_day": rest})

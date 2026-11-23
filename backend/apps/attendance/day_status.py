@@ -99,6 +99,11 @@ class DayResult:
     holiday: bool = False                              # G17-2: a working day turned into a holiday
     disrupted: bool = False                            # G17-2: a working day under a disruption
     half_leave: str = ""                               # G17-4: "unpaid" / "paid" ½ day permit or leave
+    spl: str = ""                                      # G17-E1: "SPL 12 · Cor lantai 2" covering this day
+    spl_consent: str = ""                              # G17-E1: "yes" / "pending"
+    overtime_spl_minutes: int = 0                      # G17-E1: SPL mode, undecided day: the overtime the SPL pays
+    overtime_no_spl: bool = False                      # G17-E1: SPL mode: overtime in the taps but no SPL
+    spl_over_plan: int = 0                             # G17-E1: minutes past the SPL's planned end (> 1 hour)
 
     @property
     def label(self):
@@ -114,7 +119,7 @@ def _minutes(delta):
     return max(0, int(delta.total_seconds() // 60))
 
 
-def evaluate_day(day, shift, taps, now, tz, *, event=None, **kw):
+def evaluate_day(day, shift, taps, now, tz, *, event=None, spl=None, spl_mode=False, **kw):
     """
     The day's status (see _evaluate_day for every other argument).
     event   G17-2: the company event covering this person that day, (kind, reason) from company_events, or None.
@@ -128,6 +133,10 @@ def evaluate_day(day, shift, taps, now, tz, *, event=None, **kw):
                                                                 Status.DAY_OFF)
         if r.holiday or r.disrupted:
             r.note = r.note or r.event
+    if spl is not None or spl_mode:                       # G17-E1: the SPL decides whether overtime is paid
+        from .spl import apply_spl
+        apply_spl(r, day, spl, spl_mode=spl_mode, decision=kw.get("decision", ""),
+                  overtime_approved=kw.get("overtime_approved"), tz=tz)
     return r
 
 
