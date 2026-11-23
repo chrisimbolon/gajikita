@@ -34,7 +34,8 @@ def slip_dict(slip):
 def manual_pph(slip):
     """Deductions HR added by hand that are already a tax (an item coded pph21, or called PPh / pajak)."""
     return [d for d in slip.deductions
-            if d.code == DEDUCTION or any(w in f"{d.code} {d.label}".lower() for w in ("pph", "pajak"))]
+            if d.code != "pph21_final"                                     # G16-4: the final tax on hak akhir
+            and (d.code == DEDUCTION or any(w in f"{d.code} {d.label}".lower() for w in ("pph", "pajak")))]
 
 
 def _retotal(slip):
