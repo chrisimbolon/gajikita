@@ -13,6 +13,8 @@ from apps.payroll.item_grid import ItemGridView                                 
 from apps.payroll.loan_views import LoanDetailView, LoanListView                            # G13 part 2
 from apps.payroll.law_check import LawCheckView                                            # G18-1
 from apps.payroll.opening_views import OpeningImportView, OpeningListView                  # G16-2
+from apps.payroll.final_pay_views import (FinalPayAttachView, FinalPayDetailView,               # G16-4
+                                          FinalPayPreviewView, FinalPayView)
 from apps.leave.hr_views import HrLeaveAttachmentView, HrLeaveBalanceView, HrLeaveDecideView, HrLeaveListView
 from apps.leave.hr_views import HrLeaveSettingsView                                      # G14-1
 
@@ -96,6 +98,10 @@ urlpatterns = [
     path("payroll/law-check/",                                   LawCheckView.as_view(),       name="hr-payroll-law-check"),   # G18-1
     path("payroll/pph21-opening/",                               OpeningListView.as_view(),    name="hr-payroll-pph21-opening"),   # G16-2
     path("payroll/pph21-opening/import/",                        OpeningImportView.as_view(),  name="hr-payroll-pph21-import"),    # G16-2
+    path("payroll/final-pay/",                                   FinalPayView.as_view(),        name="hr-payroll-final-pay"),          # G16-4
+    path("payroll/final-pay/preview/",                           FinalPayPreviewView.as_view(), name="hr-payroll-final-pay-preview"),
+    path("payroll/final-pay/<uuid:pk>/",                         FinalPayDetailView.as_view(),  name="hr-payroll-final-pay-detail"),
+    path("payroll/final-pay/<uuid:pk>/attach/",                  FinalPayAttachView.as_view(),  name="hr-payroll-final-pay-attach"),
     path("payroll/loans/",                                       LoanListView.as_view(),       name="hr-payroll-loans"),
     path("payroll/loans/<uuid:pk>/",                             LoanDetailView.as_view(),     name="hr-payroll-loan"),
     path("payroll/runs/",                                        RunListView.as_view(),        name="hr-payroll-runs"),
