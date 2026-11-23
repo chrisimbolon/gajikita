@@ -40,6 +40,8 @@ export interface PayrollSettings {
   pph21_late_reduces_bruto?:    boolean;  // G16-1
   pph21_company_jht_in_bruto?:  boolean;  // G16-1
   pph21_tax_month?:             "paid" | "period_end";   // G16-2
+  separation_pay_months?:       string;   // G16-4: uang pisah in months of upah (Pasal 233)
+  small_business?:              boolean;  // G16-4: usaha mikro / kecil (Pasal 250)
   pph21_enabled?:               boolean;  // G16-3: PPh 21 on the slip
   slip_address:                 string;
   slip_place:                   string;
