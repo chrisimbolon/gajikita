@@ -98,6 +98,11 @@ class PayrollSettings(TenantScopedModel):
     # G16-2: which month a payroll belongs to for PPh 21 (and so which payroll settles the year in December)
     pph21_tax_month = models.CharField(max_length=12, default="paid", verbose_name="Masa pajak ikut",
                                        choices=[("paid", "Bulan dibayar"), ("period_end", "Bulan periode berakhir")])
+    # G16-4: hak akhir (UU 27/2026 Pasal 233 and 250)
+    separation_pay_months = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal("1"),
+                                                verbose_name="Uang pisah (bulan upah)",
+                                                help_text="Bila PK / PP / PKB tidak mengatur: paling sedikit 1 bulan")
+    small_business = models.BooleanField(default=False, verbose_name="Usaha mikro / kecil (hak akhir sesuai kesepakatan)")
     # on the printed slip (G8b part 2)
     slip_address      = models.TextField(blank=True, default="", verbose_name="Alamat di slip")
     slip_place        = models.CharField(max_length=60, blank=True, default="", verbose_name="Tempat di slip")
@@ -267,6 +272,38 @@ class EmployeeLoan(TenantScopedModel):
     @property
     def is_kasbon(self):
         return self.installment >= self.amount
+
+    def _resolve_organization(self):
+        return self.employee.organization if self.employee_id else None
+
+
+class FinalPay(TenantScopedModel):
+    """G16-4 (23 Nov 2026): a hak akhir statement (final_pay.py). Inputs are kept; `result` is the calculation as
+    saved; `run` is the payroll it was put on (Masukkan ke slip)."""
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    employee    = models.ForeignKey("employees.Employee", on_delete=models.PROTECT, related_name="final_pays")
+    end_date    = models.DateField(verbose_name="Hari terakhir bekerja")
+    reason      = models.CharField(max_length=30, verbose_name="Alasan")
+    upah        = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True,
+                                      verbose_name="Upah (diisi HR; kosong = dari data Karyawan)")
+    leave_days  = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True,
+                                      verbose_name="Sisa cuti (diisi HR; kosong = dari SeeGaji)")
+    travel      = models.DecimalField(max_digits=14, decimal_places=2, default=Decimal("0"), verbose_name="Ongkos pulang")
+    other_items = models.JSONField(default=list, blank=True, verbose_name="Hak lain")
+    overrides   = models.JSONField(default=dict, blank=True, verbose_name="Angka yang diubah HR")
+    deduct_loan = models.BooleanField(default=False, verbose_name="Lunasi pinjaman dari slip terakhir")
+    note        = models.CharField(max_length=300, blank=True, default="")
+    result      = models.JSONField(default=dict, blank=True)
+    run         = models.ForeignKey(PayRun, null=True, blank=True, on_delete=models.SET_NULL, related_name="final_pays")
+    attached_at = models.DateTimeField(null=True, blank=True)
+    created_by  = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                    related_name="+")
+    created_at  = models.DateTimeField(auto_now_add=True)
+    updated_at  = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "Hak akhir"
+        ordering = ["-end_date", "-updated_at"]
 
     def _resolve_organization(self):
         return self.employee.organization if self.employee_id else None
