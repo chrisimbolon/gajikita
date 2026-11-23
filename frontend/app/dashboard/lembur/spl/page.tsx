@@ -7,7 +7,7 @@
 // =============================================================================
 import { readErrors } from "@/lib/api/hr";
 import { todayISO } from "@/lib/format";
-import { SplInput, SplOrder, SplPage, splApi } from "@/lib/api/spl";
+import { SplInput, SplLogRow, SplOrder, SplPage, splApi } from "@/lib/api/spl";
 import { ArrowLeft, FilePlus2, Info, Loader2, Paperclip, Search, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
@@ -185,6 +185,7 @@ export default function SplPageView() {
           </table>
         )}
       </div>
+      {data.summary && <SplLog data={data} />}
       {cancelled.length > 0 && (
         <div style={{ ...hint, marginTop: 10 }}>
           Dibatalkan: {cancelled.map((o) => `SPL ${o.number} (${span(o.start_date, o.end_date)}${o.cancel_note ? `: ${o.cancel_note}` : ""})`).join(" · ")}
@@ -195,6 +196,91 @@ export default function SplPageView() {
         <SplDialog data={data} id={editing.id} initial={editing.form} month={ym}
                    onClose={() => setEditing(null)} onDone={done} />
       )}
+    </div>
+  );
+}
+
+// G17-E3: who orders overtime, for what, how long; and UU 27/2026 Pasal 116 ayat 1 huruf c
+function csvCell(v: string | number) {
+  const s = String(v);
+  return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function SplLog({ data }: { data: SplPage }) {
+  const s = data.summary!;
+  const name = `${MONTHS[data.period.month - 1]} ${data.period.year}`;
+  const download = () => {
+    const rows: (string | number)[][] = [
+      [`Rekap lembur periode gaji ${name} (${data.period.start} s/d ${data.period.end})`],
+      [],
+      ["Per atasan", "SPL", "Orang-hari", "Jam"],
+      ...s.by_issuer.map((r) => [r.name, r.orders, r.person_days, (r.minutes / 60).toFixed(2)]),
+      [],
+      ["Per pekerjaan", "SPL", "Orang-hari", "Jam"],
+      ...s.by_work.map((r) => [r.name, r.orders, r.person_days, (r.minutes / 60).toFixed(2)]),
+      [],
+      ["Karyawan", "No.", "Hari lembur", "Jam", "Hari > 4 jam", "Minggu > 18 jam"],
+      ...s.by_person.map((p) => [p.employee.full_name, p.employee.employee_no, p.days, (p.minutes / 60).toFixed(2),
+                                 p.long_days.length, p.heavy_weeks.length]),
+    ];
+    const blob = new Blob(["\ufeff" + rows.map((r) => r.map(csvCell).join(",")).join("\n")], { type: "text/csv" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `rekap-lembur-${data.period.year}-${String(data.period.month).padStart(2, "0")}.csv`;
+    a.click();
+  };
+  const table = (title: string, rows: SplLogRow[]) => (
+    <div style={{ flex: "1 1 300px" }}>
+      <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
+      {rows.length === 0 ? <div style={hint}>Belum ada SPL.</div> : (
+        <table className="data-table">
+          <thead><tr><th>{title.replace("Per ", "")}</th><th>SPL</th><th>Orang-hari</th><th>Jam</th></tr></thead>
+          <tbody>{rows.map((r) => (
+            <tr key={r.name}><td>{r.name}</td><td>{r.orders}</td><td>{r.person_days}</td><td>{hours(r.minutes)}</td></tr>
+          ))}</tbody>
+        </table>
+      )}
+    </div>
+  );
+  return (
+    <div className="card" style={{ marginTop: 14 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+        <div>
+          <div style={{ fontWeight: 800, color: "var(--midnight)" }}>Rekap periode ini</div>
+          <div style={hint}>
+            Lembur dibayar {hours(s.total_minutes)} · tanpa SPL {hours(s.no_spl_minutes)}
+            {s.over_limit > 0 ? ` · ${s.over_limit} orang melebihi batas UU` : ""}. Jam sesuai yang dibayar payroll.
+          </div>
+        </div>
+        <button className="btn-ghost" onClick={download}>Unduh CSV</button>
+      </div>
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", marginTop: 12 }}>
+        {table("Per atasan", s.by_issuer)}
+        {table("Per pekerjaan", s.by_work)}
+      </div>
+      <div style={{ fontWeight: 700, margin: "14px 0 4px" }}>Per karyawan</div>
+      {s.by_person.length === 0 ? <div style={hint}>Belum ada lembur dibayar di periode ini.</div> : (
+        <table className="data-table">
+          <thead><tr><th>Karyawan</th><th>Hari lembur</th><th>Jam</th><th>Batas UU (4 jam sehari, 18 jam seminggu)</th></tr></thead>
+          <tbody>{s.by_person.map((p) => (
+            <tr key={p.employee.id}>
+              <td>{p.employee.full_name}<div style={hint}>{p.employee.employee_no}</div></td>
+              <td>{p.days}</td><td>{hours(p.minutes)}</td>
+              <td style={{ fontSize: 13 }}>
+                {p.long_days.length === 0 && p.heavy_weeks.length === 0 ? <span style={{ color: "#2E7D4F" }}>sesuai</span> : (
+                  <span style={{ color: "#2563A8" }}>
+                    <Info size={12} style={{ verticalAlign: "-1px" }} />{" "}
+                    {p.long_days.length > 0 && `${p.long_days.length} hari > 4 jam (${p.long_days.map(dateText).join(", ")})`}
+                    {p.long_days.length > 0 && p.heavy_weeks.length > 0 && "; "}
+                    {p.heavy_weeks.length > 0 && `minggu ${p.heavy_weeks.map((w) => `${dateText(w.week)} (${hours(w.minutes)})`).join(", ")} > 18 jam`}
+                  </span>
+                )}
+              </td>
+            </tr>
+          ))}</tbody>
+        </table>
+      )}
+      <div style={hint}>UU No. 27/2026 Pasal 116 ayat 1 huruf c. Tetap dibayar sesuai finger; sektor tertentu bisa dikecualikan (ayat 4).</div>
     </div>
   );
 }

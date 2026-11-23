@@ -22,7 +22,17 @@ export interface SplUnmatched {
   day_id: string; employee: SplPerson; date: string; minutes: number; in: string | null; out: string | null;
 }
 
+// G17-E3: the SPL log of one pay period (minutes as payroll pays them)
+export interface SplLogRow { name: string; orders: number; person_days: number; minutes: number }
+export interface SplSummary {
+  total_minutes: number; no_spl_minutes: number; over_limit: number;
+  by_issuer: SplLogRow[]; by_work: SplLogRow[];
+  by_person: { employee: SplPerson; days: number; minutes: number; long_days: string[];
+               heavy_weeks: { week: string; minutes: number }[] }[];
+}
+
 export interface SplPage {
+  summary?: SplSummary;                 // G17-E3
   mode: "decision" | "spl";
   period: { year: number; month: number; start: string; end: string };
   orders: SplOrder[];
