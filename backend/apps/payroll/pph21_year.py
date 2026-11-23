@@ -131,6 +131,8 @@ def withheld_from_slip(result):
     found = None
     for d in (result or {}).get("deductions", []):
         text = f"{d.get('code') or ''} {d.get('label') or ''}".lower()
+        if d.get("code") == "pph21_final":                               # G16-4: final tax on hak akhir
+            continue
         if d.get("code") in ("pph21", "pph_21") or "pph" in text or "pajak" in text:
             found = (found or ZERO) + Decimal(str(d.get("amount") or 0))
     return found
