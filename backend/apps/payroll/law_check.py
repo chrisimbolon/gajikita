@@ -114,6 +114,14 @@ def long_rest_row(on, due, changed=""):
                changed=changed)
 
 
+def separation_row(months, changed=""):
+    """G16-4: uang pisah when the company's PK / PP / PKB has no rule (Pasal 233 ayat 2: at least 1 month)."""
+    law = "Bila PK / PP / PKB tidak mengatur: paling sedikit 1 bulan upah (untuk mengundurkan diri, mangkir, dll.)"
+    n = f"{Decimal(months).normalize():f}".replace(".", ",")
+    return Row("separation", OK if Decimal(months) >= 1 else DIFFERS, "Uang pisah", f"{n} bulan upah", law,
+               "Pasal 233", link=SETTINGS_LINK, changed=changed)
+
+
 def annual_leave_row(days=12):
     return Row("annual_leave", OK, "Cuti tahunan", f"{days} hari kerja setelah 12 bulan bekerja",
                "Paling sedikit 12 hari kerja setelah 12 bulan bekerja terus-menerus", "Pasal 118 ayat 5",
@@ -233,6 +241,7 @@ def build(org, today):
             due.append(e.full_name)
     return [
         overtime_row(cfg.overtime_mode, cfg.flat_overtime_hour, _last_change(org, "overtime_mode")),
+        separation_row(cfg.separation_pay_months, _last_change(org, "separation_pay_months")),       # G16-4
         annual_leave_row(),
         collective_row(leave.collective_leave_reduces_annual,
                        _last_change(org, "collective_leave_reduces_annual", "leave.settings")),
