@@ -142,7 +142,8 @@ def bruto_from_slip(result, *, late_reduces=False, company_jht_in_bruto=False, c
     """
     parts = []
     earnings = sum((D(str(e.get("amount") or 0)) for e in (result or {}).get("earnings", [])
-                    if e.get("code") not in ignore_codes), ZERO)
+                    if e.get("code") not in ignore_codes
+                    and not str(e.get("code") or "").startswith("pesangon_")), ZERO)   # G16-4: final tax, not TER
     parts.append(("Penghasilan", earnings))
     deds = {d.get("code"): D(str(d.get("amount") or 0)) for d in (result or {}).get("deductions", [])}
     if deds.get("unpaid_leave"):
