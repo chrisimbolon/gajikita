@@ -24,6 +24,7 @@ from datetime import datetime, time, timedelta
 
 DECISION, SPL = "decision", "spl"
 OVER_PLAN_MINUTES = 60          # a note when the last clock-out is more than this past the SPL's planned end
+DAY_LIMIT, WEEK_LIMIT = 4 * 60, 18 * 60       # G17-E3: Pasal 116 ayat 1 huruf c
 CONSENT_YES, CONSENT_PENDING, CONSENT_NO = "yes", "pending", "no"
 
 
@@ -80,6 +81,24 @@ def apply_spl(result, day, ref, *, spl_mode, decision="", overtime_approved=None
     result.review_reasons = reasons
     result.needs_review = bool(reasons) and decision != "approved"
     return result
+
+
+def over_limits(days):
+    """G17-E3: one person's paid overtime [(date, minutes)] -> (days over 4 hours, [(monday, minutes)] of weeks
+    over 18 hours). Weeks run Monday to Sunday; only the days given count."""
+    long_days, weeks = [], {}
+    for d, m in days:
+        if m > DAY_LIMIT:
+            long_days.append(d)
+        monday = d - timedelta(days=d.weekday())
+        weeks[monday] = weeks.get(monday, 0) + m
+    return sorted(long_days), sorted((w, m) for w, m in weeks.items() if m > WEEK_LIMIT)
+
+
+def limit_text(name, long_days, heavy_weeks):
+    parts = ([f"{len(long_days)} hari lebih dari 4 jam"] if long_days else []) + \
+            ([f"{len(heavy_weeks)} minggu lebih dari 18 jam"] if heavy_weeks else [])
+    return f"{name} ({', '.join(parts)})"
 
 
 # ── database ──

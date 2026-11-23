@@ -75,6 +75,19 @@ def overtime_order_row(source, changed=""):
                law, article, link=SETTINGS_LINK, changed=changed)
 
 
+def overtime_length_row(run_name, found):
+    """G17-E3: Pasal 116 ayat 1 huruf c on the latest payroll; found = ["Andi (3 hari lebih dari 4 jam)"]."""
+    if not run_name:
+        return None
+    law = "Paling lama 4 jam sehari dan 18 jam seminggu (kecuali sektor tertentu, ayat 4)"
+    article = "Pasal 116 ayat 1 huruf c"
+    if found:
+        return Row("overtime_length", FOUND, "Lama lembur",
+                   f"{run_name}: {len(found)} karyawan lembur melebihi batas (tetap dibayar sesuai finger)", law,
+                   article, link="/dashboard/lembur/spl", link_text="Rekap SPL", people=_names(found))
+    return Row("overtime_length", OK, "Lama lembur", f"{run_name}: tidak ada yang melebihi batas", law, article)
+
+
 def collective_row(reduces, changed=""):
     """G14-1: cuti bersama and annual leave."""
     law = "Cuti bersama dari pemerintah tidak mengurangi cuti tahunan"
@@ -247,6 +260,18 @@ def build(org, today):
     rests = list(LeaveRequest.objects.filter(organization=org, kind=leave_rules.LONG_REST,
                                              status__in=(LeaveRequest.Status.PENDING, LeaveRequest.Status.APPROVED))
                  .values_list("employee_id", "start_date"))
+    from datetime import date as _date                                                         # G17-E3
+    from apps.attendance.spl import limit_text, over_limits
+    from .models import PayRun
+    last_run = PayRun.objects.filter(organization=org).order_by("-period_end").first()
+    too_long = []
+    if last_run is not None:
+        for line in last_run.lines.select_related("employee"):
+            days = [(_date.fromisoformat(o["date"]), int(o.get("minutes") or 0))
+                    for o in (line.auto or {}).get("overtime", [])]
+            long_days, heavy = over_limits(days)
+            if long_days or heavy:
+                too_long.append(limit_text(line.employee.full_name, long_days, heavy))
     due = []
     for e in active.exclude(join_date__isnull=True):
         since = leave_rules.long_rest_since(e.join_date, today)
@@ -255,6 +280,7 @@ def build(org, today):
     return [
         overtime_row(cfg.overtime_mode, cfg.flat_overtime_hour, _last_change(org, "overtime_mode")),
         overtime_order_row(cfg.overtime_source, _last_change(org, "overtime_source")),               # G17-E1
+        overtime_length_row(last_run.name if last_run else "", too_long),                            # G17-E3
         separation_row(cfg.separation_pay_months, _last_change(org, "separation_pay_months")),       # G16-4
         annual_leave_row(),
         collective_row(leave.collective_leave_reduces_annual,

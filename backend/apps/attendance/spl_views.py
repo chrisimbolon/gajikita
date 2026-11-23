@@ -34,7 +34,9 @@ from apps.sites.models import Site
 
 from . import spl as S
 from .models import AttendanceDay, OvertimeOrder, OvertimeOrderPerson
+from .day_status import Status                                                         # G17-E3
 from .rekap import period_of
+from .review_kinds import capped_overtime
 from .review import evaluate, leaves_between, night_context
 
 MAX_DAYS = 14
@@ -169,14 +171,22 @@ def page(org, month=None):
     mode = cfg.overtime_source
     index = S.spl_index(org.id, None, start, end)
     matches, unmatched = {}, []
+    cap = cfg.overtime_daily_cap_minutes
+    paid_by_person, no_spl_minutes = {}, 0                                                   # G17-E3
     for day, r in _period_days(org, start, end):
         ref = index.get((day.employee_id, day.date))
         proposed = r.overtime_proposed_minutes or 0
+        rest = Status.DAY_OFF_WORK in r.tags or r.holiday
+        spl_paid = (capped_overtime(r.overtime_spl_minutes, None if rest else cap) or 0) if r.overtime_spl_minutes else 0
+        decided_paid = (day.overtime_approved_minutes or 0) if day.decision == "approved" else 0
+        paid_day = decided_paid or (0 if day.decision else spl_paid)                          # what payroll pays
+        if paid_day:
+            paid_by_person.setdefault(day.employee_id, (day.employee, []))[1].append((day.date, paid_day))
         if ref is not None:
             if day.decision:
-                state, paid = "decided", day.overtime_approved_minutes or 0
+                state, paid = "decided", decided_paid
             elif r.overtime_spl_minutes:
-                state, paid = "spl", r.overtime_spl_minutes
+                state, paid = "spl", spl_paid
             elif proposed:
                 state, paid = "waiting", 0                     # "decision" mode: HR still decides
             else:
@@ -185,6 +195,7 @@ def page(org, month=None):
                 {"date": day.date.isoformat(), "proposed": proposed, "paid": paid, "state": state,
                  "over_plan": r.spl_over_plan})
         elif proposed and not day.decision and day.overtime_approved_minutes is None and not day.is_locked:
+            no_spl_minutes += proposed
             unmatched.append({"day_id": str(day.pk), "employee": _person(day.employee), "date": day.date.isoformat(),
                               "minutes": proposed, "in": r.first_in.isoformat() if r.first_in else None,
                               "out": r.last_out.isoformat() if r.last_out else None})
@@ -192,14 +203,42 @@ def page(org, month=None):
     orders = (OvertimeOrder.objects.filter(organization=org, start_date__lte=end, end_date__gte=start)
               .select_related("site", "created_by").prefetch_related("people__employee").order_by("-start_date", "-number"))
     people = Employee.objects.filter(organization=org, status=Employee.Status.ACTIVE).order_by("full_name")
+    orders_json = [order_json(x, matches) for x in orders]
     return {
         "success": True, "mode": mode,
         "period": {"year": y, "month": mo, "start": start.isoformat(), "end": end.isoformat()},
-        "orders": [order_json(x, matches) for x in orders],
+        "orders": orders_json,
         "unmatched": unmatched,
+        "summary": summary(orders_json, paid_by_person, no_spl_minutes),                     # G17-E3
         "people": [_person(e) for e in people],
         "sites": [{"id": str(s.pk), "name": s.name} for s in Site.objects.filter(organization=org).order_by("name")],
     }
+
+
+def summary(orders_json, paid_by_person, no_spl_minutes):
+    """G17-E3: the SPL log of one pay period: who orders overtime, for what, how long, and who goes past
+    UU 27/2026 Pasal 116 ayat 1 huruf c (4 h a day, 18 h a week). Paid minutes as payroll pays them."""
+    by_issuer, by_work = {}, {}
+    for o in orders_json:
+        if o["status"] != "active":
+            continue
+        days = [d for p in o["people"] for d in p["days"] if d["paid"]]
+        for key, bucket in ((o["issued_by_name"] or "(tanpa nama)", by_issuer), (o["work"], by_work)):
+            b = bucket.setdefault(key, {"name": key, "orders": 0, "person_days": 0, "minutes": 0})
+            b["orders"] += 1
+            b["person_days"] += len(days)
+            b["minutes"] += sum(d["paid"] for d in days)
+    persons = []
+    for employee, days in paid_by_person.values():
+        long_days, heavy = S.over_limits(days)
+        persons.append({"employee": _person(employee), "days": len(days), "minutes": sum(m for _, m in days),
+                        "long_days": [d.isoformat() for d in long_days],
+                        "heavy_weeks": [{"week": w.isoformat(), "minutes": m} for w, m in heavy]})
+    persons.sort(key=lambda p: (-p["minutes"], p["employee"]["full_name"]))
+    order = lambda b: sorted(b.values(), key=lambda x: (-x["minutes"], x["name"]))
+    return {"total_minutes": sum(p["minutes"] for p in persons), "no_spl_minutes": no_spl_minutes,
+            "over_limit": sum(1 for p in persons if p["long_days"] or p["heavy_weeks"]),
+            "by_issuer": order(by_issuer), "by_work": order(by_work), "by_person": persons}
 
 
 def _set_people(org, x, people, consent):
