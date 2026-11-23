@@ -301,6 +301,26 @@ export default function PayrollSettingsPage() {
       </Section>
 
       {/* G16-1: PPh 21 rules (Pak Holan, 20 Nov 2026); used when PPh 21 is switched on */}
+      {/* G16-4 */}
+      <Section title="Hak akhir" hint="Dipakai di Karyawan → Hitung hak akhir.">
+        <div>
+          <label className="label" htmlFor="pisah">Uang pisah bila PK / PP / PKB tidak mengatur</label>
+          <select id="pisah" className="input" style={{ width: "100%" }} value={Number(form.separation_pay_months ?? 1)}
+                  onChange={(e) => set("separation_pay_months", String(e.target.value))}>
+            {Array.from(new Set([0.5, 1, 1.5, 2, 3, Number(form.separation_pay_months ?? 1)])).sort((a, b) => a - b).map((n) => (
+              <option key={n} value={n}>{String(n).replace(".", ",")} bulan upah{n === 1 ? " (UU, paling sedikit)" : ""}</option>
+            ))}
+          </select>
+          <div style={{ fontSize: 12, color: Number(form.separation_pay_months ?? 1) >= 1 ? "var(--steel)" : "#2563A8", marginTop: 3 }}>
+            UU No. 27/2026 Pasal 233: untuk karyawan yang mengundurkan diri, mangkir 5 hari, dan beberapa alasan lain.
+          </div>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, marginTop: 10 }}>
+          <input type="checkbox" checked={!!form.small_business} onChange={(e) => set("small_business", e.target.checked)} />
+          Usaha mikro / kecil: besaran hak akhir sesuai kesepakatan (Pasal 250)
+        </label>
+      </Section>
+
       <Section title="PPh 21" hint={form.pph21_enabled ? "PPh 21 dihitung di slip payroll draft (setelah Hitung ulang)."
                                                          : "Belum dipakai di slip. Dipakai saat PPh 21 dinyalakan."}>
         {/* G16-3: the switch, with what is still missing next to it */}
