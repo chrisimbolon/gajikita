@@ -304,3 +304,71 @@ class CompanyEvent(TenantScopedModel):
         from .company_events import Event
         return Event(self.start, self.end, self.kind, self.reason, self.everyone,
                      frozenset(s.pk for s in self.sites.all()), frozenset(e.pk for e in self.employees.all()))
+
+
+def spl_path(instance, filename):
+    ext = os.path.splitext(filename)[1].lower()[:6] or ".jpg"
+    return f"spl/{instance.organization_id}/{instance.start_date:%Y/%m}/{uuid.uuid4().hex}{ext}"
+
+
+class OvertimeOrder(TenantScopedModel):
+    """G17-E1 (23 Nov 2026): an SPL (Surat Perintah Lembur) for one or more people (see spl.py)."""
+    class Status(models.TextChoices):
+        ACTIVE    = "active",    "Berlaku"
+        CANCELLED = "cancelled", "Dibatalkan"
+
+    class Source(models.TextChoices):
+        PAPER = "paper", "SPL kertas (dicatat HR)"
+        PHONE = "phone", "Dari HP atasan"
+
+    id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    number        = models.PositiveIntegerField(verbose_name="Nomor SPL")
+    start_date    = models.DateField(verbose_name="Mulai")
+    end_date      = models.DateField(verbose_name="Sampai")
+    work          = models.CharField(max_length=200, verbose_name="Pekerjaan")
+    site          = models.ForeignKey("sites.Site", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    planned_start = models.TimeField(null=True, blank=True, verbose_name="Rencana mulai")
+    planned_end   = models.TimeField(null=True, blank=True, verbose_name="Rencana selesai")
+    issued_by_name = models.CharField(max_length=100, blank=True, default="", verbose_name="Dikeluarkan oleh")
+    issued_by     = models.ForeignKey("employees.Employee", null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name="+")                                  # E2: the mandor on the phone
+    source        = models.CharField(max_length=10, choices=Source.choices, default=Source.PAPER)
+    attachment    = models.FileField(upload_to=spl_path, blank=True, verbose_name="Foto SPL")
+    note          = models.CharField(max_length=300, blank=True, default="")
+    status        = models.CharField(max_length=10, choices=Status.choices, default=Status.ACTIVE)
+    cancel_note   = models.CharField(max_length=200, blank=True, default="")
+    created_by    = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                                      related_name="+")
+    created_at    = models.DateTimeField(auto_now_add=True)
+    updated_at    = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "SPL (Surat Perintah Lembur)"
+        ordering = ["-start_date", "-number"]
+        unique_together = [("organization", "number")]
+        indexes = [models.Index(fields=["organization", "start_date"], name="attendance_spl_org_start")]
+
+    def __str__(self):
+        return f"SPL {self.number} {self.start_date} ({self.work})"
+
+
+class OvertimeOrderPerson(TenantScopedModel):
+    """G17-E1: one person on an SPL, with their consent (UU 27/2026 Pasal 116 ayat 1 huruf a)."""
+    class Consent(models.TextChoices):
+        YES     = "yes",     "Setuju"
+        PENDING = "pending", "Belum tercatat"
+        NO      = "no",      "Menolak"
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    order       = models.ForeignKey(OvertimeOrder, on_delete=models.CASCADE, related_name="people")
+    employee    = models.ForeignKey("employees.Employee", on_delete=models.CASCADE, related_name="overtime_orders")
+    consent     = models.CharField(max_length=10, choices=Consent.choices, default=Consent.YES)
+    consent_via = models.CharField(max_length=10, blank=True, default="", verbose_name="Persetujuan lewat")
+    consent_at  = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        verbose_name = verbose_name_plural = "Karyawan di SPL"
+        unique_together = [("order", "employee")]
+
+    def _resolve_organization(self):
+        return self.order.organization if self.order_id else None
