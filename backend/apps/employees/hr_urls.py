@@ -28,6 +28,7 @@ from apps.attendance.fingerprint_link import FingerprintLinkView
 from apps.attendance.day_notes_views import DayNotesDeleteView, DayNotesImportView
 from apps.attendance.exemption_views import EmployeeExemptionsView, ExemptionDetailView
 from apps.attendance.event_views import EventDetailView, EventListView
+from apps.attendance.spl_views import SplAttachmentView, SplCancelView, SplDetailView, SplListView   # G17-E1
 from apps.attendance.note_decision_views import NoteDecisionApplyView, NoteDecisionsView, NoteDecisionUndoView
 from apps.attendance.rekap import RekapExportView, RekapView
 from apps.attendance.review_bulk import BulkDecideView, ReviewPeriodView
@@ -54,6 +55,10 @@ urlpatterns = [
     path("attendance-exemptions/<uuid:pk>/", ExemptionDetailView.as_view(), name="hr-exemption-detail"),   # G12i
     path("attendance/events/",               EventListView.as_view(),   name="hr-events"),                 # G17-2
     path("attendance/events/<uuid:pk>/",     EventDetailView.as_view(), name="hr-event"),
+    path("attendance/spl/",                       SplListView.as_view(),       name="hr-spl"),            # G17-E1
+    path("attendance/spl/<uuid:pk>/",             SplDetailView.as_view(),     name="hr-spl-detail"),
+    path("attendance/spl/<uuid:pk>/cancel/",      SplCancelView.as_view(),     name="hr-spl-cancel"),
+    path("attendance/spl/<uuid:pk>/attachment/",  SplAttachmentView.as_view(), name="hr-spl-attachment"),
     path("attendance/note-decisions/",        NoteDecisionsView.as_view(),     name="hr-note-decisions"),   # G17-4
     path("attendance/note-decisions/apply/",  NoteDecisionApplyView.as_view(), name="hr-note-decisions-apply"),
     path("attendance/note-decisions/undo/",   NoteDecisionUndoView.as_view(),  name="hr-note-decisions-undo"),   # G17-8.1
