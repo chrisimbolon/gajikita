@@ -295,18 +295,18 @@ export default function FinalPayPageView() {
                     </tr>
                   ))}
                   <tr><td colSpan={2} style={{ fontWeight: 800 }}>Jumlah hak akhir</td>
-                      <td style={{ textAlign: "right", fontWeight: 800 }}>{rupiah(result.total)}</td><td className="no-print" /></tr>
+                      <td style={{ textAlign: "right", fontWeight: 800, whiteSpace: "nowrap" }}>{rupiah(result.total)}</td><td className="no-print" /></tr>
                   <tr><td colSpan={2}>PPh 21 final (PP 68/2009)
                         {result.tax.steps.map((s) => <div key={s.text} style={hint}>{s.text} = {rupiah(s.tax)}</div>)}</td>
-                      <td style={{ textAlign: "right" }}>({rupiah(result.tax.amount)})</td><td className="no-print" /></tr>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>({rupiah(result.tax.amount)})</td><td className="no-print" /></tr>
                   <tr><td colSpan={2} style={{ fontWeight: 800 }}>Diterima</td>
-                      <td style={{ textAlign: "right", fontWeight: 800 }}>{rupiah(result.net)}</td><td className="no-print" /></tr>
+                      <td style={{ textAlign: "right", fontWeight: 800, whiteSpace: "nowrap" }}>{rupiah(result.net)}</td><td className="no-print" /></tr>
                   {result.loan?.deducted && (
                     <>
                       <tr><td colSpan={2}>Pelunasan sisa pinjaman / kasbon (dari slip terakhir)</td>
                           <td style={{ textAlign: "right" }}>({rupiah(result.loan.balance)})</td><td className="no-print" /></tr>
                       <tr><td colSpan={2} style={{ fontWeight: 800 }}>Diterima setelah pelunasan</td>
-                          <td style={{ textAlign: "right", fontWeight: 800 }}>{rupiah(result.paid_out ?? result.net)}</td><td className="no-print" /></tr>
+                          <td style={{ textAlign: "right", fontWeight: 800, whiteSpace: "nowrap" }}>{rupiah(result.paid_out ?? result.net)}</td><td className="no-print" /></tr>
                     </>
                   )}
                 </tbody>

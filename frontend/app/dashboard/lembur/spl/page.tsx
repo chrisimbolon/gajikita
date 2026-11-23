@@ -114,13 +114,19 @@ export default function SplPageView() {
         </div>
       )}
 
-      {data.unmatched.length > 0 && (
+      {/* G17-E1.1: always shown, also when empty */}
+      {(
         <div className="card" style={{ marginBottom: 14 }}>
           <div style={{ fontWeight: 800, color: "var(--midnight)" }}>Lembur tanpa SPL ({data.unmatched.length} hari)</div>
           <div style={hint}>
             {data.mode === "spl" ? "Tidak dibayar sampai ada SPL atau HR memutuskan di Lembur." : "Belum ada SPL; HR masih memutuskan per hari."}
             {" "}Klik &quot;Buat SPL&quot; bila lembur itu memang diperintahkan.
           </div>
+          {data.unmatched.length === 0 ? (
+            <div style={{ marginTop: 8, fontSize: 14, color: "var(--steel)" }}>
+              Tidak ada lembur tanpa SPL di periode ini (lembur yang sudah diputuskan HR atau dari file rekap tidak masuk sini).
+            </div>
+          ) : (
           <table className="data-table" style={{ marginTop: 8 }}>
             <thead><tr><th>Karyawan</th><th>Tanggal</th><th>Masuk–pulang</th><th>Lembur di finger</th><th /></tr></thead>
             <tbody>
@@ -133,6 +139,7 @@ export default function SplPageView() {
               ))}
             </tbody>
           </table>
+          )}
         </div>
       )}
 
