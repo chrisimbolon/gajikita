@@ -120,6 +120,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             "permit_half_days": 0, "overtime_open_days": 0,                          # G17-4, G17-7
             "sick_days": 0,                                                           # G13-3
             "reduced_pay_days": 0, "reduced_pay_pct": 100, "long_leave_days": 0,      # G14-2
+            "spl_days": 0, "overtime_no_spl_days": 0, "spl_over_plan_days": 0, "spl_no_consent_days": 0,   # G17-E1
             "long_halves": 0, "long_days": 0, "long_limit": cfg.long_late_half_day_minutes}   # G13-4
     leave_count = Counter()
     meal_rule = meals.rule_for(emp.meal_rule, cfg.meal_rule)              # G12d: per employee
@@ -167,7 +168,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["present_days"] += 1
         if day is not None and r.needs_review and not day.decision:
             nums["review_days"] += 1
-        if day is not None and not day.decision and r.overtime_proposed_minutes and day.overtime_approved_minutes is None:
+        if day is not None and not day.decision and r.overtime_proposed_minutes and day.overtime_approved_minutes is None \
+                and not r.overtime_spl_minutes and not r.overtime_no_spl:             # G17-E1: SPL mode decides those
             nums["overtime_open_days"] += 1                                            # G17-7
         forgiven = day is not None and day.waive_late and day.decision != "rejected"   # G17-7: "Maafkan" alone
         one_tap = bool(cfg.single_tap_half_day and r.half_day and not forgiven)
@@ -186,13 +188,23 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
         if late or early:
             nums["late_raw"].append([late, early])
         ot = day.overtime_approved_minutes if (day is not None and day.decision == "approved") else 0
+        if not ot and r.overtime_spl_minutes:                     # G17-E1: SPL mode, HR hasn't decided the day
+            from apps.attendance.review_kinds import capped_overtime
+            ot = capped_overtime(r.overtime_spl_minutes, cfg.overtime_daily_cap_minutes if working else None) or 0
+            nums["spl_days"] += 1
+        if r.overtime_no_spl:
+            nums["overtime_no_spl_days"] += 1
+        if ot and r.spl_over_plan:
+            nums["spl_over_plan_days"] += 1
+        if ot and r.spl and r.spl_consent and r.spl_consent != "yes":
+            nums["spl_no_consent_days"] += 1
         if ot:
             nums["overtime"].append({"date": d.isoformat(), "minutes": ot, "rest_day": not working})
         rejected = r.status == Status.REJECTED
         no_taps = rejected or r.status == Status.EXEMPT          # G12i: taps decide nothing on an exempt day
         nums["meal_days"] += meals.meal_count(meal_rule, d, r.first_in, r.last_out, no_taps, ot,
                                              cfg.meal_late_after, tz, midnight_extra=cfg.meal_midnight_extra)
-        if breakfast and (ot or not cfg.breakfast_needs_overtime) \
+        if breakfast and (ot or r.spl or not cfg.breakfast_needs_overtime) \
                 and meals.earns_breakfast(d, r.first_in, no_taps, cfg.breakfast_before, tz):   # G13-4: with an SPL
             nums["breakfast_days"] += 1
         if cells is not None:
@@ -266,6 +278,15 @@ def calculate_line(line, cfg):
     if cfg.pph21_enabled:                                                            # G16-3: off by default
         from .pph21_slip import add_pph21
         add_pph21(slip, line, cfg)
+    if nums.get("overtime_no_spl_days"):                                            # G17-E1
+        slip.warnings.insert(0, f"Lembur {nums['overtime_no_spl_days']} hari tanpa SPL: tidak dibayar. Catat SPL di "
+                                f"Lembur → SPL bila lembur itu memang diperintahkan.")
+    if nums.get("spl_over_plan_days"):
+        slip.notes.append(f"Lembur {nums['spl_over_plan_days']} hari selesai lebih dari 1 jam setelah rencana di SPL "
+                          f"(dibayar sesuai finger).")
+    if nums.get("spl_no_consent_days"):
+        slip.notes.append(f"Lembur {nums['spl_no_consent_days']} hari dengan SPL yang belum mencatat persetujuan "
+                          f"karyawan (UU 27/2026 Pasal 116 ayat 1 huruf a).")
     if nums.get("overtime_open_days"):             # G17-7: late / one tap are facts; only overtime waits for HR
         slip.warnings.insert(0, f"Lembur {nums['overtime_open_days']} hari belum diputuskan HR: belum dibayar "
                                 f"(Perlu Tinjau → Lembur).")

@@ -62,6 +62,19 @@ def overtime_row(mode, flat_hour, changed=""):
     return Row("overtime", OK, "Upah lembur", "Sesuai PP 35/2021", law, article, changed=changed)
 
 
+def overtime_order_row(source, changed=""):
+    """G17-E1: overtime needs a written / digital order and the worker's consent (Pasal 116 ayat 1)."""
+    law = "Perintah lembur tertulis atau digital dan persetujuan karyawan; paling lama 4 jam sehari, 18 jam seminggu"
+    article = "Pasal 116 ayat 1"
+    if source == "spl":
+        return Row("overtime_order", OK, "Perintah lembur",
+                   "SPL dicatat di SeeGaji; lembur dibayar bila ada SPL, jam dari finger", law, article,
+                   link="/dashboard/lembur/spl", link_text="Lembur → SPL", changed=changed)
+    return Row("overtime_order", DIFFERS, "Perintah lembur",
+               "Lembur diputuskan HR per hari; SPL kertas disimpan di luar SeeGaji (boleh dicatat di Lembur → SPL)",
+               law, article, link=SETTINGS_LINK, changed=changed)
+
+
 def collective_row(reduces, changed=""):
     """G14-1: cuti bersama and annual leave."""
     law = "Cuti bersama dari pemerintah tidak mengurangi cuti tahunan"
@@ -241,6 +254,7 @@ def build(org, today):
             due.append(e.full_name)
     return [
         overtime_row(cfg.overtime_mode, cfg.flat_overtime_hour, _last_change(org, "overtime_mode")),
+        overtime_order_row(cfg.overtime_source, _last_change(org, "overtime_source")),               # G17-E1
         separation_row(cfg.separation_pay_months, _last_change(org, "separation_pay_months")),       # G16-4
         annual_leave_row(),
         collective_row(leave.collective_leave_reduces_annual,
