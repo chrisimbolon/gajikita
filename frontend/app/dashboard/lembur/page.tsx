@@ -74,7 +74,8 @@ export default function LemburPage() {
           <h1 className="display" style={{ fontSize: 28, marginBottom: 4, textTransform: "none" }}>Lembur</h1>
           <p style={{ color: "var(--steel)", margin: 0, fontSize: 14 }}>
             Lembur yang sudah disetujui HR, dihitung sesuai PP 35/2021. Usulan lembur menunggu di{" "}
-            <Link href="/dashboard/absensi/tinjau" style={{ color: "var(--rust)" }}>Siap gajian?</Link>.
+            <Link href="/dashboard/absensi/tinjau" style={{ color: "var(--rust)" }}>Siap gajian?</Link>.{" "}
+            <Link href="/dashboard/lembur/spl" style={{ color: "var(--rust)", fontWeight: 700 }}>SPL (Surat Perintah Lembur) →</Link>
           </p>
           {data && (
             <p style={{ margin: "6px 0 0", fontSize: 14, fontWeight: 600 }}>

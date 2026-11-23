@@ -140,6 +140,26 @@ export default function PayrollSettingsPage() {
             </div>
           )}
         </label>
+        {/* G17-E1 */}
+        <label>
+          <div className="label">Persetujuan lembur</div>
+          <select className="input" value={form.overtime_source ?? "decision"} style={{ width: "100%" }}
+                  onChange={(e) => set("overtime_source", e.target.value as "decision" | "spl")}>
+            <option value="decision">Keputusan HR per hari (Lembur / file rekap)</option>
+            <option value="spl">SPL: lembur dibayar bila ada SPL, jam dari finger</option>
+          </select>
+          {form.overtime_source === "spl" ? (
+            <div style={{ fontSize: 12, color: "#2E7D4F", marginTop: 3 }}>
+              <CheckCircle2 size={12} style={{ verticalAlign: "-1px" }} /> Sesuai UU No. 27/2026 Pasal 116 ayat 1 (perintah tertulis /
+              digital). Lembur tanpa SPL tidak dibayar; keputusan HR per hari tetap menang.
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "#2563A8", marginTop: 3 }}>
+              <Info size={12} style={{ verticalAlign: "-1px" }} /> SPL kertas disimpan di luar SeeGaji (UU No. 27/2026 Pasal 116 ayat 1).
+              SPL bisa dicatat di Lembur → SPL.
+            </div>
+          )}
+        </label>
         <label>
           <div className="label">Pembulatan jam lembur</div>
           <select className="input" value={form.overtime_rounding} onChange={(e) => set("overtime_rounding", e.target.value as PayrollSettings["overtime_rounding"])} style={{ width: "100%" }}>
