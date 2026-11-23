@@ -96,6 +96,9 @@ class PayrollSettings(TenantScopedModel):
     # G16-3: PPh 21 on the slip (off until the company is ready; locked payrolls never change)
     pph21_enabled = models.BooleanField(default=False, verbose_name="Hitung PPh 21 di slip")
     # G16-2: which month a payroll belongs to for PPh 21 (and so which payroll settles the year in December)
+    # G17-E1: where overtime approval comes from (UU 27/2026 Pasal 116 ayat 1: a written / digital order)
+    overtime_source = models.CharField(max_length=10, default="decision", verbose_name="Persetujuan lembur",
+                                       choices=[("decision", "Keputusan HR per hari"), ("spl", "SPL")])
     pph21_tax_month = models.CharField(max_length=12, default="paid", verbose_name="Masa pajak ikut",
                                        choices=[("paid", "Bulan dibayar"), ("period_end", "Bulan periode berakhir")])
     # G16-4: hak akhir (UU 27/2026 Pasal 233 and 250)
