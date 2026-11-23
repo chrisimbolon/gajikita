@@ -13,6 +13,7 @@ import { MAIN_MACHINE_NAME, Machine, machineApi } from "@/lib/api/machines";   /
 import ExemptionCard from "@/components/ExemptionCard";                         // G12i
 import { FileSpreadsheet, KeyRound, Loader2, Plus, Save, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";                                                       // G16-4
 
 type Form = Omit<EmployeeInput, "end_date" | "probation_end_date"> & { end_date: string; probation_end_date: string };
 // G17-8.1: someone with a Tanggal keluar in the past has left, even while the status still says Aktif
@@ -455,6 +456,19 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
       </button>
 
       {employee && <LoginBox employee={employee} onSaved={onSaved} />}
+      {employee && (                                                                 // G16-4
+        <div style={{ marginTop: 22, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Hak akhir</div>
+          <div style={{ fontSize: 13, color: "var(--steel)", marginBottom: 10 }}>
+            Pesangon, uang penghargaan masa kerja, uang penggantian hak, uang pisah atau kompensasi PKWT menurut
+            UU No. 27/2026, dengan PPh 21 final.
+          </div>
+          <Link href={`/dashboard/karyawan/hak-akhir?id=${employee.id}`} className="btn-ghost"
+                style={{ display: "flex", justifyContent: "center", width: "100%" }}>
+            Hitung hak akhir
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
