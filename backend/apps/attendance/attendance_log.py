@@ -106,6 +106,8 @@ def late_days(trace, rates):
                     basis, label = "hr_time", "Jam dikoreksi HR"
                 else:
                     basis, label = "taps", "Dari tap"
+                if t.get("night_excused") and t.get("night_note"):             # G20-2.1: late from the night start
+                    label = f"{label} · dihitung dari jam masuk malam ({t['night_note']})"
             elif t["forgiven"]:
                 basis, label = "forgiven", "Dimaafkan HR"
             elif t["leave_label"]:
