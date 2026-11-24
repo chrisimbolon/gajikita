@@ -151,14 +151,20 @@ def plan(org, punches, machine=MAIN):
     people = []
     for emp, person in found.items():
         shift = emp.default_shift
-        sessions = make_sessions(person["times"], shift.start_time if shift else None)    # G12c
+        sessions = make_sessions(person["times"], shift.start_time if shift else None,
+                                 shift.working_days if shift else None)                    # G12c, G20-2.2
         events = []
         for s in sessions:
-            events.append((s, "in", s.clock_in))
+            events.append((s, "out" if s.out_only else "in", s.clock_in))                 # G20-2.2
             if s.clock_out is not None:
                 events.append((s, "out", s.clock_out))
         ids = [tap_id(emp, at, kind) for _, kind, at in events]
-        already = set(ClockEvent.objects.filter(employee=emp, client_id__in=ids).values_list("client_id", flat=True))
+        # G20-2.2: a tap stored by an earlier import under the other kind (02:00 read as "in") is the same tap:
+        # it counts as already there, so re-importing a file never stores one tap twice
+        other = {tap_id(emp, at, "out" if kind == "in" else "in"): tap_id(emp, at, kind) for _, kind, at in events}
+        stored = set(ClockEvent.objects.filter(employee=emp, client_id__in=ids + list(other))
+                     .values_list("client_id", flat=True))
+        already = {c for c in ids if c in stored} | {other[c] for c in stored if c in other}
         dates = {s.work_date for s in sessions}
         locked = set(AttendanceDay.objects.filter(employee=emp, date__in=dates, is_locked=True)
                      .values_list("date", flat=True))
@@ -179,7 +185,8 @@ def plan(org, punches, machine=MAIN):
             "days": len(dates), "new_days": len({s.work_date for s in new_sessions}),
             "already_days": len(dates - locked - {s.work_date for s in new_sessions}),
             "locked_days": len(locked),
-            "no_clock_out": sum(1 for s in sessions if s.clock_out is None),
+            "no_clock_out": sum(1 for s in sessions if s.clock_out is None and not s.out_only),
+            "night_outs": sum(1 for s in sessions if s.out_only),                                  # G20-2.2
         })
     people.sort(key=lambda x: (x["name_check"] != "bad", x["sort"], x["employee"].full_name))
 
