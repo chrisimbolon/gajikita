@@ -8,7 +8,7 @@
 // =============================================================================
 import { DayDetail, DayRow, STATUS_STYLE, attendanceApi, minutesText } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
-import { dateTimeWIB, rupiah } from "@/lib/format";
+import { dateTimeWIB, dmy, rupiah } from "@/lib/format";
 import { Check, Clock, ExternalLink, Fingerprint, Loader2, RotateCcw, X } from "lucide-react";
 import { HrNoteBox } from "@/components/HrNote";
 import { useEffect, useState } from "react";
@@ -104,7 +104,7 @@ export default function DayPanel({ row, onChanged, onClose }: Props) {
         <div>
           <div style={{ fontWeight: 700, fontSize: 17 }}>{view.employee.full_name}</div>
           <div className="mono" style={{ fontSize: 12.5, color: "var(--steel)" }}>
-            {view.employee.employee_no} · {view.date}{detail?.shift ? ` · ${detail.shift.name} ${detail.shift.start}-${detail.shift.end}` : ""}
+            {view.employee.employee_no} · {dmy(view.date)}{detail?.shift ? ` · ${detail.shift.name} ${detail.shift.start}-${detail.shift.end}` : ""}
           </div>
         </div>
         <button onClick={onClose} aria-label="Tutup" style={{ background: "none", border: "none", color: "var(--steel)" }}><X size={18} /></button>
