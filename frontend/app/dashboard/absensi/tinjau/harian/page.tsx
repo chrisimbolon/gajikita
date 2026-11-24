@@ -10,6 +10,7 @@ import DayPanel, { StatusPill } from "@/components/DayPanel";
 import { HrNoteLine } from "@/components/HrNote";
 import { DayRow, attendanceApi } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
+import { dmy } from "@/lib/format";
 import { CheckCircle2, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
@@ -88,7 +89,7 @@ export default function TinjauPage() {
                 {rows.map((r) => (
                   <tr key={`${r.employee.id}-${r.date}`} onClick={() => setOpen(r)} style={{ cursor: "pointer",
                       background: open && open.employee.id === r.employee.id && open.date === r.date ? "var(--paper)" : undefined }}>
-                    <td className="mono" style={{ fontSize: 13, whiteSpace: "nowrap" }}>{r.date}</td>
+                    <td className="mono" style={{ fontSize: 13, whiteSpace: "nowrap" }}>{dmy(r.date)}</td>
                     <td><div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{r.employee.full_name}</div>
                       <div className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{r.employee.employee_no}</div></td>
                     <td><StatusPill status={r.status} label={r.status_label} /></td>
