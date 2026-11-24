@@ -40,6 +40,7 @@ START_EARLY = timedelta(hours=2)         # a clock-in can come this long before 
 START_LATE = timedelta(hours=5)          # ... or this long after it (e.g. Pagi 08:00: 06:00 - 13:00)
 NEW_DAY_AFTER = timedelta(hours=6)       # a tap in that window opens a new day only this long after the last clock-in
 MAX_SHIFT_SESSION = timedelta(hours=24)  # any other tap closes the open day, up to 24 h after its clock-in
+NIGHT_OUT_BEFORE = time(5, 0)            # G20-2.2: a lone tap before this, after a working day with no taps, is its clock-out
 
 
 class FileError(Exception):
@@ -61,6 +62,7 @@ class Session:
     clock_out: datetime = None
     taps: int = 1
     ignored: list = field(default_factory=list)   # taps between in and out (kept for the record)
+    out_only: bool = False                        # G20-2.2: clock_in holds the day's only tap, a CLOCK-OUT
 
 
 def clean_id(value):
@@ -427,9 +429,15 @@ def _start_day(t, shift_start):
     return None
 
 
-def make_sessions(punch_times, shift_start=None):
+def make_sessions(punch_times, shift_start=None, working_days=None):
     """
     One person's tap times (any order) -> sessions. First tap = in, last = out.
+
+    G20-2.2 (24 Nov 2026), with a shift: a tap between 00:00 and 05:00 that closes no open day, is near no shift
+    start, and follows a WORKING day (working_days, e.g. "123456"; None = every day) with no taps at all, is that
+    day's clock-out (an out-only session, work_date = the day before, which must lie inside the file: an earlier
+    day has taps). DKCB, Prayuda 14 Okt: the power was off
+    all day, overtime until 02:00; the 02:00 tap was read as a second "Masuk" on 15 Okt (02:00 -> 21:00, 19 h).
 
     With the employee's shift start (G12c) the taps are paired around the shift instead of by
     time alone: a tap near the start (06:00 - 13:00 for a 08:00 shift) opens a new day, any other
@@ -443,7 +451,7 @@ def make_sessions(punch_times, shift_start=None):
             continue                       # a double tap
         taps.append(t)
     if shift_start is not None:
-        return _sessions_around_shift(taps, shift_start)
+        return _sessions_around_shift(taps, shift_start, working_days)
     sessions = []
     for t in taps:
         s = sessions[-1] if sessions else None
@@ -457,21 +465,34 @@ def make_sessions(punch_times, shift_start=None):
     return _drop_short_outs(sessions)
 
 
-def _sessions_around_shift(taps, shift_start):
+def _sessions_around_shift(taps, shift_start, working_days=None):
+    tap_dates = {t.date() for t in taps}
     sessions = []
     for t in taps:
         s = sessions[-1] if sessions else None
         day = _start_day(t, shift_start)
         span = t - s.clock_in if s is not None else None
         opens_new_day = day is not None and span is not None and span >= NEW_DAY_AFTER
-        if s is not None and not opens_new_day and span <= MAX_SHIFT_SESSION:
+        if s is not None and not s.out_only and not opens_new_day and span <= MAX_SHIFT_SESSION:
             if s.clock_out is not None:
                 s.ignored.append(s.clock_out)
             s.clock_out = t
             s.taps += 1
+        elif day is None and t.time() < NIGHT_OUT_BEFORE and _quiet_working_day(t.date() - timedelta(days=1),
+                                                                                  tap_dates, working_days):
+            sessions.append(Session(work_date=t.date() - timedelta(days=1), clock_in=t, out_only=True))   # G20-2.2
         else:
             sessions.append(Session(work_date=day or t.date(), clock_in=t))
     return _drop_short_outs(sessions)
+
+
+def _quiet_working_day(d, tap_dates, working_days):
+    """
+    G20-2.2: a working day without a single tap (machine off, forgot both taps), INSIDE the file: an earlier
+    day has taps. A file that starts on the morning of the 02:00 tap says nothing about the day before.
+    """
+    return (d not in tap_dates and bool(tap_dates) and d > min(tap_dates)
+            and (working_days is None or str(d.isoweekday()) in str(working_days)))
 
 
 def _drop_short_outs(sessions):
