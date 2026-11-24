@@ -28,13 +28,18 @@ def earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_a
     late_after        a time, e.g. 19:00: 'pulang malam' means the clock-out is AFTER it, to the minute
                       (G12h, DKCB 'OT melebihi pukul 19.00': 19:00 and 19:00:45 are not, 19:01 is;
                       a clock-out after midnight counts too, it belongs to the same working day)
+
+    G20-2.1 (24 Nov 2026): for 'pulang malam' the CLOCK-OUT is the evidence, so a day with only a late clock-out
+    (the clock-in tap missing, G17-1) earns it too: Syaiful 26 Sep, out 21:50, and Amsar 14 Okt, out 23:26, were
+    paid in DKCB's book and not in SeeGaji. The missing clock-in is still the ½-day rule, as before. A per-present-
+    day meal keeps needing the clock-in (unchanged).
     """
     if rule == OVERTIME_DAY:
         return bool(overtime_minutes)
-    if rejected or first_in is None:
+    if rejected:
         return False
     if rule == PRESENT_DAY:
-        return True
+        return first_in is not None
     if rule == LATE_OUT:
         return last_out is not None and _minute(last_out, tz) > datetime.combine(day, late_after, tzinfo=tz)
     return False

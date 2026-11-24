@@ -1,4 +1,5 @@
 """
+G20-2.1: a late day counted from the night rule's start says so (NightLabelTests).
 G20-2 (24 Nov 2026) — (1) the G12e night rule's excused days are visible (DayResult.night_excused_minutes, the
 Terlambat tab lists them with Rp 0); (2) "Siap gajian?" step "Tidak cocok": a tap on a leave day, uang makan on a
 leave day, overtime on a leave / absent day, ½ day cut with overtime paid; "Sudah benar" (audited). Made-up people,
@@ -24,6 +25,21 @@ class NightRuleVisibleTests(SimpleTestCase):
         self.assertEqual((d24.late_minutes, d24.night_excused_minutes), (0, 19))      # 08:19
         self.assertIn("masuk jam 10:00", d22.night_note)
         self.assertEqual((d20.late_minutes, d20.night_excused_minutes), (19, 120))   # 10:19: late from 10:00 only
+
+
+class NightLabelTests(SimpleTestCase):
+    def test_late_counted_from_the_night_start_says_so(self):                       # G20-2.1
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        from apps.attendance.attendance_log import Rates, late_days
+        wib = ZoneInfo("Asia/Jakarta")
+        t = {"date": date(2026, 10, 20), "day_id": None, "first_in": datetime(2026, 10, 20, 10, 19, tzinfo=wib),
+             "last_out": datetime(2026, 10, 20, 17, 30, tzinfo=wib), "late_raw": 19, "late_tag": True, "late": 19,
+             "late_half": False, "hr_fixed": False, "forgiven": False, "leave_label": "", "half_leave": "",
+             "inside_grace": 0, "night_excused": 120, "night_note": "Lembur malam sampai 00:30: masuk jam 10:00"}
+        row = late_days([t], Rates(tolerance=5))[0]
+        self.assertEqual((row["basis"], row["charged"]), ("taps", 14))
+        self.assertEqual(row["label"], "Dari tap · dihitung dari jam masuk malam (Lembur malam sampai 00:30: masuk jam 10:00)")
 
 
 class ConflictTests(base.PayRunTests):

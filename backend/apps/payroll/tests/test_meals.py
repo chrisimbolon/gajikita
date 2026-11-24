@@ -45,6 +45,9 @@ class MealRuleTests(SimpleTestCase):
         self.assertTrue(meal(LATE_OUT, last_out=at(2, 1, date(2026, 10, 11))))   # pump day 08:11 -> 02:01
         self.assertFalse(meal(LATE_OUT, last_out=None))
         self.assertFalse(meal(LATE_OUT, last_out=at(20, 32), rejected=True))
+        self.assertTrue(meal(LATE_OUT, first_in=None, last_out=at(21, 50)))       # G20-2.1: only the clock-out
+        self.assertFalse(meal(LATE_OUT, first_in=None, last_out=at(17, 30)))
+        self.assertFalse(meal(PRESENT_DAY, first_in=None, last_out=at(17, 5)))   # per present day: needs the clock-in
 
     def test_none(self):
         self.assertFalse(meal(NONE, last_out=at(22, 0), ot=300))
