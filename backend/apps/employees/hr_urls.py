@@ -34,6 +34,7 @@ from apps.attendance.rekap import RekapExportView, RekapView
 from apps.attendance.review_bulk import BulkDecideView, ReviewPeriodView
 from apps.attendance.review_overtime import BulkUndoView                                   # G17-6
 from apps.attendance.checklist import ChecklistDismissView, ChecklistView                  # G17-7
+from apps.attendance.attendance_log import AttendanceLogView                                # G20-1
 from apps.attendance.overtime_import_views import OvertimeImportView                       # G17-8
 
 urlpatterns = [
@@ -73,6 +74,7 @@ urlpatterns = [
     path("attendance/review/bulk/",   BulkDecideView.as_view(),   name="hr-att-review-bulk"),
     path("attendance/review/undo/",   BulkUndoView.as_view(),     name="hr-att-review-undo"),     # G17-6
     path("attendance/checklist/",     ChecklistView.as_view(),    name="hr-att-checklist"),       # G17-7
+    path("attendance/log/",           AttendanceLogView.as_view(), name="hr-att-log"),             # G20-1
     path("attendance/overtime/import/", OvertimeImportView.as_view(), name="hr-att-overtime-import"),   # G17-8
     path("attendance/checklist/dismiss/", ChecklistDismissView.as_view(), name="hr-att-checklist-dismiss"),
     path("attendance/rekap/export/", RekapExportView.as_view(), name="hr-att-rekap-export"),
