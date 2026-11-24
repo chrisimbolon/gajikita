@@ -22,6 +22,12 @@ export function rupiah(value: string | number): string {
   return "Rp " + new Intl.NumberFormat("id-ID", { maximumFractionDigits: 0 }).format(n);
 }
 
+/** "2026-10-14" -> "14-10-2026" (G20-2.3: how HR writes a date). Anything else comes back as it is. */
+export function dmy(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso || "");
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : iso;
+}
+
 /** "08:00:00" -> "08:00" */
 export function hhmm(time: string): string {
   return (time || "").slice(0, 5);
