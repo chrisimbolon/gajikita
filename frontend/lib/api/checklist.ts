@@ -20,6 +20,12 @@ export interface CkNoTrack {                                                    
   last_tap: string | null; missing_after: number;
 }
 
+export interface CkConflict {                                                              // G20-2
+  date: string; day_id: string | null; kind: "taps_on_leave" | "meal_on_leave" | "overtime_on_leave" | "half_and_overtime";
+  kind_label: string; text: string;
+}
+export interface CkConflictPerson { employee: CkEmployee; items: CkConflict[] }
+
 export interface Checklist {
   month: string; label: string; start: string; end: string; prev: string; next: string;
   rules: { late_fine_per_minute: string; late_tolerance_minutes: number; fine_set: boolean; single_tap_half_day: boolean; overtime_cap_minutes: number | null;
@@ -31,6 +37,7 @@ export interface Checklist {
   overtime: { open_days: number; people: CkOvertimePerson[]; proposed: number; decided_days: number };
   missing: { days: number; cut_days: number; rupiah: number; people: CkMissingPerson[] };
   late: { count: number; minutes: number; half_days: number; rupiah: number; people: CkLatePerson[] };
+  conflicts: { days: number; people: CkConflictPerson[] };                                  // G20-2
   run: { id: string; name: string; locked: boolean } | null;
 }
 
@@ -44,5 +51,8 @@ export const checklistApi = {
   },
   async keepTracking(employee: string): Promise<void> {                                     // G17-7.1
     await api.post("/api/hr/attendance/checklist/dismiss/", { employee });
+  },
+  async conflictOk(employee: string, date: string, kind: string): Promise<void> {           // G20-2: "Sudah benar"
+    await api.post("/api/hr/attendance/checklist/dismiss/", { conflict: { employee, date, kind } });
   },
 };

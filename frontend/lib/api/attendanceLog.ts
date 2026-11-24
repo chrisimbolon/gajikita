@@ -23,6 +23,7 @@ export interface LogDay {
 export interface LatePerson {
   employee: LogEmployee; days: number; minutes: number; charged_minutes: number; half_days: number;
   forgiven_days: number; grace_days: number; grace_minutes: number; rupiah: string;
+  night_days: number; night_minutes: number;                                   // G20-2: excused by the night rule
   bonus: LogBonus | null; slip: LogSlip; items: LogDay[];
 }
 export interface EarlyPerson {
@@ -50,7 +51,8 @@ export interface AttendanceLog {
   run: { id: string; name: string; locked: boolean; calculated_at: string | null } | null;
   late: { summary: Slips & { people: number; days: number; minutes: number; charged_minutes: number; half_days: number;
                              forgiven_days: number; rupiah: string; bonus_people: number; bonus_rupiah: string;
-                             grace_people: number; grace_days: number }; people: LatePerson[] };
+                             grace_people: number; grace_days: number; night_people: number; night_days: number };
+          people: LatePerson[] };
   early: { summary: Slips & { people: number; days: number; minutes: number; charged_minutes: number; half_days: number;
                               forgiven_days: number; rupiah: string; bonus_people: number; bonus_rupiah: string };
            people: EarlyPerson[] };
