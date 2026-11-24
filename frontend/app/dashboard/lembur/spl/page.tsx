@@ -236,7 +236,7 @@ function SplLog({ data }: { data: SplPage }) {
         <table className="data-table">
           <thead><tr><th>{title.replace("Per ", "")}</th><th>SPL</th><th>Orang-hari</th><th>Jam</th></tr></thead>
           <tbody>{rows.map((r) => (
-            <tr key={r.name}><td>{r.name}</td><td>{r.orders}</td><td>{r.person_days}</td><td>{hours(r.minutes)}</td></tr>
+            <tr key={r.name}><td>{r.name}</td><td>{r.orders}</td><td>{r.person_days}</td><td style={{ whiteSpace: "nowrap" }}>{hours(r.minutes)}</td></tr>
           ))}</tbody>
         </table>
       )}
@@ -265,7 +265,7 @@ function SplLog({ data }: { data: SplPage }) {
           <tbody>{s.by_person.map((p) => (
             <tr key={p.employee.id}>
               <td>{p.employee.full_name}<div style={hint}>{p.employee.employee_no}</div></td>
-              <td>{p.days}</td><td>{hours(p.minutes)}</td>
+              <td>{p.days}</td><td style={{ whiteSpace: "nowrap" }}>{hours(p.minutes)}</td>
               <td style={{ fontSize: 13 }}>
                 {p.long_days.length === 0 && p.heavy_weeks.length === 0 ? <span style={{ color: "#2E7D4F" }}>sesuai</span> : (
                   <span style={{ color: "#2563A8" }}>
