@@ -106,10 +106,12 @@ def _leaves_by_employee(org, start, end, employee_ids):
     return out
 
 
-def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=None):
+def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=None, trace=None):
     """
     The month's numbers for one employee. With cells=[], also one Rekap Absensi cell per day (G10).
     ctx: review.night_context() for the whole screen (G12e); None = load it for this one person.
+    G20-1: with trace=[], also one dict per day of employment saying what this function decided for it (late,
+    early, ½ days, absent, meals...), so Log Kehadiran explains the payroll with the payroll's own decisions.
     """
     ctx = ctx or night_context(emp.organization_id, [emp.id], start, end)
     shift = emp.default_shift
@@ -148,6 +150,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["disrupted_reason"] = nums["disrupted_reason"] or r.event
         if working:
             nums["working_days"] += 1
+        absent = r.status == Status.ABSENT or (r.status == Status.REJECTED and working)     # G20-1: named
         if r.status == Status.LEAVE:
             leave_count[label] += 1
             if leave and leave[0] == SICK:                                          # G13-3
@@ -162,7 +165,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["present_days"] += 1
             nums["exempt_days"] += 1
             nums["exempt_reason"] = nums["exempt_reason"] or r.note.replace("Tidak wajib absen: ", "", 1)
-        elif r.status == Status.ABSENT or (r.status == Status.REJECTED and working):
+        elif absent:
             nums["absent_days"] += 1
         elif r.first_in or r.last_out or r.disrupted or r.half_leave:   # G17-1 lone clock-out; G17-2; G17-4
             nums["present_days"] += 1
@@ -180,6 +183,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["permit_half_days"] += 1
         late = r.late_minutes if Status.LATE in r.tags else 0
         early = r.early_minutes if Status.EARLY_OUT in r.tags else 0
+        late_in, early_in = late, early                                                          # G20-1
         late, early, long_halves = engine.long_late_split(late, early, cfg.long_late_half_day_minutes,
                                                           room=2 - int(one_tap) - int(permit))       # G13-4
         if long_halves:
@@ -202,13 +206,32 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["overtime"].append({"date": d.isoformat(), "minutes": ot, "rest_day": not working})
         rejected = r.status == Status.REJECTED
         no_taps = rejected or r.status == Status.EXEMPT          # G12i: taps decide nothing on an exempt day
-        nums["meal_days"] += meals.meal_count(meal_rule, d, r.first_in, r.last_out, no_taps, ot,
-                                             cfg.meal_late_after, tz, midnight_extra=cfg.meal_midnight_extra)
-        if breakfast and (ot or r.spl or not cfg.breakfast_needs_overtime) \
-                and meals.earns_breakfast(d, r.first_in, no_taps, cfg.breakfast_before, tz):   # G13-4: with an SPL
+        meal = meals.meal_count(meal_rule, d, r.first_in, r.last_out, no_taps, ot,
+                                cfg.meal_late_after, tz, midnight_extra=cfg.meal_midnight_extra)
+        nums["meal_days"] += meal
+        got_breakfast = bool(breakfast and (ot or r.spl or not cfg.breakfast_needs_overtime)
+                             and meals.earns_breakfast(d, r.first_in, no_taps, cfg.breakfast_before, tz))   # G13-4
+        if got_breakfast:
             nums["breakfast_days"] += 1
         if cells is not None:
             cells.append(day_cell(d, r, day, leave, ot))
+        if trace is not None:                                                             # G20-1
+            trace.append({
+                "date": d, "day_id": str(day.id) if day is not None else None, "working": working,
+                "status": r.status, "first_in": r.first_in, "last_out": r.last_out, "event": r.event,
+                "late_raw": r.late_minutes or 0, "early_raw": r.early_minutes or 0,
+                "inside_grace": r.inside_grace_minutes or 0,
+                "late_tag": Status.LATE in r.tags, "early_tag": Status.EARLY_OUT in r.tags,
+                "late": late, "early": early, "late_half": bool(late_in and not late),
+                "early_half": bool(early_in and not early),
+                "one_tap": one_tap, "permit": permit, "half_leave": r.half_leave, "forgiven": forgiven,
+                "hr_fixed": day is not None and (day.hr_in is not None or day.hr_out is not None),
+                "decision": day.decision if day is not None else "", "rejected": rejected,
+                "leave_kind": leave[0] if leave else "", "leave_label": label,
+                "absent": absent, "unpaid_leave": bool(r.status == Status.LEAVE and leave and leave[0] == UNPAID),
+                "exempt": r.status == Status.EXEMPT, "meal": meal, "breakfast": got_breakfast, "overtime": ot,
+                "meal_rule": meal_rule,
+            })
     nums["leave"] = dict(leave_count)
     nums["late_minutes"] = engine.chargeable_late_minutes(nums["late_raw"], cfg.late_tolerance_minutes)
     half = nums["half_days"] + nums["permit_half_days"] + nums["long_halves"]        # G17-1, G17-4, G13-4
