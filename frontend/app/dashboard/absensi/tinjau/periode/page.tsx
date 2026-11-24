@@ -16,6 +16,7 @@ import { HrNoteLine } from "@/components/HrNote";
 import { BulkDecideBody, BulkDecideResult, BulkTrimmed, DayRow, ReviewPeriodData, ReviewPeriodRow, attendanceApi, minutesText } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
 import { hoursText, parseHours } from "@/lib/overtimeInput";
+import { dmy } from "@/lib/format";
 import { Ban, Briefcase, Check, CheckCircle2, ChevronLeft, ChevronRight, Loader2, RotateCcw, Undo2, Wallet, X } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -374,7 +375,7 @@ export default function TinjauPeriodePage() {
                         <td onClick={(e) => e.stopPropagation()}>
                           <input type="checkbox" aria-label={`Pilih ${r.employee.full_name} ${r.date}`} checked={allMatching || picked.has(id)} onChange={() => toggle(id)} />
                         </td>
-                        <td className="mono" style={{ fontSize: 13, whiteSpace: "nowrap" }} onClick={() => setOpen(r)}>{r.date}</td>
+                        <td className="mono" style={{ fontSize: 13, whiteSpace: "nowrap" }} onClick={() => setOpen(r)}>{dmy(r.date)}</td>
                         <td onClick={() => setOpen(r)}><div style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{r.employee.full_name}</div>
                           <div className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{r.employee.employee_no}</div></td>
                         <td onClick={() => setOpen(r)}>
