@@ -18,6 +18,10 @@ Tabs (G20-1): late, early, absent (UL / mangkir), meal. Half days and night shif
 fines: minus the payroll tolerance, without forgiven / leave / ½-day-permit days, a long one as ½ day (G13-4).
 
 GET /api/hr/attendance/log/?month=YYYY-MM
+
+G20-2 (24 Nov 2026): (1) days the G12e night rule excused ("Lembur malam sampai 00:06: masuk jam 10:00") are listed
+in Terlambat with Rp 0, so a rule that moved money is never invisible (Ganda 22 and 24 Okt, question A1);
+(2) day_conflicts(): days where two things can't both be true, for "Siap gajian?" (checklist step "Tidak cocok").
 """
 from dataclasses import dataclass
 from decimal import Decimal
@@ -113,6 +117,9 @@ def late_days(trace, rates):
             money = charged * rates.fine + (rates.half_day if half else ZERO)
             out.append({**base, "minutes": t["late_raw"], "charged": charged, "half": half, "amount": money,
                         "basis": basis, "label": label})
+        elif t.get("night_excused", 0) > 0 and not t["leave_label"]:                          # G20-2
+            out.append({**base, "minutes": t["night_excused"], "charged": 0, "half": False, "amount": ZERO,
+                        "basis": "night", "label": t["night_note"] or "Aturan pulang malam"})
         elif t["inside_grace"] > 0 and not t["leave_label"]:
             out.append({**base, "minutes": t["inside_grace"], "charged": 0, "half": False, "amount": ZERO,
                         "basis": "grace", "label": "Dalam toleransi shift"})
@@ -191,7 +198,7 @@ def meal_days(trace, rates, late_after=None, breakfast_before=None):
                     parts.append("lewat tengah malam (2×)")
             if t["breakfast"]:
                 parts.append(f"Sarapan: masuk {hhmm(t['first_in'])} (sebelum {before})")
-            warn = t["status"] == "leave"
+            warn = bool(t["leave_label"]) and t["working"]                     # G20-2: a leave day with taps
             if warn:
                 parts.append("di hari cuti")
             amount = t["meal"] * rates.meal + (rates.breakfast if t["breakfast"] else ZERO)
@@ -264,13 +271,15 @@ def person_tabs(emp, nums, trace, rates, cfg, line=None):
 
     rows = late_days(trace, rates)
     if rows:
-        past = [r for r in rows if r["basis"] != "grace"]
+        past = [r for r in rows if r["basis"] not in ("grace", "night")]
         grace = [r for r in rows if r["basis"] == "grace"]
+        night = [r for r in rows if r["basis"] == "night"]                                        # G20-2
         out["late"] = {
             "employee": who, "days": len(past), "minutes": sum(r["minutes"] for r in past),
             "charged_minutes": sum(r["charged"] for r in past), "half_days": sum(1 for r in past if r["half"]),
             "forgiven_days": sum(1 for r in past if r["basis"] == "forgiven"),
             "grace_days": len(grace), "grace_minutes": sum(r["minutes"] for r in grace),
+            "night_days": len(night), "night_minutes": sum(r["minutes"] for r in night),
             "rupiah": rupiah(sum((r["amount"] for r in past), ZERO)),
             "bonus": bonus_lost(nums, rates, "late") if past else None,
             "slip": slip_state(nums, line, "late"), "items": _money(rows)}
@@ -346,7 +355,9 @@ def summarize(tabs):
                              "rupiah": str(sum(Decimal(p["rupiah"]) for p in past)),
                              "bonus_people": bl, "bonus_rupiah": br,
                              "grace_people": sum(1 for p in late if p["grace_days"]),
-                             "grace_days": sum(p["grace_days"] for p in late), **_slips(late)},
+                             "grace_days": sum(p["grace_days"] for p in late),
+                             "night_people": sum(1 for p in late if p["night_days"]),
+                             "night_days": sum(p["night_days"] for p in late), **_slips(late)},
                  "people": late},
         "early": {"summary": {"people": len(early), "days": sum(p["days"] for p in early),
                               "minutes": sum(p["minutes"] for p in early),
@@ -371,31 +382,92 @@ def summarize(tabs):
     }
 
 
+# ── G20-2: days where two things can't both be true ──
+
+CONFLICT_KINDS = {
+    "taps_on_leave": "Ada tap di hari cuti",
+    "meal_on_leave": "Uang makan di hari cuti",
+    "overtime_on_leave": "Lembur di hari cuti / tidak masuk",
+    "half_and_overtime": "Dipotong ½ hari tapi lembur dibayar",
+}
+
+
+def day_conflicts(t, long_limit=None):
+    """One traced day -> [(kind, text)]. Pure. Soft: HR fixes the data, or marks it "Sudah benar"."""
+    from apps.payroll.engine import minutes_text
+    out = []
+    # a leave day with taps is evaluated as a worked day ("Masuk padahal cuti"): paid as present, meal and overtime
+    # included, and the leave doesn't count. One of the two is wrong, or HR meant it ("Sudah benar").
+    on_leave = bool(t["leave_label"]) and t["working"] and t["status"] != "exempt"
+    leave = t["leave_label"] or "cuti"
+    worked = on_leave and t["status"] not in ("leave", "rejected") and bool(t["first_in"] or t["last_out"])
+    if worked:
+        out.append(("taps_on_leave", f"Ada tap ({hhmm(t['first_in']) or '-'}–{hhmm(t['last_out']) or '-'}) padahal "
+                                     f"{leave}: dihitung masuk kerja"))
+    if worked and (t["meal"] or t["breakfast"]):
+        out.append(("meal_on_leave", f"Uang makan dibayar padahal {leave}"))
+    if (on_leave or t["absent"]) and t["overtime"]:
+        where = leave if on_leave else "tidak masuk"
+        out.append(("overtime_on_leave", f"Lembur {minutes_text(t['overtime'])} dibayar padahal {where}"))
+    why = [w for flag, w in ((t["one_tap"], "tap sekali"), (t["permit"], "izin ½ hari tanpa upah"),
+                             (t["late_half"], f"terlambat lebih dari {minutes_text(long_limit or 0)}"),
+                             (t["early_half"], f"pulang cepat lebih dari {minutes_text(long_limit or 0)}")) if flag]
+    if why and t["overtime"]:
+        out.append(("half_and_overtime",
+                    f"Dipotong ½ hari ({', '.join(why)}), tapi lembur {minutes_text(t['overtime'])} dibayar"))
+    return out
+
+
+def person_conflicts(emp, trace, long_limit=None, dismissed=frozenset()):
+    """-> {"employee", "items": [...]} or None. Locked days and the ones HR marked "Sudah benar" are left out."""
+    items = []
+    for t in trace:
+        if t.get("locked"):
+            continue
+        for kind, text in day_conflicts(t, long_limit):
+            if (str(emp.id), t["date"].isoformat(), kind) in dismissed:
+                continue
+            items.append({"date": t["date"].isoformat(), "day_id": t["day_id"], "kind": kind,
+                          "kind_label": CONFLICT_KINDS[kind], "text": text})
+    return {"employee": _emp(emp), "items": items} if items else None
+
+
 # ── the database part ──
 
-def build(org, month=None, now=None):
-    from apps.payroll.models import PayrollSettings, PayRun
+def period_traces(org, start, end, now):
+    """[(employee, nums, trace)] for the period, from the payroll's own collect_numbers. Also cfg."""
+    from apps.payroll.models import PayrollSettings
     from apps.payroll.payrun import _days_by_employee, _leaves_by_employee, collect_numbers, employees_in_period
     from .review import night_context
-    from .review_bulk import _period
 
-    info, start, end = _period(org, month)
-    now = now or timezone.now()
     cfg = PayrollSettings.for_org(org)
     emps = list(employees_in_period(org, start, end))
     ids = [e.id for e in emps]
     days = _days_by_employee(org, start, end, ids)
     leaves = _leaves_by_employee(org, start, end, ids)
     ctx = night_context(org.id, ids, start, end)
+    out = []
+    for emp in emps:
+        trace = []
+        nums = collect_numbers(emp, start, end, cfg, days.get(emp.id, {}), leaves.get(emp.id, {}), now,
+                               ctx=ctx, trace=trace)
+        out.append((emp, nums, trace))
+    return cfg, out
+
+
+def build(org, month=None, now=None):
+    from apps.payroll.models import PayRun
+    from .review_bulk import _period
+
+    info, start, end = _period(org, month)
+    now = now or timezone.now()
+    cfg, people = period_traces(org, start, end, now)
     run = PayRun.objects.filter(organization=org, period_start=start).first()
     lines = {l.employee_id: l for l in run.lines.all()} if run else {}
 
     tabs = {"late": [], "early": [], "absent": [], "meal": []}
     shifts = {}
-    for emp in emps:
-        trace = []
-        nums = collect_numbers(emp, start, end, cfg, days.get(emp.id, {}), leaves.get(emp.id, {}), now,
-                               ctx=ctx, trace=trace)
+    for emp, nums, trace in people:
         if emp.default_shift_id:
             shifts[emp.default_shift_id] = emp.default_shift
         for tab, entry in person_tabs(emp, nums, trace, rates_for(emp, cfg), cfg, lines.get(emp.id)).items():
