@@ -10,11 +10,13 @@
 // power-cut pattern; a missing late fine or ½-day rule says so and links to Pengaturan payroll.
 // G17-7.2: someone who stopped tapping is asked "Sudah keluar?" (fills Tanggal keluar); days after the last tap
 // in the data are "not imported yet"; Kejadian from a suggestion confirm their own length.
+// G20-2: step "Tidak cocok": days where two things can't both be true (a tap or uang makan on a leave day,
+// overtime on a leave / absent day, ½ day cut with overtime paid). Fix the data, or "Sudah benar".
 // =============================================================================
 import FingerprintImport from "@/components/FingerprintImport";
 import OvertimeImport from "@/components/OvertimeImport";                       // G17-8
 import { attendanceApi, BulkDecideResult, minutesText } from "@/lib/api/attendance";
-import { Checklist, CkLatePerson, CkMissingPerson, CkOvertimePerson, checklistApi } from "@/lib/api/checklist";
+import { Checklist, CkConflictPerson, CkLatePerson, CkMissingPerson, CkOvertimePerson, checklistApi } from "@/lib/api/checklist";
 import { eventApi } from "@/lib/api/events";
 import { exemptionApi } from "@/lib/api/exemptions";
 import { hrApi, readErrors } from "@/lib/api/hr";
@@ -244,6 +246,15 @@ export default function SiapGajianPage() {
     } catch (err) { setError(readErrors(err).summary); }
     finally { setBusy(false); }
   };
+  const conflictOk = async (employeeId: string, name: string, date: string, kind: string) => {   // G20-2
+    setBusy(true); setError(null);
+    try {
+      await checklistApi.conflictOk(employeeId, date, kind);
+      setDone({ text: `${name} ${dayText(date)}: sudah benar. Tidak ditanyakan lagi.`, batch: null });
+      await load();
+    } catch (err) { setError(readErrors(err).summary); }
+    finally { setBusy(false); }
+  };
   const keep = async (employeeId: string, name: string) => {
     setBusy(true);
     try { await checklistApi.keepTracking(employeeId); setDone({ text: `${name}: tetap wajib absen. Tidak ditanyakan lagi.`, batch: null }); await load(); }
@@ -263,8 +274,9 @@ export default function SiapGajianPage() {
     overtime: (data.overtime.open_days ? "todo" : "done") as State,
     missing: (data.missing.days ? "rule" : "done") as State,
     late: (data.late.count ? "rule" : "done") as State,
+    conflicts: (data.conflicts.days ? "todo" : "done") as State,                     // G20-2
   };
-  const steps = data.notes ? 7 : 6;
+  const steps = data.notes ? 8 : 7;
   const settled = Object.entries(st).filter(([k, v]) => (k !== "notes" || data.notes) && v !== "todo").length;
   const togglePerson = (k: string) => setPerson(person === k ? null : k);
   let n = 0;
@@ -448,6 +460,38 @@ export default function SiapGajianPage() {
                        <span className="mono" style={{ color: "var(--steel)" }}>({taps(d.in, d.out)})</span></>,
                 money: <>{d.half ? `potong ${halves(d.half)} hari` : ""}{d.half && d.charged ? " + " : ""}{d.charged || !d.half ? `${d.charged} mnt` : ""} · {rupiah(d.rupiah)}</>,
                 note: d.note ? (d.note.text || d.note.code) : null }))} />
+            )}
+          </div>
+        ))}
+      </Step>
+
+      <Step n={++n} state={st.conflicts} title="Tidak cocok"
+            summary={data.conflicts.days
+              ? <><b>{data.conflicts.days} hari</b> pada {data.conflicts.people.length} orang: dua hal yang tidak mungkin sama-sama benar
+                  (masuk padahal cuti, lembur padahal cuti, dipotong ½ hari tapi lembur dibayar).</>
+              : "Tidak ada hari yang bertentangan."}
+            ifNothing={data.conflicts.days ? "payroll memakai data apa adanya (hari dengan tap dihitung masuk kerja, lembur yang disetujui dibayar)." : undefined}
+            open={!!open.conflicts} onToggle={data.conflicts.people.length ? () => setOpen({ ...open, conflicts: !open.conflicts }) : undefined}>
+        <div style={{ fontSize: 12.5, color: "var(--steel)", marginBottom: 6 }}>
+          Perbaiki datanya di Cuti & Izin atau di Antrean harian; kalau memang benar (mis. dipanggil masuk saat cuti), pilih <b>Sudah benar</b>.
+        </div>
+        {data.conflicts.people.map((p: CkConflictPerson) => (
+          <div key={p.employee.id}>
+            <Who name={p.employee.full_name} no={p.employee.employee_no} open={person === `cf-${p.employee.id}`}
+                 onClick={() => togglePerson(`cf-${p.employee.id}`)} right={<>{p.items.length} hal</>} />
+            {person === `cf-${p.employee.id}` && (
+              <table className="data-table" style={{ fontSize: 13, margin: "4px 0 10px 24px" }}>
+                <tbody>{p.items.map((c) => (
+                  <tr key={c.date + c.kind}>
+                    <td style={{ whiteSpace: "nowrap" }}>{dayText(c.date)}</td>
+                    <td><b>{c.kind_label}</b><div style={{ color: "var(--steel)" }}>{c.text}</div></td>
+                    <td style={{ textAlign: "right" }}>
+                      <button className="btn-ghost" disabled={busy} style={{ padding: "4px 10px", fontSize: 12.5, whiteSpace: "nowrap" }}
+                              onClick={() => conflictOk(p.employee.id, p.employee.full_name, c.date, c.kind)}>Sudah benar</button>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
             )}
           </div>
         ))}

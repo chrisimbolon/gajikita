@@ -31,7 +31,7 @@ const INFO = "#2563A8";
 
 const BASIS_COLOR: Record<string, string> = {
   taps: "var(--hazard-dark)", hr_time: "var(--hazard-dark)", rule_half: "var(--hazard-dark)",
-  tolerance: "var(--steel)", grace: "var(--steel)", forgiven: "#2E7D4F", leave: "var(--midnight)",
+  tolerance: "var(--steel)", grace: "var(--steel)", night: INFO, forgiven: "#2E7D4F", leave: "var(--midnight)",
   half_leave: "var(--midnight)", not_counted: "var(--steel)",
   none: WARN, unpaid_leave: "var(--midnight)", hr_rejected: "var(--hazard-dark)",
 };
@@ -184,6 +184,9 @@ export default function LogKehadiranPage() {
           <Card title="Dimaafkan HR" value={`${s.forgiven_days} hari`} />
           <Card title="Tunjangan kehadiran hangus" value={rupiah(s.bonus_rupiah)} sub={`${s.bonus_people} orang`} />
           <Card title="Lewat jam masuk (dalam toleransi)" value={`${s.grace_days} hari`} sub={`${s.grace_people} orang · tanpa potongan`} />
+          {s.night_days > 0 && (
+            <Card title="Boleh masuk siang (lembur malam)" value={`${s.night_days} hari`} sub={`${s.night_people} orang · tanpa potongan`} />
+          )}
         </div>
         {slipLine(s)}
         {people.length === 0 ? <div style={{ ...hint, marginTop: 10 }}>Tidak ada yang terlambat di periode ini.</div> : (
@@ -192,7 +195,8 @@ export default function LogKehadiranPage() {
             <tbody>{people.map((p: LatePerson) => row(p.employee.id, <>
               {who(p)}
               <td style={nowrap}>{p.days ? `${p.days}× · ${p.minutes} menit` : "-"}
-                {p.forgiven_days > 0 && <div style={{ fontSize: 12, color: "#2E7D4F" }}>{p.forgiven_days} dimaafkan</div>}</td>
+                {p.forgiven_days > 0 && <div style={{ fontSize: 12, color: "#2E7D4F" }}>{p.forgiven_days} dimaafkan</div>}
+                {p.night_days > 0 && <div style={{ fontSize: 12, color: INFO }}>{p.night_days}× boleh masuk siang</div>}</td>
               <td style={nowrap}>{p.charged_minutes ? `${p.charged_minutes} menit` : "-"}{p.half_days ? <div style={{ fontSize: 12 }}>{p.half_days}× ½ hari</div> : null}</td>
               <td style={nowrap}>{Number(p.rupiah) ? rupiah(p.rupiah) : "-"}{bonusText(p.bonus)}</td>
               <td style={{ ...nowrap, color: "var(--steel)" }}>{p.grace_days ? `${p.grace_days}× · ${p.grace_minutes} menit` : "-"}</td>
