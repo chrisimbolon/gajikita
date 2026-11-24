@@ -221,6 +221,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
                 "status": r.status, "first_in": r.first_in, "last_out": r.last_out, "event": r.event,
                 "late_raw": r.late_minutes or 0, "early_raw": r.early_minutes or 0,
                 "inside_grace": r.inside_grace_minutes or 0,
+                "night_excused": r.night_excused_minutes or 0, "night_note": r.night_note,             # G20-2
+                "locked": bool(day is not None and day.is_locked),                                       # G20-2
                 "late_tag": Status.LATE in r.tags, "early_tag": Status.EARLY_OUT in r.tags,
                 "late": late, "early": early, "late_half": bool(late_in and not late),
                 "early_half": bool(early_in and not early),
