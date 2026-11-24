@@ -105,6 +105,8 @@ class DayResult:
     overtime_no_spl: bool = False                      # G17-E1: SPL mode: overtime in the taps but no SPL
     spl_over_plan: int = 0                             # G17-E1: minutes past the SPL's planned end (> 1 hour)
     inside_grace_minutes: int = 0                      # G20-1: came in after the shift start but inside its grace (info)
+    night_excused_minutes: int = 0                     # G20-2: late by the normal start, but the G12e night rule moved it
+    night_note: str = ""                               # G20-2: "Lembur malam sampai 00:06: masuk jam 10:00"
 
     @property
     def label(self):
@@ -183,6 +185,7 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
     # G12e: after overtime past midnight the day starts later, or is a day off
     night = night if (night is not None and working_day and shift is not None) else None
     night_off = night is not None and night.day_off
+    normal_start = start_dt                                                       # G20-2: before the night rule
     if night is not None and not night_off:
         start_dt = datetime.combine(day, night.start, tzinfo=tz)
 
@@ -260,6 +263,11 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
                 tags.append(Status.LATE)
         elif late > 0:                                                    # G20-1: 08:01-08:05 with 5 minutes grace
             result.inside_grace_minutes = late
+        if night is not None and normal_start is not None and first_in > normal_start:     # G20-2: info only
+            by_normal = _minutes(min(first_in, start_dt) - normal_start)
+            if by_normal > shift.grace_minutes:
+                result.night_excused_minutes = by_normal
+                result.night_note = night.note
 
     if last_out is None:
         expected_end = end_dt if (end_dt is not None and working_day) else first_in + timedelta(hours=NO_SHIFT_DAY_HOURS)
