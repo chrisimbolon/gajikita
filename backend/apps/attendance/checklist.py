@@ -29,6 +29,11 @@ absen?"; (2) days after the last tap in the company's data are "not imported yet
 import can't make everyone look gone or suggest a power cut for the days not imported.
 
 Only days up to today are counted; locked days are left out of the lists (they can't change).
+
+G20-2 (24 Nov 2026): step "Tidak cocok": days where two things can't both be true (a tap or uang makan on a leave
+day, overtime paid on a leave / absent day, ½ day cut but overtime paid), from the payroll's own day-by-day decisions
+(attendance_log.day_conflicts). Soft: HR fixes the data, or marks one "Sudah benar" (audited, it stops showing):
+POST /api/hr/attendance/checklist/dismiss/  {"conflict": {"employee", "date", "kind"}}
 """
 from collections import defaultdict
 from datetime import date as Date, timedelta
@@ -55,6 +60,7 @@ from .review_kinds import capped_overtime
 
 DISMISS = "attendance.event_dismiss"
 NOTRACK_DISMISS = "attendance.notrack_dismiss"                                              # G17-7.1
+CONFLICT_DISMISS = "attendance.conflict_dismiss"                                            # G20-2
 CHRONIC_SHARE = Decimal("0.5")
 
 
@@ -87,6 +93,23 @@ def _dismissed(org, start, end):
 
 def _notrack_dismissed(org):
     return {str(((a.data or {}).get("after") or {}).get("employee")) for a in AuditEntry.objects.filter(organization=org, action=NOTRACK_DISMISS)}
+
+
+def _conflict_dismissed(org):                                                               # G20-2
+    out = set()
+    for a in AuditEntry.objects.filter(organization=org, action=CONFLICT_DISMISS):
+        d = (a.data or {}).get("after") or {}
+        out.add((str(d.get("employee")), str(d.get("date")), str(d.get("kind"))))
+    return out
+
+
+def conflicts_for(org, start, end, now, long_limit):                                        # G20-2
+    from .attendance_log import period_traces, person_conflicts
+    _, traced = period_traces(org, start, end, now)
+    gone = _conflict_dismissed(org)
+    rows = [c for c in (person_conflicts(emp, trace, long_limit, gone) for emp, _, trace in traced) if c]
+    rows.sort(key=lambda c: (-len(c["items"]), c["employee"]["full_name"]))
+    return {"days": sum(len(c["items"]) for c in rows), "people": rows}
 
 
 def build(org, month=None, now=None):
@@ -277,6 +300,7 @@ def build(org, month=None, now=None):
         "late": {"count": sum(p["count"] for p in late_rows), "minutes": sum(p["minutes"] for p in late_rows),
                  "half_days": sum(p["half_days"] for p in late_rows),                                         # G13-4
                  "rupiah": sum(p["rupiah"] for p in late_rows), "people": late_rows},
+        "conflicts": conflicts_for(org, start, end, now, long_limit),                                   # G20-2
         "run": ({"id": str(run.id), "name": run.name, "locked": run.is_locked} if run else None),
     }
 
@@ -292,6 +316,22 @@ class ChecklistDismissView(APIView):
     permission_classes = [IsCompanyHR]
 
     def post(self, request):
+        conflict = request.data.get("conflict")                                           # G20-2
+        if isinstance(conflict, dict):
+            from apps.employees.models import Employee
+            from .attendance_log import CONFLICT_KINDS
+            emp = Employee.objects.filter(organization=request.hr_org, pk=conflict.get("employee")).first()
+            kind = str(conflict.get("kind") or "")
+            try:
+                d = Date.fromisoformat(str(conflict.get("date")))
+            except ValueError:
+                d = None
+            if emp is None or d is None or kind not in CONFLICT_KINDS:
+                return Response({"success": False, "message": "Data tidak valid."}, status=status.HTTP_400_BAD_REQUEST)
+            record_audit(organization=request.hr_org, actor=request.user, action=CONFLICT_DISMISS, target=emp,
+                         summary=f"{emp.full_name} {d:%d-%m-%Y}: sudah benar ({CONFLICT_KINDS[kind]})",
+                         after={"employee": str(emp.pk), "date": d.isoformat(), "kind": kind})
+            return Response({"success": True})
         if request.data.get("employee"):                                                  # G17-7.1
             from apps.employees.models import Employee
             emp = Employee.objects.filter(organization=request.hr_org, pk=request.data.get("employee")).first()
