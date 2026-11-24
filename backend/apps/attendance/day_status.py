@@ -104,6 +104,7 @@ class DayResult:
     overtime_spl_minutes: int = 0                      # G17-E1: SPL mode, undecided day: the overtime the SPL pays
     overtime_no_spl: bool = False                      # G17-E1: SPL mode: overtime in the taps but no SPL
     spl_over_plan: int = 0                             # G17-E1: minutes past the SPL's planned end (> 1 hour)
+    inside_grace_minutes: int = 0                      # G20-1: came in after the shift start but inside its grace (info)
 
     @property
     def label(self):
@@ -257,6 +258,8 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
             result.late_minutes = late
             if not waive_late and not on_leave and not permitted:                    # G17-4
                 tags.append(Status.LATE)
+        elif late > 0:                                                    # G20-1: 08:01-08:05 with 5 minutes grace
+            result.inside_grace_minutes = late
 
     if last_out is None:
         expected_end = end_dt if (end_dt is not None and working_day) else first_in + timedelta(hours=NO_SHIFT_DAY_HOURS)
