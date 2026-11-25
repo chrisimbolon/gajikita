@@ -26,7 +26,7 @@ from apps.employees.models import Employee
 from apps.organizations.permissions import IsCompanyHR
 
 from . import pph21_year as Y
-from .models import PayrollSettings, Pph21Opening
+from .models import PayRun, PayrollSettings, Pph21Opening
 
 MAX_FILE = 2 * 1024 * 1024
 
@@ -58,15 +58,17 @@ def _row(e, o):
 
 def payload(org, year):
     cfg = PayrollSettings.for_org(org)
-    runs, december = Y.year_runs(org, year, cfg.pph21_tax_month)
+    runs, december = Y.year_runs(org, year, cfg)                                    # G16-5a
+    rule_list = Y.rules(cfg)
     openings = {o.employee_id: o for o in Pph21Opening.objects.filter(organization=org, year=year)}
     rows = [_row(e, openings.get(e.pk)) for e in _employees(org, year)]
     saved = [r for r in rows if r["saved"]]
     return {
         "success": True, "year": year, "tax_month": cfg.pph21_tax_month,
-        "tax_month_label": "bulan dibayar" if cfg.pph21_tax_month == Y.PAID else "bulan periode berakhir",
-        "runs": [{"name": r.name, "masa": Y.masa_text(*Y.tax_month(r.period_end, r.pay_date, cfg.pph21_tax_month))}
-                 for r in runs],
+        "tax_month_label": Y.MODE_LABELS.get(cfg.pph21_tax_month, cfg.pph21_tax_month),
+        "runs": [{"name": r.name, "masa": Y.masa_text(*Y.run_masa(r, cfg, rule_list)[:2]),
+                  "frozen": Y.run_masa(r, cfg, rule_list)[2]} for r in runs],
+        "masa_warnings": Y.masa_checks(list(PayRun.objects.filter(organization=org)), cfg, rule_list),  # G16-5a
         "december_run": december.name if december else None,
         "rows": rows,
         "totals": {"people": len(saved), "bruto": _money(sum((Decimal(r["bruto"]) for r in saved), Decimal("0"))),

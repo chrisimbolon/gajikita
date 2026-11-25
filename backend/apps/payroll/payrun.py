@@ -462,9 +462,12 @@ def lock_run(run, actor, note=""):
     if minus:                                    # G17-0: never lock a payslip below zero (the recalculation stays)
         raise PayrollError(f"Payroll belum bisa dikunci: gaji bersih minus untuk {len(minus)} karyawan "
                            f"({', '.join(minus)}). Perbaiki absensi atau potongannya dulu.")
+    from .pph21_year import run_masa
     with transaction.atomic():
         run.status, run.locked_by, run.locked_at = PayRun.Status.LOCKED, actor, timezone.now()
-        run.save(update_fields=["status", "locked_by", "locked_at"])
+        if not (run.masa_year and run.masa_month):                     # G16-5a: what is locked is what is reported
+            run.masa_year, run.masa_month, _ = run_masa(run, _settings(run))
+        run.save(update_fields=["status", "locked_by", "locked_at", "masa_year", "masa_month"])
         n = AttendanceDay.objects.filter(organization=run.organization, date__gte=run.period_start,
                                          date__lte=run.period_end,
                                          employee_id__in=run.lines.values("employee_id")).update(is_locked=True)

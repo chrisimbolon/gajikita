@@ -46,7 +46,10 @@ class SettingsSerializer(serializers.ModelSerializer):
     class Meta:
         model = PayrollSettings
         exclude = ["id", "organization"]
-        read_only_fields = ["updated_at"]
+        read_only_fields = ["updated_at", "pph21_tax_month_history"]                  # G16-5a: kept by the server
+
+    def validate_pph21_tax_month_since(self, v):                                      # G16-5a: a whole month
+        return v.replace(day=1) if v else v
 
     def validate_period_start_day(self, v):
         if not 1 <= v <= 28:
@@ -125,7 +128,24 @@ class SettingsView(APIView):
         before = SettingsSerializer(cfg).data
         ser = SettingsSerializer(cfg, data=request.data, partial=True)
         ser.is_valid(raise_exception=True)
+        plan = None
+        v = ser.validated_data
+        if ("pph21_tax_month" in v and v["pph21_tax_month"] != cfg.pph21_tax_month) or \
+                ("pph21_tax_month_since" in v and v["pph21_tax_month_since"] != cfg.pph21_tax_month_since):
+            # G16-5a (D80): a masa change is shown before it is saved; HR confirms when it moves or doubles a masa
+            from . import pph21_year as Y
+            Y.freeze_locked(request.hr_org, cfg)                       # locked payrolls keep their masa
+            runs = list(PayRun.objects.filter(organization=request.hr_org))
+            plan = Y.plan_masa_change(runs, cfg, v.get("pph21_tax_month", cfg.pph21_tax_month),
+                                      v.get("pph21_tax_month_since", cfg.pph21_tax_month_since))
+            if (plan["warnings"] or plan["moves"]) and not request.data.get("confirm_masa"):
+                return Response({"success": False, "needs_confirm": True,
+                                 "message": "Perubahan masa pajak perlu dikonfirmasi.",
+                                 "warnings": plan["warnings"], "moves": plan["moves"]}, status=409)
         ser.save()
+        if plan is not None:
+            cfg.pph21_tax_month_history = plan["history"]
+            cfg.save(update_fields=["pph21_tax_month_history"])
         changed = {k: v for k, v in ser.data.items() if before.get(k) != v and k != "updated_at"}
         if changed:
             record_audit(organization=request.hr_org, actor=request.user, action="payroll.settings", target=cfg,
@@ -136,9 +156,19 @@ class SettingsView(APIView):
 
 # ── runs ──
 
-def _run_summary(run):
+def _masa(run, cfg=None):
+    """G16-5a: the run's masa pajak for PPh 21 ("Oktober 2026"), the rule it follows, and whether it is frozen."""
+    from . import pph21_year as Y
+    cfg = cfg or PayrollSettings.for_org(run.organization)
+    y, m, frozen = Y.run_masa(run, cfg)
+    return {"masa": Y.masa_long(y, m), "masa_frozen": frozen,
+            "masa_rule": Y.MODE_LABELS.get(Y.mode_for(cfg, run.period_end), "")}
+
+
+def _run_summary(run, cfg=None):
     lines = list(run.lines.all())
     return {
+        **_masa(run, cfg),                                                            # G16-5a
         "id": str(run.id), "name": run.name, "status": run.status, "status_label": run.get_status_display(),
         "period_start": run.period_start.isoformat(), "period_end": run.period_end.isoformat(),
         "pay_date": run.pay_date.isoformat() if run.pay_date else None,
@@ -195,7 +225,8 @@ class RunListView(APIView):
 
     def get(self, request):
         runs = _runs(request.hr_org).prefetch_related("lines")
-        return Response({"success": True, "runs": [_run_summary(r) for r in runs]})
+        cfg = PayrollSettings.for_org(request.hr_org)
+        return Response({"success": True, "runs": [_run_summary(r, cfg) for r in runs]})
 
     def post(self, request):
         m = re.fullmatch(r"(\d{4})-(\d{2})", str(request.data.get("month") or ""))
