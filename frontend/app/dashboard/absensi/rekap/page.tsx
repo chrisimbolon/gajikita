@@ -15,6 +15,8 @@ import DayPanel from "@/components/DayPanel";
 import { noteTitle } from "@/components/HrNote";
 import { DayRow, RekapCell, RekapData, RekapRow, attendanceApi, minutesText } from "@/lib/api/attendance";
 import { Shift, Site, hrApi, readErrors } from "@/lib/api/hr";
+import { ringkasanHref } from "@/lib/api/ringkasan";                              // G21-1
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
 import { CSSProperties, useCallback, useEffect, useRef, useState } from "react";
 
@@ -259,7 +261,9 @@ export default function RekapPage() {
                     <tr key={r.employee.id}>
                       <td style={{ position: "sticky", left: 0, background: "var(--card, #fff)", zIndex: 1, minWidth: NAME_W, maxWidth: NAME_W,
                                    padding: "5px 10px", borderBottom: "1px solid var(--line)", borderRight: "1px solid var(--line)" }}>
-                        <div style={{ fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{r.employee.full_name}</div>
+                        <Link href={ringkasanHref(r.employee.id, data.month)} title="Lihat ringkasan karyawan"       // G21-1
+                              style={{ display: "block", color: "inherit", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden",
+                                       textOverflow: "ellipsis" }}>{r.employee.full_name}</Link>
                         <div className="mono" style={{ fontSize: 11, color: "var(--steel)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                           {r.employee.employee_no}{r.employee.position ? ` · ${r.employee.position}` : ""}
                         </div>

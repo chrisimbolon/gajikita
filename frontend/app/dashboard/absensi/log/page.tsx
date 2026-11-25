@@ -11,6 +11,7 @@ import {
   AbsentPerson, AttendanceLog, EarlyPerson, LatePerson, LogDay, LogSlip, MealPerson, attendanceLogApi,
 } from "@/lib/api/attendanceLog";
 import { readErrors } from "@/lib/api/hr";
+import { ringkasanHref } from "@/lib/api/ringkasan";
 import { rupiah } from "@/lib/format";
 import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Info, Loader2 } from "lucide-react";
 import Link from "next/link";
@@ -155,8 +156,10 @@ export default function LogKehadiranPage() {
       )}
     </Fragment>
   );
-  const who = (p: { employee: { full_name: string; employee_no: string } }) => (
-    <td>{p.employee.full_name}<div style={hint}>{p.employee.employee_no}</div></td>
+  const who = (p: { employee: { id: string; full_name: string; employee_no: string } }) => (       // G21-1: a name opens the Ringkasan
+    <td><Link href={ringkasanHref(p.employee.id, data?.month)} onClick={(e) => e.stopPropagation()}
+              style={{ color: "inherit", fontWeight: 600 }} title="Lihat ringkasan karyawan">{p.employee.full_name}</Link>
+      <div style={hint}>{p.employee.employee_no}</div></td>
   );
 
   const slipLine = (s: { stale: number; override: number }) => {

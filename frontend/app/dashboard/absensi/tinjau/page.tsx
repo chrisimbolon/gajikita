@@ -17,6 +17,7 @@ import FingerprintImport from "@/components/FingerprintImport";
 import OvertimeImport from "@/components/OvertimeImport";                       // G17-8
 import { attendanceApi, BulkDecideResult, minutesText } from "@/lib/api/attendance";
 import { Checklist, CkConflictPerson, CkLatePerson, CkMissingPerson, CkOvertimePerson, checklistApi } from "@/lib/api/checklist";
+import { ringkasanHref } from "@/lib/api/ringkasan";                              // G21-1
 import { eventApi } from "@/lib/api/events";
 import { exemptionApi } from "@/lib/api/exemptions";
 import { hrApi, readErrors } from "@/lib/api/hr";
@@ -68,14 +69,23 @@ function Step({ n, state, title, summary, ifNothing, children, open, onToggle, a
   );
 }
 
-function Who({ name, no, right, open, onClick }: { name: string; no: string; right: ReactNode; open: boolean; onClick: () => void }) {
+function Who({ name, no, right, open, onClick, href }: { name: string; no: string; right: ReactNode; open: boolean; onClick: () => void;
+                                                       href?: string }) {
   return (
-    <button onClick={onClick} style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, background: open ? "var(--paper)" : "none",
-                                       border: 0, borderTop: "1px solid var(--line)", padding: "10px 6px", cursor: "pointer", textAlign: "left" }}>
-      <ChevronRight size={14} style={{ transform: open ? "rotate(90deg)" : undefined, color: "var(--steel)" }} />
-      <span style={{ fontWeight: 700 }}>{name}</span><span className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{no}</span>
-      <span style={{ marginLeft: "auto", fontSize: 13.5 }}>{right}</span>
-    </button>
+    <div style={{ display: "flex", alignItems: "stretch", borderTop: "1px solid var(--line)", background: open ? "var(--paper)" : "none" }}>
+      <button onClick={onClick} style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 10, background: "none",
+                                         border: 0, padding: "10px 6px", cursor: "pointer", textAlign: "left" }}>
+        <ChevronRight size={14} style={{ transform: open ? "rotate(90deg)" : undefined, color: "var(--steel)" }} />
+        <span style={{ fontWeight: 700 }}>{name}</span><span className="mono" style={{ fontSize: 12, color: "var(--steel)" }}>{no}</span>
+        <span style={{ marginLeft: "auto", fontSize: 13.5 }}>{right}</span>
+      </button>
+      {href && (                                                                     // G21-1: the person's whole month
+        <Link href={href} title="Lihat ringkasan karyawan"
+              style={{ display: "flex", alignItems: "center", padding: "0 10px", fontSize: 12.5, fontWeight: 700, whiteSpace: "nowrap" }}>
+          Ringkasan
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -408,7 +418,7 @@ export default function SiapGajianPage() {
             open={!!open.overtime} onToggle={data.overtime.open_days ? () => setOpen({ ...open, overtime: !open.overtime }) : undefined}>
         {data.overtime.people.map((p) => (
           <div key={p.employee.id}>
-            <Who name={p.employee.full_name} no={p.employee.employee_no} open={person === `ot-${p.employee.id}`} onClick={() => togglePerson(`ot-${p.employee.id}`)}
+            <Who href={ringkasanHref(p.employee.id, data.month)} name={p.employee.full_name} no={p.employee.employee_no} open={person === `ot-${p.employee.id}`} onClick={() => togglePerson(`ot-${p.employee.id}`)}
                  right={<>{p.days.length} hari · usulan <b>{minutesText(p.proposed)}</b></>} />
             {person === `ot-${p.employee.id}` && <OvertimePerson p={p} cap={data.rules.overtime_cap_minutes} act={act} busy={busy} />}
           </div>
@@ -426,7 +436,7 @@ export default function SiapGajianPage() {
         <div style={{ fontSize: 12.5, color: "var(--steel)", marginBottom: 6 }}>Buka orangnya, centang hari yang ada alasannya, lalu Maafkan atau Tugas luar.</div>
         {data.missing.people.map((p: CkMissingPerson) => (
           <div key={p.employee.id}>
-            <Who name={p.employee.full_name} no={p.employee.employee_no} open={person === `ms-${p.employee.id}`} onClick={() => togglePerson(`ms-${p.employee.id}`)}
+            <Who href={ringkasanHref(p.employee.id, data.month)} name={p.employee.full_name} no={p.employee.employee_no} open={person === `ms-${p.employee.id}`} onClick={() => togglePerson(`ms-${p.employee.id}`)}
                  right={<>{p.days.length} hari{p.cut_days ? <> · dipotong <b>{rupiah(p.rupiah)}</b></> : ""}</>} />
             {person === `ms-${p.employee.id}` && (
               <Exceptions act={act} busy={busy} rows={p.days.map((d) => ({ id: d.day_id, date: d.date, forgiven: d.forgiven,
@@ -452,7 +462,7 @@ export default function SiapGajianPage() {
         <div style={{ fontSize: 12.5, color: "var(--steel)", marginBottom: 6 }}>Terlambat adalah fakta: cukup buka orang yang punya alasan (izin, belanja alat, mati lampu).</div>
         {data.late.people.map((p: CkLatePerson) => (
           <div key={p.employee.id}>
-            <Who name={p.employee.full_name} no={p.employee.employee_no} open={person === `lt-${p.employee.id}`} onClick={() => togglePerson(`lt-${p.employee.id}`)}
+            <Who href={ringkasanHref(p.employee.id, data.month)} name={p.employee.full_name} no={p.employee.employee_no} open={person === `lt-${p.employee.id}`} onClick={() => togglePerson(`lt-${p.employee.id}`)}
                  right={p.count ? <>{p.count} kali · {p.minutes} menit{p.half_days ? ` · ${halves(p.half_days)} hari` : ""} · <b>{rupiah(p.rupiah)}</b></> : <span style={{ color: "var(--steel)" }}>semua dimaafkan</span>} />
             {person === `lt-${p.employee.id}` && (
               <Exceptions act={act} busy={busy} rows={p.days.map((d) => ({ id: d.day_id, date: d.date, forgiven: d.forgiven,
@@ -477,7 +487,7 @@ export default function SiapGajianPage() {
         </div>
         {data.conflicts.people.map((p: CkConflictPerson) => (
           <div key={p.employee.id}>
-            <Who name={p.employee.full_name} no={p.employee.employee_no} open={person === `cf-${p.employee.id}`}
+            <Who href={ringkasanHref(p.employee.id, data.month)} name={p.employee.full_name} no={p.employee.employee_no} open={person === `cf-${p.employee.id}`}
                  onClick={() => togglePerson(`cf-${p.employee.id}`)} right={<>{p.items.length} hal</>} />
             {person === `cf-${p.employee.id}` && (
               <table className="data-table" style={{ fontSize: 13, margin: "4px 0 10px 24px" }}>
