@@ -55,7 +55,7 @@ def _tax_lines(slip, by_company, tax, label):
 def employee_year(employee, year, cfg, exclude_run):
     """Saldo awal + the employee's other SeeGaji months in that tax year (not exclude_run) -> Y.YearRow."""
     from .models import Pph21Opening
-    runs, _ = Y.year_runs(exclude_run.organization, year, cfg.pph21_tax_month)
+    runs, _ = Y.year_runs(exclude_run.organization, year, cfg)
     agg = Y.YearRow(employee)
     o = Pph21Opening.objects.filter(employee=employee, year=year).first()
     if o is not None:
@@ -69,10 +69,12 @@ def employee_year(employee, year, cfg, exclude_run):
             continue
         m = P.monthly_for_slip(line.result, employee.ptkp_status, by_company=employee.pph21_by_company,
                                late_reduces=cfg.pph21_late_reduces_bruto,
-                               company_jht_in_bruto=cfg.pph21_company_jht_in_bruto, on=run.pay_date or run.period_end)
+                               company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
+                               company_jp_in_bruto=cfg.pph21_company_jp_in_bruto, on=run.pay_date or run.period_end)
         agg.months += 1
         agg.bruto += m.bruto
-        agg.iuran += Y.iuran_from_slip(line.result, company_jht_in_bruto=cfg.pph21_company_jht_in_bruto)
+        agg.iuran += Y.iuran_from_slip(line.result, company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
+                                       company_jp_in_bruto=cfg.pph21_company_jp_in_bruto)
         taken = Y.withheld_from_slip(line.result)
         agg.withheld += m.tax if taken is None else taken
     first = min([r.period_start for r in runs] + [exclude_run.period_start])
@@ -85,7 +87,8 @@ def _settle(slip, employee, res, agg, kw, year):
     plain = P.monthly_for_slip(res, ptkp, by_company=False, **kw)
     months = min(agg.months + 1, 12)
     bruto = agg.bruto + plain.bruto
-    iuran = agg.iuran + Y.iuran_from_slip(res, company_jht_in_bruto=kw["company_jht_in_bruto"])
+    iuran = agg.iuran + Y.iuran_from_slip(res, company_jht_in_bruto=kw["company_jht_in_bruto"],
+                                          company_jp_in_bruto=kw["company_jp_in_bruto"])
     if by_company:
         a, t = Y.annual_gross_up(bruto, months, iuran, ptkp, agg.withheld, kw["on"])
         _tax_lines(slip, True, t, "PPh 21 (hitung setahun)")
@@ -111,10 +114,10 @@ def add_pph21(slip, line, cfg):
                              f"(supaya tidak dobel). Hapus item itu bila PPh 21 dihitung SeeGaji.")
         return
     res = slip_dict(slip)
-    year, month = Y.tax_month(run.period_end, run.pay_date, cfg.pph21_tax_month)
+    year, month, _ = Y.run_masa(run, cfg)                                         # G16-5a: dated rule / frozen
     leaving = bool(e.end_date) and run.period_start <= e.end_date <= run.period_end
     kw = dict(late_reduces=cfg.pph21_late_reduces_bruto, company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
-              on=run.pay_date or run.period_end)
+              company_jp_in_bruto=cfg.pph21_company_jp_in_bruto, on=run.pay_date or run.period_end)
     try:
         if month == 12 or leaving:
             agg = employee_year(e, year, cfg, run)
@@ -137,7 +140,7 @@ def readiness(organization, today):
     from .models import PayrollSettings, Pph21Opening
     cfg = PayrollSettings.for_org(organization)
     year = today.year
-    runs, december = Y.year_runs(organization, year, cfg.pph21_tax_month)
+    runs, december = Y.year_runs(organization, year, cfg)
     first = runs[0].period_start if runs else None
     have = set(Pph21Opening.objects.filter(organization=organization, year=year).values_list("employee_id", flat=True))
     active = Employee.objects.filter(organization=organization, status=Employee.Status.ACTIVE)

@@ -22,7 +22,13 @@ from decimal import Decimal
 from . import pph21 as P
 
 ZERO = Decimal("0")
-PAID, PERIOD_END = "paid", "period_end"
+PAID, PERIOD_END, EARLIEST = "paid", "period_end", "earliest"
+# G16-5a (D76): the law is "whichever comes first" (PMK 168/2023 Pasal 19: terutang pada saat dibayar atau saat
+# terutangnya penghasilan); the two others are a company's own choice, shown as such
+MODE_LABELS = {EARLIEST: "yang lebih dulu: dibayar atau periode selesai (PMK 168 Pasal 19)",
+               PERIOD_END: "bulan periode berakhir", PAID: "bulan dibayar"}
+MONTHS_LONG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober",
+               "November", "Desember"]
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
 TEMPLATE_HEADER = ["no_karyawan", "nama", "bulan", "bruto", "pph21", "iuran_jht_jp"]
 _ALIASES = {
@@ -117,13 +123,87 @@ def parse_opening_csv(text):
 
 
 def tax_month(period_end, pay_date, mode):
-    """(year, month) of a pay run's masa pajak: the month it is paid, or the month its period ends."""
-    d = pay_date if mode == PAID and pay_date else period_end
+    """
+    (year, month) of a pay run's masa pajak. earliest (the law, G16-5a): the earlier of the pay date and the period
+    end; paid: the month it is paid; period_end: the month its period ends. No pay date: the period end.
+    """
+    if mode == PAID and pay_date:
+        d = pay_date
+    elif mode == EARLIEST and pay_date:
+        d = min(pay_date, period_end)
+    else:
+        d = period_end
     return d.year, d.month
 
 
 def masa_text(year, month):
     return f"{MONTHS[month - 1]} {year}"
+
+
+def masa_long(year, month):
+    return f"{MONTHS_LONG[month - 1]} {year}"
+
+
+# ── G16-5a: which rule a pay run follows (dated, so a change never moves an earlier payroll) ──
+
+def rules(cfg):
+    """[(since or None, mode)] in date order: the history (earlier rules), then the rule in force now."""
+    out = []
+    for h in (getattr(cfg, "pph21_tax_month_history", None) or []):
+        since = h.get("since")
+        out.append((_date(since), h.get("mode") or PAID))
+    out.append((getattr(cfg, "pph21_tax_month_since", None), cfg.pph21_tax_month))
+    out.sort(key=lambda r: (r[0] is not None, r[0] or 0))
+    return out
+
+
+def _date(value):
+    from datetime import date
+    if value in (None, ""):
+        return None
+    return value if isinstance(value, date) else date.fromisoformat(str(value)[:10])
+
+
+def mode_for(cfg, period_end, rule_list=None):
+    """The rule a period follows: the latest one whose "berlaku sejak" is on or before the period's end."""
+    chosen = None
+    for since, mode in (rule_list if rule_list is not None else rules(cfg)):
+        if since is None or since <= period_end:
+            chosen = mode
+    return chosen or PAID
+
+
+def run_masa(run, cfg, rule_list=None):
+    """(year, month, frozen) of a pay run: the masa frozen when it was locked, else what its rule gives."""
+    if getattr(run, "masa_year", None) and getattr(run, "masa_month", None):
+        return run.masa_year, run.masa_month, True
+    y, m = tax_month(run.period_end, run.pay_date, mode_for(cfg, run.period_end, rule_list))
+    return y, m, False
+
+
+def masa_checks(runs, cfg, rule_list=None):
+    """
+    Pay runs in period order -> warnings [{"kind", "masa", "text"}]: a masa holding two payrolls ("double"), or a
+    month left without any between two payrolls ("gap"). Never blocks; HR sees it before and after a change.
+    """
+    seen, out, prev = {}, [], None
+    for r in sorted(runs, key=lambda r: r.period_start):
+        y, m, _ = run_masa(r, cfg, rule_list)
+        seen.setdefault((y, m), []).append(r.name)
+        if prev is not None:
+            step = (y - prev[0]) * 12 + (m - prev[1])
+            for k in range(1, step):
+                gy, gm = divmod(prev[1] - 1 + k, 12)
+                miss = (prev[0] + gy, gm + 1)
+                out.append({"kind": "gap", "masa": masa_text(*miss),
+                            "text": f"Masa {masa_long(*miss)} tidak berisi payroll mana pun."})
+        prev = (y, m)
+    for (y, m), names in seen.items():
+        if len(names) > 1:
+            out.append({"kind": "double", "masa": masa_text(y, m),
+                        "text": f"Masa {masa_long(y, m)} berisi {len(names)} payroll: {', '.join(names)}."})
+    out.sort(key=lambda w: (w["masa"][-4:], MONTHS.index(w["masa"][:3]), w["kind"]))
+    return out
 
 
 def withheld_from_slip(result):
@@ -189,11 +269,59 @@ class YearRow:
     incomplete: bool = False                 # G16-2.1: worked before SeeGaji this year but no saldo awal yet
 
 
-def year_runs(organization, year, mode):
+def plan_masa_change(runs, cfg, new_mode, new_since):
+    """
+    G16-5a (D80): what changing the masa rule would do, before anything is saved.
+    runs: every pay run of the company (locked ones carry their frozen masa, see freeze_locked).
+    -> {"history", "rules", "moves": [{"run", "before", "after"}], "warnings": [...]}
+    The old rule becomes history from its own "since" up to the new one; rules starting on or after the new
+    "since" are superseded. No "since" = the new rule for every period (only frozen payrolls keep their masa).
+    """
+    old_rules = rules(cfg)
+    history = [h for h in (getattr(cfg, "pph21_tax_month_history", None) or [])]
+    if new_since is None:
+        history = []
+    else:
+        if new_mode != cfg.pph21_tax_month or (cfg.pph21_tax_month_since or None) != new_since:
+            old_since = getattr(cfg, "pph21_tax_month_since", None)
+            history.append({"mode": cfg.pph21_tax_month, "since": old_since.isoformat() if old_since else None})
+        history = [h for h in history if _date(h.get("since")) is None or _date(h.get("since")) < new_since]
+    new_rules = sorted([(_date(h.get("since")), h.get("mode") or PAID) for h in history] + [(new_since, new_mode)],
+                       key=lambda r: (r[0] is not None, r[0] or 0))
+    moves = []
+    for r in sorted(runs, key=lambda r: r.period_start):
+        before, after = run_masa(r, cfg, old_rules)[:2], run_masa(r, cfg, new_rules)[:2]
+        if before != after:
+            moves.append({"run": r.name, "before": masa_text(*before), "after": masa_text(*after)})
+    warnings = [w for w in masa_checks(runs, cfg, new_rules) if w not in masa_checks(runs, cfg, old_rules)]
+    if new_since is not None and new_since.month != 1:
+        warnings.insert(0, {"kind": "midyear", "masa": masa_text(new_since.year, new_since.month),
+                            "text": f"Aturan baru mulai di tengah tahun ({masa_long(new_since.year, new_since.month)}): "
+                                    f"periksa masa yang berisi dua payroll atau kosong di bawah ini."})
+    return {"history": history, "rules": new_rules, "moves": moves, "warnings": warnings}
+
+
+def freeze_locked(organization, cfg):
+    """Locked payrolls keep the masa they were locked (and reported) with, whatever the rule becomes."""
     from .models import PayRun
-    runs = [r for r in PayRun.objects.filter(organization=organization).order_by("period_start")
-            if tax_month(r.period_end, r.pay_date, mode)[0] == year]
-    december = next((r for r in runs if tax_month(r.period_end, r.pay_date, mode)[1] == 12), None)
+    rule_list = rules(cfg)
+    for r in PayRun.objects.filter(organization=organization, status=PayRun.Status.LOCKED,
+                                   masa_year__isnull=True):
+        r.masa_year, r.masa_month, _ = run_masa(r, cfg, rule_list)
+        r.save(update_fields=["masa_year", "masa_month"])
+
+
+def year_runs(organization, year, cfg):
+    """The pay runs whose masa falls in `year` and the one whose masa is December (G16-5a: by each run's rule)."""
+    from .models import PayRun
+    rule_list = rules(cfg)
+    runs, december = [], None
+    for r in PayRun.objects.filter(organization=organization).order_by("period_start"):
+        y, m, _ = run_masa(r, cfg, rule_list)
+        if y == year:
+            runs.append(r)
+            if m == 12 and december is None:
+                december = r
     return runs, december
 
 
@@ -201,7 +329,7 @@ def year_rows(organization, year):
     """Everyone with a saldo awal or a SeeGaji slip in that tax year -> [YearRow], plus the runs and the December run."""
     from .models import PayrollSettings, Pph21Opening
     cfg = PayrollSettings.for_org(organization)
-    runs, december = year_runs(organization, year, cfg.pph21_tax_month)
+    runs, december = year_runs(organization, year, cfg)
     rows = {}
     for o in Pph21Opening.objects.filter(organization=organization, year=year).select_related("employee"):
         r = rows.setdefault(o.employee_id, YearRow(o.employee))
@@ -218,15 +346,18 @@ def year_rows(organization, year):
             try:
                 plain = P.monthly_for_slip(line.result, e.ptkp_status, by_company=False,
                                            late_reduces=cfg.pph21_late_reduces_bruto,
-                                           company_jht_in_bruto=cfg.pph21_company_jht_in_bruto, on=on)
+                                           company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
+                                           company_jp_in_bruto=cfg.pph21_company_jp_in_bruto, on=on)
                 m = P.monthly_for_slip(line.result, e.ptkp_status, by_company=e.pph21_by_company,
                                        late_reduces=cfg.pph21_late_reduces_bruto,
-                                       company_jht_in_bruto=cfg.pph21_company_jht_in_bruto, on=on)
+                                       company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
+                                       company_jp_in_bruto=cfg.pph21_company_jp_in_bruto, on=on)
             except ValueError as err:
                 r.notes.append(str(err))
                 continue
             r.months += 1
-            r.iuran += iuran_from_slip(line.result, company_jht_in_bruto=cfg.pph21_company_jht_in_bruto)
+            r.iuran += iuran_from_slip(line.result, company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
+                                       company_jp_in_bruto=cfg.pph21_company_jp_in_bruto)
             if run is december:                       # settled by the year: no monthly gross-up, no monthly TER
                 r.in_december = True
                 r.bruto += plain.bruto
