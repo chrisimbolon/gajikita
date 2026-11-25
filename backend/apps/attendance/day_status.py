@@ -107,6 +107,7 @@ class DayResult:
     inside_grace_minutes: int = 0                      # G20-1: came in after the shift start but inside its grace (info)
     night_excused_minutes: int = 0                     # G20-2: late by the normal start, but the G12e night rule moved it
     night_note: str = ""                               # G20-2: "Lembur malam sampai 00:06: masuk jam 10:00"
+    night_rule: str = ""                               # G21-1: the G12e night rule applied to this day (its note), excused or not
 
     @property
     def label(self):
@@ -229,7 +230,7 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
         if leave:                    # approved leave: not absent, and nothing for HR to look at
             return DayResult(status=Status.LEAVE, tags=[Status.LEAVE], leave=leave)
         if night_off:                # G12e: worked late into the night, so no one expects them today
-            return DayResult(status=Status.DAY_OFF, tags=[Status.DAY_OFF], note=night.note)
+            return DayResult(status=Status.DAY_OFF, tags=[Status.DAY_OFF], note=night.note, night_rule=night.note)
         if disrupted:                # G17-2: power cut / broken machine: counted as worked, nothing to review
             return DayResult(status=Status.ON_TIME, tags=[Status.ON_TIME])
         if permitted:                # G17-4: ½ day permit / leave with no taps: present for the other half
@@ -244,7 +245,8 @@ def _evaluate_day(day, shift, taps, now, tz, *, hr_in=None, hr_out=None, decisio
 
     # ── somebody came ──
     result = DayResult(status=Status.ON_TIME, first_in=first_in, last_out=last_out, flags=flags,
-                       note=night.note if night is not None else "")
+                       note=night.note if night is not None else "",
+                       night_rule=night.note if night is not None else "")                    # G21-1
     if permitted:                                                                     # G17-4
         result.half_leave = half_leave
         result.note = result.note or HALF_NOTE.get(half_leave, "")
