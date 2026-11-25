@@ -9,6 +9,7 @@
 // =============================================================================
 import { readErrors } from "@/lib/api/hr";
 import { LineDetail, RunDetail, dayLabel, payrollApi, periodLabel } from "@/lib/api/payroll";
+import { ringkasanHref } from "@/lib/api/ringkasan";                              // G21-1
 import { rupiah } from "@/lib/format";
 import { AlertTriangle, ArrowLeft, Download, Info, Landmark, Loader2, Lock, Printer, RefreshCw, Table, Trash2, Unlock, X } from "lucide-react";
 import Link from "next/link";
@@ -31,8 +32,8 @@ function toCsv(d: RunDetail): string {
 }
 
 // ── one employee ──
-function LinePanel({ runId, lineId, locked, onClose, onChanged }: {
-  runId: string; lineId: string; locked: boolean; onClose: () => void; onChanged: () => void;
+function LinePanel({ runId, lineId, locked, month, onClose, onChanged }: {
+  runId: string; lineId: string; locked: boolean; month: string; onClose: () => void; onChanged: () => void;
 }) {
   const [line, setLine] = useState<LineDetail | null>(null);
   const [fix, setFix] = useState<Record<string, string>>({});
@@ -91,6 +92,10 @@ function LinePanel({ runId, lineId, locked, onClose, onChanged }: {
               {line.employee.employee_no} · {line.employee.pay_type_label} · {rupiah(line.employee.base_rate)}
               {line.employee.pay_type === "daily" ? " / hari" : ""}
             </div>
+            <Link href={ringkasanHref(line.employee.id, month)}                     // G21-1
+                  style={{ display: "inline-block", marginTop: 6, fontSize: 13, fontWeight: 700, color: "var(--marigold)" }}>
+              Lihat ringkasan (hari demi hari) →
+            </Link>
           </div>
           <button onClick={onClose} aria-label="Tutup" style={{ background: "none", border: "none", color: "#FFFFFF" }}><X size={20} /></button>
         </div>
@@ -466,7 +471,8 @@ export default function PayRunPage() {
       </div>
 
       {open && (
-        <LinePanel key={open} runId={id} lineId={open} locked={locked} onClose={() => setOpen(null)} onChanged={() => load(id)} />
+        <LinePanel key={open} runId={id} lineId={open} locked={locked} month={run.period_end.slice(0, 7)}
+                   onClose={() => setOpen(null)} onChanged={() => load(id)} />
       )}
     </div>
   );
