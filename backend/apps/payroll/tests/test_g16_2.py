@@ -94,14 +94,14 @@ class OpeningApiTests(base.PayRunTests):
 
     def test_yearly_preview_and_settings(self):
         s = self.client.get("/api/hr/payroll/settings/").data["settings"]
-        self.assertEqual(s["pph21_tax_month"], "paid")
+        self.assertEqual(s["pph21_tax_month"], "earliest")                    # G16-5a (D79): the law for new companies
         Pph21Opening.objects.create(organization=self.org, employee=self.andi, year=2026, months=10,
                                     bruto=D("40000000"), pph=D("0"), iuran=D("800000"))
-        self.make_run()                                                          # Oct, paid 5 Nov: masa Nov 2026
+        self.make_run()                                           # Oct (ends 25 Okt), paid 5 Nov: masa Okt 2026
         out = StringIO()
         call_command("pph21_annual_preview", year=2026, org="Beton", stdout=out)
         text = out.getvalue()
-        self.assertIn("masa Nov 2026", text)
+        self.assertIn("masa Okt 2026", text)
         self.assertIn("Payroll masa Desember: belum ada", text)
         self.assertIn("Andi", text)
         self.assertIn("BELUM LENGKAP: isi saldo awal", text)                     # Budi: joined 2025, none yet

@@ -20,6 +20,9 @@ class Pph21SlipTests(base.PayRunTests):
     def setUp(self):
         super().setUp()
         Employee.objects.filter(pk=self.andi.pk).update(base_rate=D("10000000"))
+        # these tests reach "masa Desember" by moving the pay date: the company's own "bulan dibayar" choice
+        # (G16-5a made the law, "earliest", the default for new companies)
+        PayrollSettings.objects.filter(organization=self.org).update(pph21_tax_month="paid")
 
     def on(self, **extra):
         PayrollSettings.objects.filter(organization=self.org).update(pph21_enabled=True, **extra)
