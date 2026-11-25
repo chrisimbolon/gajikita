@@ -84,7 +84,7 @@ function Tile({ title, value, sub, tone }: { title: string; value: string; sub?:
     dark:  { bg: NAVY, bd: NAVY, t: "#C9D8E6", v: "#FFFFFF" },
   }[tone];
   return (
-    <div style={{ flex: tone === "dark" ? "1.3 1 200px" : "1 1 150px", background: s.bg, border: `1px solid ${s.bd}`,
+    <div style={{ flex: tone === "dark" ? "1.3 1 200px" : tone === "red" ? "1.6 1 250px" : "1 1 150px", background: s.bg, border: `1px solid ${s.bd}`,
                   borderRadius: 16, padding: "12px 16px", minWidth: 0 }}>
       <div style={{ fontSize: 12.5, color: s.t, fontWeight: 700 }}>{title}</div>
       <div style={{ fontSize: tone === "dark" ? 24 : 19, fontWeight: 800, marginTop: 3, color: s.v, whiteSpace: "nowrap" }}>{value}</div>
@@ -133,7 +133,15 @@ function Money({ data }: { data: Ringkasan }) {
                                 value={rupiah(sum(meal))} tone="amber" />}
       {other.map((e, i) => <Tile key={`${e.code}-${i}`} title={`+ ${e.label}${qty(e.quantity, e.unit)}`} value={rupiah(e.amount)} tone="plain" />)}
       <Tile title="− Potongan" value={rupiah(m.deductions_total)} tone="red"
-            sub={m.deductions.map((d) => `${d.label}${qty(d.quantity, d.unit)} ${rupiah(d.amount)}`).join(" · ") || "Tidak ada"} />
+            sub={m.deductions.length === 0 ? "Tidak ada" : (
+              <span style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 2 }}>
+                {m.deductions.map((d, i) => (
+                  <span key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <span>{d.label.replace(/^Potongan /, "")}{qty(d.quantity, d.unit)}</span>
+                    <span style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{rupiah(d.amount)}</span>
+                  </span>
+                ))}
+              </span>)} />
       <Tile title="= Diterima" value={rupiah(m.net)} tone="dark"
             sub={<>Bruto {rupiah(m.gross)}{data.run ? ` · ${data.run.name}${data.run.locked ? " (dikunci)" : ""}` : ""}</>} />
     </div>
@@ -170,7 +178,7 @@ function TimeBar({ d, mealAt }: { d: RkDay; mealAt: number | null }) {
   if (d.in_min !== null && d.out_min !== null) {
     const workEnd = s && d.overtime_minutes ? Math.min(d.out_min, Math.max(s.end, d.in_min)) : d.out_min;
     parts.push(<span key="w" style={{ position: "absolute", top: 0, bottom: 0, left: `${pct(d.in_min)}%`,
-      width: `${Math.max(0.8, pct(workEnd) - pct(d.in_min))}%`, background: KIND_STYLE[d.kind].fg === "#6A4400" ? "#D9A43A" : "#2E9E63",
+      width: `${Math.max(0.8, pct(workEnd) - pct(d.in_min))}%`, background: "#2E9E63",
       borderRadius: 7 }} />);
     if (d.overtime_minutes && workEnd < d.out_min) {
       parts.push(<span key="o" style={{ position: "absolute", top: 0, bottom: 0, left: `${pct(workEnd)}%`,
@@ -476,25 +484,28 @@ export default function RingkasanPage() {
                   const quiet = d.kind === "off" || d.kind === "outside" || d.kind === "pending";
                   return (
                     <button key={d.date} id={`rk-${d.date}`} type="button" onClick={() => { setPicked(d.date); setEdit(false); }}
-                            style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "8px 14px", width: "100%", textAlign: "left",
+                            style={{ display: "grid", gridTemplateColumns: "60px minmax(0, 1fr) 92px", alignItems: "start", gap: "4px 12px",
+                                     width: "100%", textAlign: "left",
                                      border: 0, borderBottom: "1px solid #F0F2F5", background: on ? "#EEF3F8" : "transparent", color: INK,
                                      padding: quiet ? "5px 10px" : "9px 10px", borderRadius: 10, cursor: "pointer",
                                      boxShadow: on ? `inset 3px 0 0 ${NAVY}` : undefined, opacity: quiet ? 0.7 : 1 }}>
-                      <span style={{ width: 70, display: "flex", flexDirection: "column" }}>
+                      <span style={{ display: "flex", flexDirection: "column" }}>
                         <span style={{ fontWeight: 800, fontSize: 14 }}>{dayText(d.date)}</span>
                         <span style={{ fontSize: 11.5, color: MUTED }}>{d.dow}</span>
                       </span>
-                      <span style={{ flex: "1 1 220px", minWidth: 170, display: "flex", flexDirection: "column", gap: 4 }}>
+                      <span style={{ minWidth: 0, display: "flex", flexDirection: "column", gap: 4, paddingTop: quiet ? 0 : 2 }}>
                         {!quiet && <TimeBar d={d} mealAt={mealAt} />}
                         <span style={{ fontSize: 12, color: d.in || d.out ? "#2B3A49" : KIND_STYLE[d.kind].fg, fontWeight: 600 }}>
                           {timeText(d) || data.kinds[d.kind]}
                         </span>
+                        {(d.chips.length > 0 || d.conflicts.length > 0) && (
+                          <span style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
+                            {d.chips.map((c, i) => <Chip key={i} label={c.label} tone={c.tone} />)}
+                            {d.conflicts.length > 0 && <Chip label="Tidak cocok" tone="violet" />}
+                          </span>
+                        )}
                       </span>
-                      <span style={{ flex: "1 1 200px", display: "flex", flexWrap: "wrap", gap: 5 }}>
-                        {d.chips.map((c, i) => <Chip key={i} label={c.label} tone={c.tone} />)}
-                        {d.conflicts.length > 0 && <Chip label="Tidak cocok" tone="violet" />}
-                      </span>
-                      <span style={{ width: 100, textAlign: "right", fontWeight: 800, fontSize: 13.5,
+                      <span style={{ textAlign: "right", fontWeight: 800, fontSize: 13.5, whiteSpace: "nowrap",
                                      color: r < 0 ? "#8A1A11" : r > 0 ? "#14532D" : "#A3AFBB" }}>
                         {r ? signed(d.rupiah) : "–"}
                       </span>
