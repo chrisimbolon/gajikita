@@ -403,6 +403,29 @@ def calculate_run(run, now=None, refresh=True):
     return run
 
 
+def recalculate_line(line, now=None):
+    """
+    G21-2 (25 Nov 2026): one person's line read again from attendance and leave, as calculate_run does for everyone,
+    after HR fixed one of their days (Ringkasan Karyawan). The other lines stay as they are, and so does the run's
+    calculated_at (that is "everyone was recalculated at"). HR's corrections and items on the line are kept.
+    """
+    run = line.run
+    if run.is_locked:
+        raise PayrollError("Payroll ini sudah dikunci. Buka kunci dulu untuk menghitung ulang.")
+    now = now or timezone.now()
+    cfg = _settings(run)
+    emp = line.employee
+    start, end = run.period_start, run.period_end
+    with transaction.atomic():
+        sync_loans(line, run)
+        line.auto = collect_numbers(emp, start, end, cfg,
+                                    _days_by_employee(run.organization, start, end, [emp.id]).get(emp.id, {}),
+                                    _leaves_by_employee(run.organization, start, end, [emp.id]).get(emp.id, {}), now)
+        calculate_line(line, cfg)
+        line.save()
+    return line
+
+
 def _new_line(run, emp):
     line = PayRunLine.objects.create(organization=run.organization, run=run, employee=emp)
     previous = (PayRunLine.objects.filter(employee=emp, run__period_start__lt=run.period_start)

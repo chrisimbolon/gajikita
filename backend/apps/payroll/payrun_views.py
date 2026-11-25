@@ -13,6 +13,7 @@ HR's payroll screens (G8b part 1, 1 Nov 2026). All under /api/hr/payroll/.
   POST       runs/<id>/lines/<line>/items/   add an item {kind, label, amount, quantity, unit, recurring, note}
   DELETE     runs/<id>/items/<item>/         remove an item
 """
+import json
 import re
 from decimal import Decimal
 
@@ -25,7 +26,8 @@ from apps.core.audit import record_audit
 from apps.organizations.permissions import IsCompanyHR
 
 from .models import PayrollSettings, PayRun, PayRunItem, PayRunLine
-from .payrun import OVERRIDE_FIELDS, PayrollError, calculate_line, calculate_run, create_run, lock_run, reopen_run
+from .payrun import (OVERRIDE_FIELDS, PayrollError, calculate_line, calculate_run, create_run, lock_run,  # G21-2
+                     recalculate_line, reopen_run)
 
 LOCKED = "Payroll ini sudah dikunci. Buka kunci dulu untuk mengubah."
 
@@ -341,6 +343,34 @@ class LineDetailView(APIView):
                      summary=f"{run.name} · {line.employee.full_name}: angka dikoreksi",
                      before=before, after={"override": line.override, "note": line.note}, note=line.note)
         return Response({"success": True, "line": _line_payload(line)})
+
+
+class LineRecalculateView(APIView):
+    """
+    G21-2 (25 Nov 2026): POST .../lines/<line_id>/recalculate/ = this person's line read again from attendance
+    (Ringkasan Karyawan, after HR fixed a day). Audited when the slip changes; "changed" says whether it did.
+    """
+    permission_classes = [IsCompanyHR]
+
+    def post(self, request, pk, line_id):
+        run, line = _line(request, pk, line_id)
+        if run.is_locked:
+            return _error(LOCKED)
+        same_json = lambda v: json.dumps(v, sort_keys=True, default=str)       # stored JSON vs fresh numbers
+        before = {"auto": same_json(line.auto), "net": _money(line.net)}
+        try:
+            recalculate_line(line)
+        except PayrollError as err:
+            return _error(str(err))
+        after = {"auto": same_json(line.auto), "net": _money(line.net)}
+        changed = before != after
+        if changed:
+            record_audit(organization=run.organization, actor=request.user, action="payroll.line_recalc", target=line,
+                         summary=f"{run.name} · {line.employee.full_name}: dihitung ulang dari absensi "
+                                 f"(bersih {before['net']} → {after['net']})",
+                         before={"net": before["net"]}, after={"net": after["net"]})
+        return Response({"success": True, "changed": changed, "net_before": before["net"],
+                         "line": _line_payload(line)})
 
 
 class ItemSerializer(serializers.Serializer):
