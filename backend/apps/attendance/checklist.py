@@ -103,9 +103,10 @@ def _conflict_dismissed(org):                                                   
     return out
 
 
-def conflicts_for(org, start, end, now, long_limit):                                        # G20-2
+def conflicts_for(org, start, end, now, long_limit, traced=None):                           # G20-2
     from .attendance_log import period_traces, person_conflicts
-    _, traced = period_traces(org, start, end, now)
+    if traced is None:
+        _, traced = period_traces(org, start, end, now)
     gone = _conflict_dismissed(org)
     rows = [c for c in (person_conflicts(emp, trace, long_limit, gone) for emp, _, trace in traced) if c]
     rows.sort(key=lambda c: (-len(c["items"]), c["employee"]["full_name"]))
@@ -282,6 +283,8 @@ def build(org, month=None, now=None):
     last_import = (ClockEvent.objects.filter(organization=org, source="fingerprint", day__date__gte=start,
                                              day__date__lte=end).order_by("-received_at").values_list("received_at", flat=True).first())
     run = PayRun.objects.filter(organization=org, period_end__year=end.year, period_end__month=end.month).first()
+    from .attendance_log import period_traces                                               # G21-3a: traced once
+    _, traced = period_traces(org, start, end, now)
     return {
         "success": True, **info,
         "no_track": no_track,                                                                         # G17-7.1
@@ -300,9 +303,17 @@ def build(org, month=None, now=None):
         "late": {"count": sum(p["count"] for p in late_rows), "minutes": sum(p["minutes"] for p in late_rows),
                  "half_days": sum(p["half_days"] for p in late_rows),                                         # G13-4
                  "rupiah": sum(p["rupiah"] for p in late_rows), "people": late_rows},
-        "conflicts": conflicts_for(org, start, end, now, long_limit),                                   # G20-2
+        "conflicts": conflicts_for(org, start, end, now, long_limit, traced),                           # G20-2
+        "saran": saran_for(org, start, end, cfg, traced),                                               # G21-3a
         "run": ({"id": str(run.id), "name": run.name, "locked": run.is_locked} if run else None),
     }
+
+
+def saran_for(org, start, end, cfg, traced):                                               # G21-3a
+    """Saran SeeGaji (s1-s3) for everyone in the period: a soft step, never blocking."""
+    from .attendance_log import rates_for
+    from .suggestions import for_period
+    return for_period(org, start, end, traced, lambda emp: rates_for(emp, cfg))
 
 
 class ChecklistView(APIView):

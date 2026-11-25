@@ -397,9 +397,7 @@ def attention(days):
                           "text": "Tidak ada tap pulang."})
         if d["status"] == "no_clock_in":
             items.append({"date": d["date"], "kind": "no_clock_in", "tone": "amber", "text": "Tidak ada tap masuk."})
-        for c in d["conflicts"]:
-            items.append({"date": d["date"], "kind": c["kind"], "tone": "violet", "text": c["text"]})
-    return items
+    return items                                    # G21-3a: conflicts are suggestions now (s4), not listed twice
 
 
 def totals(nums, days, cfg, rates):
@@ -503,6 +501,11 @@ def load(org, employee_id, month=None, now=None):
         return price_overtime(emp, day_shift, minutes, not t["working"], cfg)
 
     day_rows = build_days(emp, trace, cells, rates, cfg, notes, price_for, _conflict_dismissed(org))
+    from . import suggestions as saran                                                          # G21-3a
+    saran_list = saran.find(
+        emp, trace, saran.taps_by_day(org, [emp.id], start, end).get(emp.id, {}),
+        {d: n for (_, d), n in notes.items()}, rates,
+        conflicts=[(d["date"], c["kind"], c["kind_label"], c["text"]) for d in day_rows for c in d["conflicts"]])
     run = PayRun.objects.filter(organization=org, period_start=start).first()
     line = PayRunLine.objects.filter(run=run, employee=emp).first() if run else None
     people = [{"id": str(e.id), "employee_no": e.employee_no, "full_name": e.full_name}
@@ -533,6 +536,7 @@ def load(org, employee_id, month=None, now=None):
         "kinds": KINDS,
         "days": day_rows,
         "attention": attention(day_rows),
+        "suggestions": saran_list,                                                              # G21-3a
         "people": people,
     }
 
