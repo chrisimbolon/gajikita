@@ -37,6 +37,8 @@ from apps.attendance.review_overtime import BulkUndoView                        
 from apps.attendance.checklist import ChecklistDismissView, ChecklistView                  # G17-7
 from apps.attendance.attendance_log import AttendanceLogView                                # G20-1
 from apps.attendance.ringkasan import RingkasanView                                      # G21-1
+from apps.attendance.suggestion_actions import (SuggestionApplyView, SuggestionDismissView,  # G21-3b
+                                                SuggestionPreviewView, SuggestionUndoView)
 from apps.attendance.overtime_import_views import OvertimeImportView                       # G17-8
 
 urlpatterns = [
@@ -78,6 +80,10 @@ urlpatterns = [
     path("attendance/checklist/",     ChecklistView.as_view(),    name="hr-att-checklist"),       # G17-7
     path("attendance/log/",           AttendanceLogView.as_view(), name="hr-att-log"),             # G20-1
     path("attendance/ringkasan/",     RingkasanView.as_view(), name="hr-att-ringkasan"),       # G21-1
+    path("attendance/suggestions/preview/", SuggestionPreviewView.as_view(), name="hr-att-saran-preview"),  # G21-3b
+    path("attendance/suggestions/apply/",   SuggestionApplyView.as_view(),   name="hr-att-saran-apply"),
+    path("attendance/suggestions/dismiss/", SuggestionDismissView.as_view(), name="hr-att-saran-dismiss"),
+    path("attendance/suggestions/undo/",    SuggestionUndoView.as_view(),    name="hr-att-saran-undo"),
     path("attendance/overtime/import/", OvertimeImportView.as_view(), name="hr-att-overtime-import"),   # G17-8
     path("attendance/checklist/dismiss/", ChecklistDismissView.as_view(), name="hr-att-checklist-dismiss"),
     path("attendance/rekap/export/", RekapExportView.as_view(), name="hr-att-rekap-export"),
