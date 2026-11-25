@@ -151,6 +151,7 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
         if working:
             nums["working_days"] += 1
         absent = r.status == Status.ABSENT or (r.status == Status.REJECTED and working)     # G20-1: named
+        present = False                                                                # G21-1: for the trace
         if r.status == Status.LEAVE:
             leave_count[label] += 1
             if leave and leave[0] == SICK:                                          # G13-3
@@ -163,12 +164,14 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
                 nums["paid_leave_days"] += 1
         elif r.status == Status.EXEMPT:                     # G12i: tidak wajib absen = worked
             nums["present_days"] += 1
+            present = True
             nums["exempt_days"] += 1
             nums["exempt_reason"] = nums["exempt_reason"] or r.note.replace("Tidak wajib absen: ", "", 1)
         elif absent:
             nums["absent_days"] += 1
         elif r.first_in or r.last_out or r.disrupted or r.half_leave:   # G17-1 lone clock-out; G17-2; G17-4
             nums["present_days"] += 1
+            present = True
         if day is not None and r.needs_review and not day.decision:
             nums["review_days"] += 1
         if day is not None and not day.decision and r.overtime_proposed_minutes and day.overtime_approved_minutes is None \
@@ -233,6 +236,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
                 "absent": absent, "unpaid_leave": bool(r.status == Status.LEAVE and leave and leave[0] == UNPAID),
                 "exempt": r.status == Status.EXEMPT, "meal": meal, "breakfast": got_breakfast, "overtime": ot,
                 "meal_rule": meal_rule,
+                "present": present, "holiday": bool(r.holiday), "disrupted": bool(r.disrupted),       # G21-1
+                "worked_minutes": r.worked_minutes or 0, "spl": r.spl or "", "night_rule": r.night_rule or "",
             })
     nums["leave"] = dict(leave_count)
     nums["late_minutes"] = engine.chargeable_late_minutes(nums["late_raw"], cfg.late_tolerance_minutes)
