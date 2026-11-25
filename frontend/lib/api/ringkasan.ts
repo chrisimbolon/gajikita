@@ -36,6 +36,15 @@ export type RkMoneyBlock =
 
 export interface RkAttention { date: string; kind: string; tone: ChipTone; text: string }
 
+/** G21-3a: Saran SeeGaji (s1 night tap is the day before's pulang, s2 lembur without pulang, s3 lone night tap,
+ *  s4 leave with taps). kuat = a statement with its evidence, lemah = a question. Read-only until G21-3b. */
+export interface RkSuggestion {
+  id: string; kind: "s1" | "s2" | "s3" | "s4"; kind_label: string; date: string; to_date: string | null; tap: string | null;
+  strength: "kuat" | "lemah"; question: boolean; text: string; evidence: string[]; cost: string;
+  prefill: { clock_in: string | null; clock_out: string; source: string; clock_in_source: string } | null;
+  conflict_kind?: string;
+}
+
 export interface Ringkasan {
   month: string; label: string; start: string; end: string; prev: string; next: string;
   employee: {
@@ -57,6 +66,7 @@ export interface Ringkasan {
   kinds: Record<DayKind, string>;
   days: RkDay[];
   attention: RkAttention[];
+  suggestions: RkSuggestion[];                                                    // G21-3a
   people: { id: string; employee_no: string; full_name: string }[];
 }
 
@@ -68,6 +78,7 @@ export const ringkasanApi = {
 };
 
 /** The page of one person for one period (G21-1); every name in Log, Rekap, Siap gajian? and Payroll links here. */
-export function ringkasanHref(employeeId: string, month?: string | null): string {
-  return `/dashboard/karyawan/ringkasan?employee=${encodeURIComponent(employeeId)}${month ? `&month=${month}` : ""}`;
+export function ringkasanHref(employeeId: string, month?: string | null, day?: string | null): string {
+  return `/dashboard/karyawan/ringkasan?employee=${encodeURIComponent(employeeId)}${month ? `&month=${month}` : ""}`
+    + (day ? `&day=${day}` : "");                                                   // G21-3a: opened on that day
 }

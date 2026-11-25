@@ -16,7 +16,7 @@
 import FingerprintImport from "@/components/FingerprintImport";
 import OvertimeImport from "@/components/OvertimeImport";                       // G17-8
 import { attendanceApi, BulkDecideResult, minutesText } from "@/lib/api/attendance";
-import { Checklist, CkConflictPerson, CkLatePerson, CkMissingPerson, CkOvertimePerson, checklistApi } from "@/lib/api/checklist";
+import { Checklist, CkConflictPerson, CkLatePerson, CkMissingPerson, CkOvertimePerson, CkSaranPerson, checklistApi } from "@/lib/api/checklist";
 import { ringkasanHref } from "@/lib/api/ringkasan";                              // G21-1
 import { eventApi } from "@/lib/api/events";
 import { exemptionApi } from "@/lib/api/exemptions";
@@ -285,8 +285,9 @@ export default function SiapGajianPage() {
     missing: (data.missing.days ? "rule" : "done") as State,
     late: (data.late.count ? "rule" : "done") as State,
     conflicts: (data.conflicts.days ? "todo" : "done") as State,                     // G20-2
+    saran: (data.saran.count ? "rule" : "done") as State,                             // G21-3a: soft, never blocking
   };
-  const steps = data.notes ? 8 : 7;
+  const steps = data.notes ? 9 : 8;
   const settled = Object.entries(st).filter(([k, v]) => (k !== "notes" || data.notes) && v !== "todo").length;
   const togglePerson = (k: string) => setPerson(person === k ? null : k);
   let n = 0;
@@ -498,6 +499,36 @@ export default function SiapGajianPage() {
                     <td style={{ textAlign: "right" }}>
                       <button className="btn-ghost" disabled={busy} style={{ padding: "4px 10px", fontSize: 12.5, whiteSpace: "nowrap" }}
                               onClick={() => conflictOk(p.employee.id, p.employee.full_name, c.date, c.kind)}>Sudah benar</button>
+                    </td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            )}
+          </div>
+        ))}
+      </Step>
+
+      <Step n={++n} state={st.saran} title="Saran SeeGaji"
+            summary={data.saran.count
+              ? <><b>{data.saran.count} saran</b> di {data.saran.people.length} orang: SeeGaji menyambungkan titik (mis. tap 02:00 yang
+                  sebenarnya jam pulang malam sebelumnya). HR yang memutuskan di Ringkasan karyawan.</>
+              : "Tidak ada saran."}
+            ifNothing={data.saran.count ? "data dipakai apa adanya; saran tetap bisa dilihat kapan saja." : undefined}
+            open={!!open.saran} onToggle={data.saran.people.length ? () => setOpen({ ...open, saran: !open.saran }) : undefined}>
+        {data.saran.people.map((p: CkSaranPerson) => (
+          <div key={p.employee.id}>
+            <Who href={ringkasanHref(p.employee.id, data.month, p.first_date)} name={p.employee.full_name} no={p.employee.employee_no}
+                 open={person === `sg-${p.employee.id}`} onClick={() => togglePerson(`sg-${p.employee.id}`)} right={<>{p.count} saran</>} />
+            {person === `sg-${p.employee.id}` && (
+              <table className="data-table" style={{ fontSize: 13, margin: "4px 0 10px 24px" }}>
+                <tbody>{p.items.map((s) => (
+                  <tr key={s.date + s.kind}>
+                    <td style={{ whiteSpace: "nowrap" }}>{dayText(s.date)}</td>
+                    <td>{s.text}</td>
+                    <td style={{ textAlign: "right" }}>
+                      <Link href={ringkasanHref(p.employee.id, data.month, s.date)} style={{ fontWeight: 700, fontSize: 12.5, whiteSpace: "nowrap" }}>
+                        Lihat
+                      </Link>
                     </td>
                   </tr>
                 ))}</tbody>

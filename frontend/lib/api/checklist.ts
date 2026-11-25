@@ -38,7 +38,14 @@ export interface Checklist {
   missing: { days: number; cut_days: number; rupiah: number; people: CkMissingPerson[] };
   late: { count: number; minutes: number; half_days: number; rupiah: number; people: CkLatePerson[] };
   conflicts: { days: number; people: CkConflictPerson[] };                                  // G20-2
+  saran: { count: number; people: CkSaranPerson[] };                                         // G21-3a
   run: { id: string; name: string; locked: boolean } | null;
+}
+
+/** G21-3a: Saran SeeGaji per person (s1-s3; leave with taps is "Tidak cocok"). */
+export interface CkSaranPerson {
+  employee: { id: string; employee_no: string; full_name: string }; count: number; first_date: string;
+  items: { date: string; kind: string; strength: "kuat" | "lemah"; text: string }[];
 }
 
 export const checklistApi = {

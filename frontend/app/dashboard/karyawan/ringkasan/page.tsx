@@ -17,9 +17,9 @@ import DayPanel from "@/components/DayPanel";
 import type { DayRow } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
 import { payrollApi } from "@/lib/api/payroll";
-import { ChipTone, DayKind, RkDay, Ringkasan, ringkasanApi, ringkasanHref } from "@/lib/api/ringkasan";
+import { ChipTone, DayKind, RkDay, RkSuggestion, Ringkasan, ringkasanApi, ringkasanHref } from "@/lib/api/ringkasan";
 import { dmy, rupiah } from "@/lib/format";
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Pencil, RefreshCw } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Pencil, RefreshCw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -97,6 +97,13 @@ function Tile({ title, value, sub, tone }: { title: string; value: string; sub?:
   );
 }
 
+/** "Potongan keterlambatan" -> "Keterlambatan"; "Potongan lainnya" stays whole (G21-3a). */
+function shortLabel(label: string) {
+  const rest = label.replace(/^Potongan /, "");
+  if (rest === label || rest.toLowerCase() === "lainnya") return label;
+  return rest.charAt(0).toUpperCase() + rest.slice(1);
+}
+
 function qty(q: string | null, unit: string) {
   if (!q || !Number(q)) return "";
   const n = Number(q);
@@ -141,7 +148,7 @@ function Money({ data }: { data: Ringkasan }) {
               <span style={{ display: "flex", flexDirection: "column", gap: 2, marginTop: 2 }}>
                 {m.deductions.map((d, i) => (
                   <span key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                    <span>{d.label.replace(/^Potongan /, "")}{qty(d.quantity, d.unit)}</span>
+                    <span>{shortLabel(d.label)}{qty(d.quantity, d.unit)}</span>
                     <span style={{ whiteSpace: "nowrap", fontWeight: 700 }}>{rupiah(d.amount)}</span>
                   </span>
                 ))}
@@ -259,6 +266,44 @@ function toDayRow(data: Ringkasan, d: RkDay): DayRow {
   };
 }
 
+/** G21-3a: one Saran SeeGaji. kuat = a statement with its evidence, lemah = a question. The buttons come in G21-3b. */
+function SaranCard({ s, onPick, compact }: { s: RkSuggestion; onPick?: (iso: string) => void; compact?: boolean }) {
+  const cost = s.kind === "s3" && s.cost.includes("tidak hadir");
+  const days = [s.to_date, s.date].filter((x): x is string => !!x);
+  return (
+    <div style={{ background: "#FFFFFF", border: `1px solid ${s.strength === "kuat" ? "#C9A8F5" : "#E6DAF8"}`, borderRadius: 14,
+                  padding: compact ? "10px 12px" : "12px 14px", display: "flex", flexDirection: "column", gap: 6,
+                  boxShadow: s.strength === "kuat" ? "inset 3px 0 0 #7B3FC4" : undefined }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <Sparkles size={14} style={{ color: "#7B3FC4" }} />
+        <span style={{ fontSize: 12, fontWeight: 800, color: "#5A2E99" }}>Saran SeeGaji · {s.kind_label}</span>
+        {s.question && <span style={{ fontSize: 11.5, color: "#5A3D86" }}>perlu dipastikan HR</span>}
+      </div>
+      <div style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: INK, lineHeight: 1.4 }}>{s.text}</div>
+      {s.evidence.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {s.evidence.map((e, i) => <Chip key={i} label={e} tone="violet" />)}
+        </div>
+      )}
+      {s.prefill && (
+        <div style={{ fontSize: 13, color: "#2B3A49" }}>
+          {s.prefill.clock_in && <>Masuk <b>{s.prefill.clock_in}</b> ({s.prefill.clock_in_source}) · </>}
+          Pulang <b>{s.prefill.clock_out}</b> ({s.prefill.source})
+        </div>
+      )}
+      {s.cost && <div style={{ fontSize: 12.5, color: cost ? "#8A1A11" : MUTED, fontWeight: cost ? 700 : 400 }}>{s.cost}</div>}
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {!compact && onPick && days.map((iso) => (
+          <button key={iso} type="button" className="btn-ghost" onClick={() => onPick(iso)}
+                  style={{ padding: "5px 10px", fontSize: 12.5, minHeight: 32 }}>Lihat {dayText(iso)}</button>
+        ))}
+        {s.kind === "s4" && <Link href="/dashboard/cuti" style={{ fontSize: 12.5, fontWeight: 700 }}>Buka Cuti & Izin</Link>}
+        {s.kind !== "s4" && <span style={{ fontSize: 11.5, color: MUTED }}>Tombol terapkan / bukan menyusul.</span>}
+      </div>
+    </div>
+  );
+}
+
 function Detail({ data, d, onEdit }: { data: Ringkasan; d: RkDay; onEdit: () => void }) {
   const facts: [string, string, string?][] = [
     ["Masuk", d.in ?? "–"], ["Pulang", d.out ? `${d.out}${d.out_min !== null && d.out_min >= 1440 ? " (+1)" : ""}` : "–"],
@@ -287,6 +332,9 @@ function Detail({ data, d, onEdit }: { data: Ringkasan; d: RkDay; onEdit: () => 
           </div>
         ))}
       </div>
+      {data.suggestions.filter((sg) => sg.date === d.date || sg.to_date === d.date).map((sg) => (
+        <SaranCard key={sg.id} s={sg} compact />
+      ))}
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6, color: INK }}>Kenapa begini</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -345,6 +393,7 @@ export default function RingkasanPage() {
     const q = new URLSearchParams(window.location.search);
     const e = q.get("employee");
     setMonth(q.get("month") || undefined);
+    setPicked(q.get("day"));                                                     // G21-3a: from Siap gajian?
     setEmployee(e);
     if (!e) { setError("Pilih karyawan dulu (dari Log kehadiran, Rekap, Siap gajian? atau Payroll)."); setLoading(false); }
   }, []);
@@ -366,7 +415,7 @@ export default function RingkasanPage() {
     if (!data) return;
     setPicked((p) => {
       if (p && data.days.some((d) => d.date === p)) return p;
-      const first = data.attention[0]?.date;
+      const first = data.suggestions[0]?.date ?? data.attention[0]?.date;
       const lastWorked = [...data.days].reverse().find((d) => d.in || d.out)?.date;
       return first ?? lastWorked ?? data.days[0]?.date ?? null;
     });
@@ -401,7 +450,8 @@ export default function RingkasanPage() {
     document.getElementById(`rk-${iso}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
   const day = useMemo(() => data?.days.find((d) => d.date === picked) ?? null, [data, picked]);
-  const attn = useMemo(() => new Set(data?.attention.map((a) => a.date) ?? []), [data]);
+  const attn = useMemo(() => new Set([...(data?.attention.map((a) => a.date) ?? []),
+                                      ...(data?.suggestions.flatMap((s) => [s.date, s.to_date ?? s.date]) ?? [])]), [data]);
   const mealAt = useMemo(() => {
     const t = data?.rules.meal_late_after;
     return data?.employee.meal_rule === "late_out" && t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) : null;
@@ -503,16 +553,17 @@ export default function RingkasanPage() {
           </div>
 
           {/* what to look at */}
-          {data.attention.length > 0 && (
+          {data.attention.length + data.suggestions.length > 0 && (
             <div style={{ background: "#F5EEFD", border: "1px solid #DCCAF5", borderRadius: 18, padding: "14px 18px",
                           display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
                 <span style={{ minWidth: 28, height: 28, borderRadius: 9, background: "#7B3FC4", color: "#FFFFFF", display: "flex",
                                alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, padding: "0 6px" }}>
-                  {data.attention.length}</span>
+                  {data.attention.length + data.suggestions.length}</span>
                 <h2 style={{ ...h2, color: "#3E1F6B" }}>Perlu dilihat</h2>
                 <span style={{ fontSize: 12.5, color: "#5A3D86" }}>Ketuk tanggalnya untuk melihat harinya</span>
               </div>
+              {data.suggestions.map((sg) => <SaranCard key={sg.id} s={sg} onPick={pick} />)}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {data.attention.map((a, i) => (
                   <button key={i} type="button" onClick={() => pick(a.date)}
