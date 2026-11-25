@@ -36,10 +36,10 @@ class Command(BaseCommand):
         org, year = orgs[0], o["year"]
         rows, runs, december, cfg = Y.year_rows(org, year)
         w = self.stdout.write
-        mode = "bulan dibayar" if cfg.pph21_tax_month == Y.PAID else "bulan periode berakhir"
+        mode = Y.MODE_LABELS.get(cfg.pph21_tax_month, cfg.pph21_tax_month)                  # G16-5a
         w(f"{org.name} · PPh 21 setahun {year} (Pasal 17) · hanya pratinjau, tidak ada yang disimpan")
         w(f"Masa pajak ikut {mode}. Payroll SeeGaji di tahun ini: "
-          + (", ".join(f"{r.name} (masa {Y.masa_text(*Y.tax_month(r.period_end, r.pay_date, cfg.pph21_tax_month))})"
+          + (", ".join(f"{r.name} (masa {Y.masa_text(*Y.run_masa(r, cfg)[:2])})"
                        for r in runs) or "belum ada"))
         w(f"Payroll masa Desember: {december.name if december else 'belum ada (hasil di bawah = sampai bulan terakhir)'}\n")
         w(f"{'Nama':<26}{'PTKP':>6}{'Bln':>4}{'Bruto':>14}{'Iuran':>11}{'PKP':>13}{'Pajak':>11}{'Dipotong':>11}"

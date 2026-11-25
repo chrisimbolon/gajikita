@@ -61,7 +61,8 @@ class Command(BaseCommand):
             e = line.employee
             try:
                 m = P.monthly_for_slip(line.result, e.ptkp_status, by_company=e.pph21_by_company, late_reduces=late,
-                                       company_jht_in_bruto=jht, on=pay_date)
+                                       company_jht_in_bruto=jht, company_jp_in_bruto=cfg.pph21_company_jp_in_bruto,
+                                       on=pay_date)
                 rate, tax = m.rate, m.tax
                 cat = P.ter_category(e.ptkp_status)
             except ValueError as err:
