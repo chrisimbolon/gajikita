@@ -358,6 +358,8 @@ export default function PayRunPage() {
           </h1>
           <div style={{ color: "var(--steel)", fontSize: 14 }}>
             Periode {periodLabel(run.period_start, run.period_end)} · gajian {run.pay_date ? dayLabel(run.pay_date) : "-"}
+            {run.masa ? <> · masa pajak <b title={run.masa_frozen ? "Dikunci bersama payroll" : run.masa_rule}>{run.masa}</b>
+              {run.masa_frozen ? " (dikunci)" : ""}</> : null}{/* G16-5a */}
             {locked && run.locked_by ? ` · dikunci oleh ${run.locked_by}` : ""}
           </div>
         </div>

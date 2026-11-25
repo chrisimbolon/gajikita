@@ -76,13 +76,14 @@ export default function PayrollPage() {
       ) : (
         <div className="card" style={{ padding: 0 }}>
           <table className="data-table">
-            <thead><tr><th>Payroll</th><th>Periode</th><th>Gajian</th><th>Karyawan</th><th style={{ textAlign: "right" }}>Total bersih</th><th>Status</th></tr></thead>
+            <thead><tr><th>Payroll</th><th>Periode</th><th>Gajian</th><th>Masa pajak</th><th>Karyawan</th><th style={{ textAlign: "right" }}>Total bersih</th><th>Status</th></tr></thead>
             <tbody>
               {runs.map((r) => (
                 <tr key={r.id} onClick={() => { window.location.href = `/dashboard/payroll/run?id=${r.id}`; }} style={{ cursor: "pointer" }}>
                   <td style={{ fontWeight: 700 }}>{r.name}</td>
                   <td>{periodLabel(r.period_start, r.period_end)}</td>
                   <td>{r.pay_date ? dayLabel(r.pay_date) : "-"}</td>
+                  <td title={r.masa_rule}>{r.masa ?? "-"}</td>{/* G16-5a */}
                   <td>{r.people}</td>
                   <td style={{ textAlign: "right", fontWeight: 700 }}>{rupiah(r.net)}</td>
                   <td>

@@ -5,7 +5,8 @@
 // rates, and GajiKita then shows a warning on every slip where that pays less.
 // =============================================================================
 import { readErrors } from "@/lib/api/hr";
-import { DKCB_NIGHT_RULES, NightRule, PayrollSettings, Pph21Readiness, payrollApi } from "@/lib/api/payroll";
+import { DKCB_NIGHT_RULES, MASA_LABELS, MasaConfirmNeeded, MasaMode, NightRule, PayrollSettings, Pph21Readiness,
+         payrollApi } from "@/lib/api/payroll";
 import { ArrowLeft, CheckCircle2, Info, Loader2, Save } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
@@ -38,6 +39,7 @@ export default function PayrollSettingsPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [masaAsk, setMasaAsk] = useState<MasaConfirmNeeded | null>(null);          // G16-5a
 
   useEffect(() => {
     payrollApi.settings().then(setForm).catch((err) => setMessage({ ok: false, text: readErrors(err).summary }));
@@ -79,14 +81,19 @@ export default function PayrollSettingsPage() {
   const setRules = (next: NightRule[]) => set("night_ot_rules", next);
   const setRule = (i: number, patch: Partial<NightRule>) => setRules(nightRules.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
-  const save = async () => {
+  const save = async (confirmMasa = false) => {
     setBusy(true);
     setErrors({});
     setMessage(null);
     try {
-      setForm(await payrollApi.saveSettings(form));
+      setForm(await payrollApi.saveSettings(form, confirmMasa));
+      setMasaAsk(null);
       setMessage({ ok: true, text: "Pengaturan payroll disimpan." });
     } catch (e) {
+      if (e instanceof MasaConfirmNeeded) {                                     // G16-5a: show it, HR decides
+        setMasaAsk(e);
+        return;
+      }
       const r = readErrors(e);
       setErrors(r.fields);
       setMessage({ ok: false, text: r.summary });
@@ -371,18 +378,50 @@ export default function PayrollSettingsPage() {
                  onChange={(e) => set("pph21_company_jht_in_bruto", e.target.checked)} />
           JHT 2% karyawan yang ditanggung perusahaan masuk bruto
         </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14 }}>
+          <input type="checkbox" checked={form.pph21_company_jp_in_bruto ?? true}
+                 onChange={(e) => set("pph21_company_jp_in_bruto", e.target.checked)} />
+          JP 1% karyawan yang ditanggung perusahaan masuk bruto
+        </label>
         <label>
           <div className="label">Masa pajak ikut</div>
-          <select className="input" style={{ width: "100%" }} value={form.pph21_tax_month ?? "paid"}
-                  onChange={(e) => set("pph21_tax_month", e.target.value as "paid" | "period_end")}>
-            <option value="paid">Bulan dibayar</option>
-            <option value="period_end">Bulan periode berakhir</option>
+          <select className="input" style={{ width: "100%" }} value={form.pph21_tax_month ?? "earliest"}
+                  onChange={(e) => set("pph21_tax_month", e.target.value as MasaMode)}>
+            {(Object.keys(MASA_LABELS) as MasaMode[]).map((m) => <option key={m} value={m}>{MASA_LABELS[m]}</option>)}
           </select>
-          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
-            Contoh periode s/d 25 Nov dibayar 5 Des: bulan dibayar = masa Desember, bulan periode berakhir = masa
-            November. Masa Desember menghitung PPh 21 setahun.
+          <div style={{ fontSize: 12, color: form.pph21_tax_month === "earliest" ? "var(--steel)" : "#8A5A00", marginTop: 3 }}>
+            {form.pph21_tax_month === "earliest"
+              ? <>PMK 168/2023 Pasal 19: PPh 21 terutang saat dibayar atau saat periode selesai, mana yang lebih dulu.
+                  Periode s/d 25 Nov dibayar 5 Des = masa November. Masa Desember menghitung PPh 21 setahun.</>
+              : <>Pilihan perusahaan, bukan aturan. Aturannya: dibayar atau periode selesai, mana yang lebih dulu
+                  (PMK 168/2023 Pasal 19).</>}
           </div>
         </label>
+        <label>
+          <div className="label">Berlaku untuk periode yang berakhir sejak</div>
+          <input className="input" type="month" style={{ width: "100%" }}
+                 value={(form.pph21_tax_month_since ?? "").slice(0, 7)}
+                 onChange={(e) => set("pph21_tax_month_since", e.target.value ? `${e.target.value}-01` : null)} />
+          <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+            Kosong = semua periode. Payroll yang sudah dikunci tidak pernah pindah masa.
+            {(form.pph21_tax_month_history ?? []).length > 0 && (
+              <> Sebelumnya: {(form.pph21_tax_month_history ?? []).map((h) =>
+                `${MASA_LABELS[h.mode] ?? h.mode}${h.since ? ` (sejak ${h.since.slice(0, 7)})` : ""}`).join("; ")}.</>
+            )}
+          </div>
+        </label>
+        {masaAsk && (                                                                 // G16-5a (D80)
+          <div style={{ gridColumn: "1 / -1", background: "#FDF1D8", border: "1px solid #F4D9A3", borderRadius: 12,
+                        padding: "12px 14px", fontSize: 13.5, color: "#5A3A00", display: "flex", flexDirection: "column", gap: 6 }}>
+            <b>Perubahan masa pajak ini mengubah payroll yang sudah ada. Periksa dulu:</b>
+            {masaAsk.moves.map((m, i) => <div key={`m${i}`}>• {m.run}: masa {m.before} → <b>{m.after}</b></div>)}
+            {masaAsk.warnings.map((w, i) => <div key={`w${i}`}>⚠ {w.text}</div>)}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 4 }}>
+              <button type="button" className="btn-rust" disabled={busy} onClick={() => save(true)}>Ya, simpan perubahan masa</button>
+              <button type="button" className="btn-ghost" disabled={busy} onClick={() => setMasaAsk(null)}>Batal</button>
+            </div>
+          </div>
+        )}
       </Section>
 
       <Section title="Slip gaji" hint="Tampil di setiap slip yang dicetak.">
@@ -405,7 +444,7 @@ export default function PayrollSettingsPage() {
         <div style={{ background: message.ok ? "var(--workshop-lt)" : "var(--danger-light)", color: message.ok ? "var(--workshop)" : "var(--danger)",
                       padding: "10px 14px", borderRadius: 8, fontWeight: 600, fontSize: 14, marginBottom: 12 }}>{message.text}</div>
       )}
-      <button className="btn-rust" onClick={save} disabled={busy} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+      <button className="btn-rust" onClick={() => save()} disabled={busy} style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {busy ? <Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> : <Save size={15} />} Simpan pengaturan
       </button>
     </div>

@@ -123,6 +123,9 @@ export default function OpeningPage() {
           {data.runs.length ? data.runs.map((r) => `${r.name} (masa ${r.masa})`).join(" · ") : "belum ada"}.
           Isi saldo awal untuk masa pajak <b>sebelum</b> itu.
           {data.december_run ? ` Hitung setahun di ${data.december_run}.` : ""}
+          {(data.masa_warnings ?? []).map((w, i) => (                                 // G16-5a
+            <div key={i} style={{ marginTop: 6, color: "#8A5A00", fontWeight: 600 }}>⚠ {w.text}</div>
+          ))}
         </div>
       )}
 
