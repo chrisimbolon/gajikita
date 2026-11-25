@@ -17,9 +17,11 @@ import DayPanel from "@/components/DayPanel";
 import type { DayRow } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
 import { payrollApi } from "@/lib/api/payroll";
-import { ChipTone, DayKind, RkDay, RkSuggestion, Ringkasan, ringkasanApi, ringkasanHref } from "@/lib/api/ringkasan";
+import { checklistApi } from "@/lib/api/checklist";
+import { ChipTone, DayKind, RkDay, RkSuggestion, Ringkasan, SaranDone, SaranPreview, ringkasanApi, ringkasanHref,
+         saranApi } from "@/lib/api/ringkasan";
 import { dmy, rupiah } from "@/lib/format";
-import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Pencil, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Pencil, RefreshCw, Sparkles, Undo2 } from "lucide-react";
 import Link from "next/link";
 import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -71,10 +73,12 @@ const pct = (m: number) => Math.max(0, Math.min(100, ((m - BAR_FROM) / BAR_SPAN)
 const card: CSSProperties = { background: "#FFFFFF", border: `1px solid ${LINE}`, borderRadius: 18, padding: "16px 18px" };
 const h2: CSSProperties = { margin: 0, fontSize: 16, fontWeight: 800, color: INK };
 
-function Chip({ label, tone, size = 11.5 }: { label: string; tone: ChipTone; size?: number }) {
+function Chip({ label, tone, size = 11.5, wrap }: { label: string; tone: ChipTone; size?: number; wrap?: boolean }) {
   const t = TONE[tone] ?? TONE.slate;
-  return <span style={{ padding: "3px 8px", borderRadius: 999, fontSize: size, fontWeight: 700, background: t.bg, color: t.fg,
-                        whiteSpace: "nowrap" }}>{label}</span>;
+  // wrap (G21-3b.2): long evidence ("catatan HR: ...") breaks inside the card instead of running past its edge
+  return <span style={{ padding: "3px 8px", borderRadius: wrap ? 10 : 999, fontSize: size, fontWeight: 700, background: t.bg,
+                        color: t.fg, whiteSpace: wrap ? "normal" : "nowrap", maxWidth: "100%", overflowWrap: "anywhere",
+                        lineHeight: wrap ? 1.35 : undefined }}>{label}</span>;
 }
 
 function Tile({ title, value, sub, tone }: { title: string; value: string; sub?: ReactNode;
@@ -266,13 +270,75 @@ function toDayRow(data: Ringkasan, d: RkDay): DayRow {
   };
 }
 
-/** G21-3a: one Saran SeeGaji. kuat = a statement with its evidence, lemah = a question. The buttons come in G21-3b. */
-function SaranCard({ s, onPick, compact }: { s: RkSuggestion; onPick?: (iso: string) => void; compact?: boolean }) {
+/** One preview: what changes, day by day, and the slip (G21-3b). */
+function PreviewBox({ p }: { p: SaranPreview }) {
+  const days = Array.from(new Set(p.changes.map((c) => c.date)));
+  const same = p.net_before !== null && p.net_before === p.net_after;
+  return (
+    <div style={{ background: "#F8F5FE", border: "1px solid #E6DAF8", borderRadius: 12, padding: "9px 11px",
+                  display: "flex", flexDirection: "column", gap: 5, fontSize: 12.5, color: "#2B3A49" }}>
+      <div style={{ fontWeight: 800, color: "#3E1F6B" }}>Kalau diterapkan:</div>
+      {days.length === 0 && <div>Tidak ada yang berubah di hari-harinya.</div>}
+      {days.map((iso) => (
+        <div key={iso}><b>{dayText(iso)}:</b>{" "}
+          {p.changes.filter((c) => c.date === iso).map((c, i) => (
+            <span key={i}>{i > 0 && " · "}{c.label} {c.before} → <b>{c.after}</b></span>
+          ))}
+        </div>
+      ))}
+      {p.net_before !== null && p.net_after !== null && (
+        <div><b>{p.run ?? "Slip"}:</b> {same ? <>bersih tetap {rupiah(p.net_after)}</>
+          : <>bersih {rupiah(p.net_before)} → <b>{rupiah(p.net_after)}</b></>}</div>
+      )}
+      {p.net_before === null && <div style={{ color: MUTED }}>Belum ada payroll (atau dikunci) untuk periode ini: slip tidak diubah.</div>}
+    </div>
+  );
+}
+
+/**
+ * One Saran SeeGaji (G21-3a/3b). kuat = a statement with its evidence, lemah = a question (D74).
+ * s1/s3: Pindahkan / Ya, pindahkan -> the preview -> Terapkan. s2: a form prefilled, its preview follows the time,
+ * Simpan keeps the approved lembur (D70). Bukan closes it for good. s4: Cuti & Izin or Sudah benar (G20-2).
+ */
+function SaranCard({ s, employee, month, onPick, onDone, compact }: {
+  s: RkSuggestion; employee: string; month: string; onPick?: (iso: string) => void;
+  onDone: (done: SaranDone) => void; compact?: boolean;
+}) {
   const cost = s.kind === "s3" && s.cost.includes("tidak hadir");
   const days = [s.to_date, s.date].filter((x): x is string => !!x);
+  const [open, setOpen] = useState(false);
+  const [times, setTimes] = useState({ clock_in: s.prefill?.clock_in ?? "", clock_out: s.prefill?.clock_out ?? "" });
+  const [prev, setPrev] = useState<SaranPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const isForm = s.kind === "s2";
+
+  // the preview follows the form (s2) or opens once (s1/s3)
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    const t = window.setTimeout(async () => {
+      setErr(null);
+      try {
+        const p = await saranApi.preview(employee, month, s.id, isForm ? times : {});
+        if (alive) setPrev(p);
+      } catch (e) { if (alive) { setPrev(null); setErr(readErrors(e).summary); } }
+    }, isForm ? 450 : 0);
+    return () => { alive = false; window.clearTimeout(t); };
+  }, [open, isForm, times, employee, month, s.id]);
+
+  const run = async (fn: () => Promise<SaranDone>) => {
+    setBusy(true); setErr(null);
+    try { onDone(await fn()); setOpen(false); }
+    catch (e) { setErr(readErrors(e).summary); }
+    finally { setBusy(false); }
+  };
+  const small: CSSProperties = { padding: "5px 12px", fontSize: 12.5, minHeight: 34 };
+  const yes = s.kind === "s2" ? "Isi jam pulang" : s.question ? "Ya, pindahkan" : "Pindahkan";
+
   return (
     <div style={{ background: "#FFFFFF", border: `1px solid ${s.strength === "kuat" ? "#C9A8F5" : "#E6DAF8"}`, borderRadius: 14,
-                  padding: compact ? "10px 12px" : "12px 14px", display: "flex", flexDirection: "column", gap: 6,
+                  padding: compact ? "10px 12px" : "12px 14px", display: "flex", flexDirection: "column", gap: 7,
                   boxShadow: s.strength === "kuat" ? "inset 3px 0 0 #7B3FC4" : undefined }}>
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <Sparkles size={14} style={{ color: "#7B3FC4" }} />
@@ -282,29 +348,74 @@ function SaranCard({ s, onPick, compact }: { s: RkSuggestion; onPick?: (iso: str
       <div style={{ fontSize: compact ? 13 : 14, fontWeight: 700, color: INK, lineHeight: 1.4 }}>{s.text}</div>
       {s.evidence.length > 0 && (
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-          {s.evidence.map((e, i) => <Chip key={i} label={e} tone="violet" />)}
-        </div>
-      )}
-      {s.prefill && (
-        <div style={{ fontSize: 13, color: "#2B3A49" }}>
-          {s.prefill.clock_in && <>Masuk <b>{s.prefill.clock_in}</b> ({s.prefill.clock_in_source}) · </>}
-          Pulang <b>{s.prefill.clock_out}</b> ({s.prefill.source})
+          {s.evidence.map((e, i) => <Chip key={i} label={e} tone="violet" wrap />)}
         </div>
       )}
       {s.cost && <div style={{ fontSize: 12.5, color: cost ? "#8A1A11" : MUTED, fontWeight: cost ? 700 : 400 }}>{s.cost}</div>}
+
+      {open && isForm && (
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
+          {s.prefill?.clock_in && (
+            <label style={{ fontSize: 12, color: MUTED, display: "flex", flexDirection: "column", gap: 3 }}>
+              Masuk ({s.prefill.clock_in_source})
+              <input type="time" value={times.clock_in} onChange={(e) => setTimes({ ...times, clock_in: e.target.value })}
+                     style={{ minHeight: 36, borderRadius: 8, border: `1px solid ${LINE}`, padding: "0 8px" }} />
+            </label>
+          )}
+          <label style={{ fontSize: 12, color: MUTED, display: "flex", flexDirection: "column", gap: 3 }}>
+            Pulang ({s.prefill?.source})
+            <input type="time" value={times.clock_out} onChange={(e) => setTimes({ ...times, clock_out: e.target.value })}
+                   style={{ minHeight: 36, borderRadius: 8, border: `1px solid ${LINE}`, padding: "0 8px" }} />
+          </label>
+        </div>
+      )}
+      {open && (prev ? <PreviewBox p={prev} />
+                     : !err && <div style={{ fontSize: 12.5, color: MUTED }}><Loader2 size={12} style={{ animation: "spin 1s linear infinite", verticalAlign: "-2px" }} /> Menghitung akibatnya…</div>)}
+      {err && <div style={{ fontSize: 12.5, color: "#8A1A11" }}>{err}</div>}
+
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {s.kind === "s4" ? (
+          <>
+            <Link href="/dashboard/cuti" className="btn-ghost" style={{ ...small, display: "inline-flex", alignItems: "center" }}>Buka Cuti & Izin</Link>
+            <button type="button" className="btn-ghost" disabled={busy} style={small}
+                    onClick={() => run(async () => {
+                      await checklistApi.conflictOk(employee, s.date, s.conflict_kind ?? "");
+                      return { message: `${dayText(s.date)}: ditandai sudah benar.`, payroll: null };
+                    })}>Sudah benar</button>
+          </>
+        ) : !open ? (
+          <>
+            <button type="button" className="btn-rust" style={small} onClick={() => setOpen(true)}>{yes}</button>
+            <button type="button" className="btn-ghost" disabled={busy} style={small}
+                    onClick={() => run(() => saranApi.dismiss(employee, month, s.id))}>Bukan</button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="btn-rust" disabled={busy || !prev || (isForm && !times.clock_out)} style={small}
+                    onClick={() => run(() => saranApi.apply(employee, month, s.id, isForm ? times : {}))}>
+              {busy ? "Menyimpan…" : isForm ? "Simpan jam pulang" : "Terapkan"}
+            </button>
+            <button type="button" className="btn-ghost" disabled={busy} style={small} onClick={() => { setOpen(false); setPrev(null); }}>Batal</button>
+          </>
+        )}
         {!compact && onPick && days.map((iso) => (
           <button key={iso} type="button" className="btn-ghost" onClick={() => onPick(iso)}
-                  style={{ padding: "5px 10px", fontSize: 12.5, minHeight: 32 }}>Lihat {dayText(iso)}</button>
+                  style={{ ...small, marginLeft: iso === days[0] ? "auto" : undefined }}>Lihat {dayText(iso)}</button>
         ))}
-        {s.kind === "s4" && <Link href="/dashboard/cuti" style={{ fontSize: 12.5, fontWeight: 700 }}>Buka Cuti & Izin</Link>}
-        {s.kind !== "s4" && <span style={{ fontSize: 11.5, color: MUTED }}>Tombol terapkan / bukan menyusul.</span>}
       </div>
     </div>
   );
 }
 
-function Detail({ data, d, onEdit }: { data: Ringkasan; d: RkDay; onEdit: () => void }) {
+function Detail({ data, d, onEdit, onDone }: { data: Ringkasan; d: RkDay; onEdit: () => void; onDone: (done: SaranDone) => void }) {
+  const [undoing, setUndoing] = useState<string | null>(null);
+  const [undoErr, setUndoErr] = useState<string | null>(null);
+  const undo = async (event: string) => {
+    setUndoing(event); setUndoErr(null);
+    try { onDone(await saranApi.undo(data.employee.id, event)); }
+    catch (e) { setUndoErr(readErrors(e).summary); }
+    finally { setUndoing(null); }
+  };
   const facts: [string, string, string?][] = [
     ["Masuk", d.in ?? "–"], ["Pulang", d.out ? `${d.out}${d.out_min !== null && d.out_min >= 1440 ? " (+1)" : ""}` : "–"],
     ["Jam kerja", d.worked_minutes ? hoursText(d.worked_minutes) : "–"],
@@ -333,7 +444,18 @@ function Detail({ data, d, onEdit }: { data: Ringkasan; d: RkDay; onEdit: () => 
         ))}
       </div>
       {data.suggestions.filter((sg) => sg.date === d.date || sg.to_date === d.date).map((sg) => (
-        <SaranCard key={sg.id} s={sg} compact />
+        <SaranCard key={sg.id} s={sg} employee={data.employee.id} month={data.month} onDone={onDone} compact />
+      ))}
+      {d.moved.map((m) => (                                                            // G21-3b: Kembalikan
+        <div key={m.event} style={{ background: "#F8F5FE", border: "1px solid #E6DAF8", borderRadius: 12, padding: "8px 11px",
+                                    display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", fontSize: 12.5 }}>
+          <span style={{ flex: "1 1 200px" }}>Tap <b>{m.time}</b> dipindah dari {dmy(m.from)} sebagai jam pulang (saran SeeGaji).</span>
+          <button type="button" className="btn-ghost" disabled={undoing === m.event} onClick={() => undo(m.event)}
+                  style={{ padding: "4px 10px", fontSize: 12.5, minHeight: 32, display: "inline-flex", gap: 5, alignItems: "center" }}>
+            <Undo2 size={13} /> Kembalikan
+          </button>
+          {undoErr && <span style={{ color: "#8A1A11", width: "100%" }}>{undoErr}</span>}
+        </div>
       ))}
       <div>
         <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6, color: INK }}>Kenapa begini</div>
@@ -422,6 +544,16 @@ export default function RingkasanPage() {
   }, [data]);
 
   const go = (m: string) => { setMonth(m); setPicked(null); setEdit(false); setNotice(null); };
+
+  // G21-3b: a suggestion was applied, closed or undone: say what happened to the slip, then show the page again
+  const saranDone = useCallback(async (done: SaranDone) => {
+    const p = done.payroll;
+    const slip = !p ? "" : p.locked ? ` ${p.run} dikunci: slip tidak diubah.`
+      : p.net_before === p.net_after ? ` Slip tidak berubah (bersih ${rupiah(p.net_after ?? "0")}).`
+      : ` Payroll dihitung ulang: bersih ${rupiah(p.net_before ?? "0")} → ${rupiah(p.net_after ?? "0")}.`;
+    setNotice({ tone: "ok", text: `${done.message}.${slip}`.replace("..", ".") });
+    await load();
+  }, [load]);
 
   // G21-2: read this person's payroll line again from attendance (only theirs), then show the page again
   const recalc = useCallback(async (why: string) => {
@@ -563,7 +695,8 @@ export default function RingkasanPage() {
                 <h2 style={{ ...h2, color: "#3E1F6B" }}>Perlu dilihat</h2>
                 <span style={{ fontSize: 12.5, color: "#5A3D86" }}>Ketuk tanggalnya untuk melihat harinya</span>
               </div>
-              {data.suggestions.map((sg) => <SaranCard key={sg.id} s={sg} onPick={pick} />)}
+              {data.suggestions.map((sg) => <SaranCard key={sg.id} s={sg} employee={data.employee.id} month={data.month}
+                                                       onPick={pick} onDone={saranDone} />)}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {data.attention.map((a, i) => (
                   <button key={i} type="button" onClick={() => pick(a.date)}
@@ -636,7 +769,7 @@ export default function RingkasanPage() {
                 <DayPanel key={`${day.date}-${day.day_id}`} row={toDayRow(data, day)} onChanged={() => recalc(`Hari ${dmy(day.date)} disimpan. `)}
                           onClose={() => setEdit(false)} />
               ) : day ? (
-                <Detail data={data} d={day} onEdit={() => setEdit(true)} />
+                <Detail data={data} d={day} onEdit={() => setEdit(true)} onDone={saranDone} />
               ) : (
                 <div style={{ ...card, color: MUTED, fontSize: 13.5 }}>Pilih tanggal untuk melihat harinya.</div>
               )}

@@ -24,6 +24,7 @@ export interface RkDay {
   meals: number; breakfast: boolean; review: boolean; hr_fixed: boolean; decision: string; locked: boolean;
   note: string; hr_note: HrNote | null;
   chips: RkChip[]; money: RkMoney[]; rupiah: string; why: string[]; conflicts: RkConflict[];
+  moved: { event: string; time: string; from: string }[];                         // G21-3b: taps a suggestion moved here
 }
 
 export interface RkSlipLine { code: string; label: string; amount: string; quantity: string | null; unit: string }
@@ -69,6 +70,36 @@ export interface Ringkasan {
   suggestions: RkSuggestion[];                                                    // G21-3a
   people: { id: string; employee_no: string; full_name: string }[];
 }
+
+/** G21-3b: what a suggestion changes (the real apply, rolled back) and what it did to the slip. */
+export interface SaranPreview {
+  changes: { date: string; label: string; before: string; after: string }[];
+  net_before: string | null; net_after: string | null; run: string | null;
+}
+export interface SaranDone {
+  message: string;
+  payroll: { run: string; locked: boolean; net_before?: string; net_after?: string } | null;
+}
+type SaranTimes = { clock_in?: string | null; clock_out?: string | null };
+
+export const saranApi = {
+  async preview(employee: string, month: string, id: string, times: SaranTimes = {}): Promise<SaranPreview> {
+    const { data } = await api.post("/api/hr/attendance/suggestions/preview/", { employee, month, id, ...times }, { timeout: 60000 });
+    return data;
+  },
+  async apply(employee: string, month: string, id: string, times: SaranTimes = {}): Promise<SaranDone> {
+    const { data } = await api.post("/api/hr/attendance/suggestions/apply/", { employee, month, id, ...times }, { timeout: 60000 });
+    return data;
+  },
+  async dismiss(employee: string, month: string, id: string): Promise<SaranDone> {
+    const { data } = await api.post("/api/hr/attendance/suggestions/dismiss/", { employee, month, id });
+    return { message: data.message, payroll: null };
+  },
+  async undo(employee: string, event: string): Promise<SaranDone> {
+    const { data } = await api.post("/api/hr/attendance/suggestions/undo/", { employee, event }, { timeout: 60000 });
+    return data;
+  },
+};
 
 export const ringkasanApi = {
   async get(employee: string, month?: string): Promise<Ringkasan> {
