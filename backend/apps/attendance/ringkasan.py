@@ -502,10 +502,15 @@ def load(org, employee_id, month=None, now=None):
 
     day_rows = build_days(emp, trace, cells, rates, cfg, notes, price_for, _conflict_dismissed(org))
     from . import suggestions as saran                                                          # G21-3a
+    from .suggestion_actions import dismissed_for, moved_taps                                  # G21-3b
     saran_list = saran.find(
         emp, trace, saran.taps_by_day(org, [emp.id], start, end).get(emp.id, {}),
         {d: n for (_, d), n in notes.items()}, rates,
+        dismissed=dismissed_for(org, [str(emp.id)]).get(str(emp.id), set()),
         conflicts=[(d["date"], c["kind"], c["kind_label"], c["text"]) for d in day_rows for c in d["conflicts"]])
+    moved = moved_taps(org, emp, start, end)                                                    # G21-3b: Kembalikan
+    for d in day_rows:
+        d["moved"] = moved.get(d["date"], [])
     run = PayRun.objects.filter(organization=org, period_start=start).first()
     line = PayRunLine.objects.filter(run=run, employee=emp).first() if run else None
     people = [{"id": str(e.id), "employee_no": e.employee_no, "full_name": e.full_name}

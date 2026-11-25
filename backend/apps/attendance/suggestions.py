@@ -105,8 +105,9 @@ def find(emp, trace, taps, notes, rates, dismissed=frozenset(), conflicts=None):
         if prev is None or not day_taps or t["locked"] or prev["locked"] or t["hr_fixed"]:
             continue
         first = _local(day_taps[0])
-        if first.hour >= NIGHT_END_HOUR:
-            continue
+        if first.hour >= NIGHT_END_HOUR or first.date() != d:
+            continue                                         # G21-3b.1: a tap of D+1 kept on D is D's own pulang
+                                                             # (moved by HR or by the import), never a candidate
         if prev["last_out"] is not None or prev["status"] == "leave" or prev["exempt"]:
             continue                                         # D-1 has its pulang, or nothing to fix there
         if not prev["working"] and not prev["present"] and not prev["overtime"]:
@@ -165,7 +166,8 @@ def find(emp, trace, taps, notes, rates, dismissed=frozenset(), conflicts=None):
             out_min, source = (end + t["overtime"]) % 1440, "perkiraan: jam pulang shift + lembur"
         clock_out = f"{out_min // 60:02d}:{out_min % 60:02d}"
         clock_in = None if t["first_in"] else shift.start_time.strftime("%H:%M")
-        text = (f"Lembur {_hm(t['overtime'])} disetujui di {day_text(d)}, tapi tidak ada jam pulang. "
+        why = f" ({t['event']})" if t.get("event") else ""                         # G21-3b: "(Listrik Padam)"
+        text = (f"Lembur {_hm(t['overtime'])} disetujui di {day_text(d)}, tapi tidak ada jam pulang{why}. "
                 f"Jam pulang {clock_out} ({source}).")
         out.append({"id": f"s2:{d.isoformat()}", "kind": "s2", "kind_label": KINDS["s2"], "date": d.isoformat(),
                     "to_date": None, "tap": None, "strength": "kuat" if named else "lemah", "question": False,
@@ -212,12 +214,15 @@ def notes_by_day(org, employee_ids, start, end):
 
 def for_period(org, start, end, traced, rates_for, conflicts_by_emp=None):
     """Siap gajian?: s1-s3 for everyone (s4 has its own "Tidak cocok" step). -> {count, people}."""
+    from .suggestion_actions import dismissed_for                                          # G21-3b: "Bukan"
     ids = [emp.id for emp, _, _ in traced]
     taps = taps_by_day(org, ids, start, end)
     notes = notes_by_day(org, ids, start, end)
+    gone = dismissed_for(org)
     people = []
     for emp, _, trace in traced:
-        found = [s for s in find(emp, trace, taps.get(emp.id, {}), notes.get(emp.id, {}), rates_for(emp))
+        found = [s for s in find(emp, trace, taps.get(emp.id, {}), notes.get(emp.id, {}), rates_for(emp),
+                                 gone.get(str(emp.id), set()))
                  if s["kind"] != "s4"]
         if found:
             people.append({"employee": {"id": str(emp.id), "employee_no": emp.employee_no, "full_name": emp.full_name},
