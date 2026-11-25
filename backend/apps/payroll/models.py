@@ -93,14 +93,23 @@ class PayrollSettings(TenantScopedModel):
                                                    verbose_name="Potongan keterlambatan mengurangi bruto PPh 21")
     pph21_company_jht_in_bruto = models.BooleanField(
         default=True, verbose_name="JHT 2% karyawan yang ditanggung perusahaan masuk bruto PPh 21")
+    pph21_company_jp_in_bruto = models.BooleanField(                                   # G16-5a (D78)
+        default=True, verbose_name="JP 1% karyawan yang ditanggung perusahaan masuk bruto PPh 21")
     # G16-3: PPh 21 on the slip (off until the company is ready; locked payrolls never change)
     pph21_enabled = models.BooleanField(default=False, verbose_name="Hitung PPh 21 di slip")
     # G16-2: which month a payroll belongs to for PPh 21 (and so which payroll settles the year in December)
     # G17-E1: where overtime approval comes from (UU 27/2026 Pasal 116 ayat 1: a written / digital order)
     overtime_source = models.CharField(max_length=10, default="decision", verbose_name="Persetujuan lembur",
                                        choices=[("decision", "Keputusan HR per hari"), ("spl", "SPL")])
-    pph21_tax_month = models.CharField(max_length=12, default="paid", verbose_name="Masa pajak ikut",
-                                       choices=[("paid", "Bulan dibayar"), ("period_end", "Bulan periode berakhir")])
+    # G16-5a (D76, D79): the law ("earliest") is the default for NEW companies; existing ones keep their choice.
+    # A change is dated: periods ending on or after `since` follow the new rule, earlier ones the history.
+    pph21_tax_month = models.CharField(max_length=12, default="earliest", verbose_name="Masa pajak ikut",
+                                       choices=[("earliest", "Yang lebih dulu: dibayar atau periode selesai (aturan)"),
+                                                ("paid", "Bulan dibayar"), ("period_end", "Bulan periode berakhir")])
+    pph21_tax_month_since = models.DateField(null=True, blank=True,
+                                             verbose_name="Masa pajak: berlaku untuk periode yang berakhir sejak")
+    pph21_tax_month_history = models.JSONField(default=list, blank=True,
+                                               verbose_name="Aturan masa pajak sebelumnya")
     # G16-4: hak akhir (UU 27/2026 Pasal 233 and 250)
     separation_pay_months = models.DecimalField(max_digits=4, decimal_places=2, default=Decimal("1"),
                                                 verbose_name="Uang pisah (bulan upah)",
@@ -173,6 +182,9 @@ class PayRun(TenantScopedModel):
     period_end   = models.DateField()
     pay_date     = models.DateField(null=True, blank=True)
     status       = models.CharField(max_length=10, choices=Status.choices, default=Status.DRAFT)
+    # G16-5a: the masa pajak frozen when the payroll is locked (it is what was reported); never moves after that
+    masa_year    = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Masa pajak (tahun)")
+    masa_month   = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Masa pajak (bulan)")
     calculated_at = models.DateTimeField(null=True, blank=True)
     created_by   = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
                                      related_name="+")
