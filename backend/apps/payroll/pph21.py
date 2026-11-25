@@ -147,7 +147,7 @@ def bruto_from_slip(result, *, late_reduces=False, company_jht_in_bruto=False, c
     parts.append(("Penghasilan", earnings))
     deds = {d.get("code"): D(str(d.get("amount") or 0)) for d in (result or {}).get("deductions", [])}
     if deds.get("unpaid_leave"):
-        parts.append(("Potongan unpaid leave", -deds["unpaid_leave"]))
+        parts.append(("Potongan izin tanpa upah", -deds["unpaid_leave"]))                # G21-3a (D72)
     if deds.get("maternity_cut"):                                                     # G14-2
         parts.append(("Upah cuti melahirkan bulan ke-5–6", -deds["maternity_cut"]))
     if late_reduces and deds.get("late"):

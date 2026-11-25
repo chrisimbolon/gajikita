@@ -369,7 +369,7 @@ def calculate(terms, period, rules):
     deduct("late", "Potongan keterlambatan", D(period.late_minutes) * D(rules.late_fine_per_minute),
            quantity=D(period.late_minutes), unit="menit", rate=D(rules.late_fine_per_minute))
     per_day = daily_rate(base, rules.daily_divisor)
-    deduct("unpaid_leave", "Potongan unpaid leave", D(period.unpaid_days) * per_day,
+    deduct("unpaid_leave", "Potongan izin tanpa upah", D(period.unpaid_days) * per_day,       # G21-3a (D72)
            quantity=D(period.unpaid_days), unit="hari", rate=rupiah(per_day))
     pct = D(period.reduced_pay_pct)
     if D(period.reduced_pay_days) > 0 and pct < 100:                     # G14-2: UU 27/2026 Pasal 123 ayat 3
