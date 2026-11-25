@@ -8,6 +8,7 @@ from apps.payroll.views import OvertimeMonthView
 from apps.attendance.dashboard import SummaryView
 from apps.payroll.payrun_views import (ItemDeleteView, LineDetailView, LineItemsView, RunDetailView, RunListView,
                                        RunLockView, RunRecalculateView, SettingsView)
+from apps.payroll.payrun_views import LineRecalculateView                                  # G21-2
 from apps.payroll.slip_views import SlipsView, TransfersView
 from apps.payroll.item_grid import ItemGridView                                            # G13
 from apps.payroll.loan_views import LoanDetailView, LoanListView                            # G13 part 2
@@ -119,6 +120,8 @@ urlpatterns = [
     path("payroll/runs/<uuid:pk>/lock/",                         RunLockView.as_view(),        name="hr-payroll-lock"),
     path("payroll/runs/<uuid:pk>/lines/<uuid:line_id>/",         LineDetailView.as_view(),     name="hr-payroll-line"),
     path("payroll/runs/<uuid:pk>/lines/<uuid:line_id>/items/",   LineItemsView.as_view(),      name="hr-payroll-items"),
+    path("payroll/runs/<uuid:pk>/lines/<uuid:line_id>/recalculate/", LineRecalculateView.as_view(),
+         name="hr-payroll-line-recalc"),                                                     # G21-2
     path("payroll/runs/<uuid:pk>/items/<uuid:item_id>/",         ItemDeleteView.as_view(),     name="hr-payroll-item"),
     path("payroll/runs/<uuid:pk>/items/grid/",                   ItemGridView.as_view(),       name="hr-payroll-item-grid"),   # G13
     path("payroll/runs/<uuid:pk>/slips/",                        SlipsView.as_view(),          name="hr-payroll-slips"),

@@ -457,6 +457,13 @@ def money_block(emp, nums, line, days, rates):
             "check": {"state": "none", "changed": [], "fixed": []}}
 
 
+def _missing(money, run):
+    """G21-2: a payroll exists for the period but this person has no line yet (joined after it was made)."""
+    if run is not None and money["source"] == "attendance":
+        money["check"] = {"state": "missing", "changed": [], "fixed": []}
+    return money
+
+
 # ── the database part ──
 
 def load(org, employee_id, month=None, now=None):
@@ -521,7 +528,7 @@ def load(org, employee_id, month=None, now=None):
         "run": ({"id": str(run.id), "name": run.name, "locked": run.is_locked,
                  "calculated_at": timezone.localtime(run.calculated_at).isoformat() if run.calculated_at else None}
                 if run else None),
-        "money": money_block(emp, nums, line, day_rows, rates),
+        "money": _missing(money_block(emp, nums, line, day_rows, rates), run),
         "totals": totals(nums, day_rows, cfg, rates),
         "kinds": KINDS,
         "days": day_rows,
