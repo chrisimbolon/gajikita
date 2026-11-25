@@ -9,13 +9,17 @@
 //   Hari terpilih   the facts, "Kenapa begini" (each rule in one sentence) and the day's rupiah; "Ubah / setujui"
 //                   opens the same day panel as Harian and Rekap (same endpoints, same audit).
 // Every number is the payroll's own decision for that day (payrun.collect_numbers), like the Log.
+// G21-2: after HR changes a day here, this person's payroll line is read again from attendance (only theirs,
+// audited) and the page says what happened to the net; "Hitung ulang slip ini" does the same for changes made
+// elsewhere. A locked payroll is never touched.
 // =============================================================================
 import DayPanel from "@/components/DayPanel";
 import type { DayRow } from "@/lib/api/attendance";
 import { readErrors } from "@/lib/api/hr";
+import { payrollApi } from "@/lib/api/payroll";
 import { ChipTone, DayKind, RkDay, Ringkasan, ringkasanApi, ringkasanHref } from "@/lib/api/ringkasan";
 import { dmy, rupiah } from "@/lib/format";
-import { AlertTriangle, ChevronLeft, ChevronRight, Info, Loader2, Pencil } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronLeft, ChevronRight, Info, Loader2, Pencil, RefreshCw } from "lucide-react";
 import Link from "next/link";
 import { CSSProperties, ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 
@@ -148,18 +152,51 @@ function Money({ data }: { data: Ringkasan }) {
   );
 }
 
-function SlipCheck({ data }: { data: Ringkasan }) {
+type Notice = { tone: "ok" | "info" | "error"; text: string } | null;
+
+function NoticeBar({ notice }: { notice: Notice }) {
+  if (!notice) return null;
+  const s = { ok: { bg: "#DDF2E6", bd: "#B9E2C9", fg: "#14532D" }, info: { bg: "#EEF1F5", bd: LINE, fg: "#3E4C5A" },
+              error: { bg: "#FDE7E5", bd: "#F6C4BF", fg: "#8A1A11" } }[notice.tone];
+  return (
+    <div role="status" style={{ marginTop: 10, background: s.bg, border: `1px solid ${s.bd}`, color: s.fg, borderRadius: 12,
+                                padding: "9px 12px", fontSize: 13.5, display: "flex", gap: 8, alignItems: "flex-start" }}>
+      {notice.tone === "error" ? <AlertTriangle size={16} style={{ flex: "0 0 auto", marginTop: 1 }} />
+                               : <CheckCircle2 size={16} style={{ flex: "0 0 auto", marginTop: 1 }} />}
+      <span>{notice.text}</span>
+    </div>
+  );
+}
+
+function SlipCheck({ data, busy, onRecalc }: { data: Ringkasan; busy: boolean; onRecalc: () => void }) {
   const c = data.money.check;
   if (c.state === "none" || c.state === "same") return null;
   const run = data.run;
   const link = run ? <Link href={`/dashboard/payroll/run?id=${run.id}`} style={{ fontWeight: 800 }}>Buka payroll</Link> : null;
+  if (c.state === "missing") {                                                      // G21-2
+    return (
+      <div style={{ marginTop: 10, background: "#FDF1D8", border: "1px solid #F4D9A3", color: "#6A4400", borderRadius: 12,
+                    padding: "9px 12px", fontSize: 13.5 }}>
+        <Info size={14} style={{ verticalAlign: "-2px" }} /> {data.employee.full_name} belum ada di {run?.name ?? "payroll"} (mis. baru
+        masuk setelah payroll dibuat). <b>Hitung ulang</b> payroll menambahkannya. {link}
+      </div>
+    );
+  }
   if (c.state === "stale") {
+    const can = run && !run.locked && data.money.source === "slip";
     return (
       <div style={{ marginTop: 10, background: "#FDE7E5", border: "1px solid #F6C4BF", color: "#8A1A11", borderRadius: 12,
-                    padding: "9px 12px", fontSize: 13.5, display: "flex", gap: 8, alignItems: "flex-start" }}>
-        <AlertTriangle size={16} style={{ flex: "0 0 auto", marginTop: 1 }} />
-        <span>Absensi berubah sejak payroll dihitung ({c.changed.join(", ")}). Slip di atas masih angka lama:
-          {" "}<b>Hitung ulang</b> di payroll. {link}</span>
+                    padding: "9px 12px", fontSize: 13.5, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <AlertTriangle size={16} style={{ flex: "0 0 auto" }} />
+        <span style={{ flex: "1 1 260px" }}>Absensi berubah sejak payroll dihitung ({c.changed.join(", ")}). Slip di atas masih angka lama.
+          {run?.locked ? <> Payroll sudah dikunci: buka kunci dulu di payroll. {link}</> : null}</span>
+        {can && (
+          <button className="btn-ghost" onClick={onRecalc} disabled={busy}
+                  style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 38, background: "#FFFFFF" }}>
+            {busy ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} /> : <RefreshCw size={14} />}
+            Hitung ulang slip ini
+          </button>
+        )}
       </div>
     );
   }
@@ -301,6 +338,8 @@ export default function RingkasanPage() {
   const [error, setError] = useState<string | null>(null);
   const [picked, setPicked] = useState<string | null>(null);
   const [edit, setEdit] = useState(false);
+  const [notice, setNotice] = useState<Notice>(null);                       // G21-2
+  const [recalcing, setRecalcing] = useState(false);
 
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
@@ -333,7 +372,30 @@ export default function RingkasanPage() {
     });
   }, [data]);
 
-  const go = (m: string) => { setMonth(m); setPicked(null); setEdit(false); };
+  const go = (m: string) => { setMonth(m); setPicked(null); setEdit(false); setNotice(null); };
+
+  // G21-2: read this person's payroll line again from attendance (only theirs), then show the page again
+  const recalc = useCallback(async (why: string) => {
+    const d = data;
+    if (!d || !d.run || d.run.locked || d.money.source !== "slip") {
+      if (why) setNotice({ tone: "info", text: `${why}${!d?.run ? "Belum ada payroll untuk periode ini."
+        : d.run.locked ? "Payroll sudah dikunci: slip tidak diubah." : "Orang ini belum ada di payroll."}` });
+      await load();
+      return;
+    }
+    setRecalcing(true);
+    try {
+      const r = await payrollApi.recalcLine(d.run.id, d.money.line_id);
+      setNotice(r.changed
+        ? { tone: "ok", text: `${why}Payroll ${d.employee.full_name} dihitung ulang: bersih ${rupiah(r.net_before)} → ${rupiah(r.line.net)}.` }
+        : { tone: "info", text: `${why}Slip ${d.employee.full_name} tidak berubah (bersih ${rupiah(r.line.net)}).` });
+    } catch (err) {
+      setNotice({ tone: "error", text: `${why}Payroll belum dihitung ulang: ${readErrors(err).summary}` });
+    } finally {
+      setRecalcing(false);
+      await load();
+    }
+  }, [data, load]);
   const pick = (iso: string) => {
     setPicked(iso); setEdit(false);
     document.getElementById(`rk-${iso}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
@@ -367,7 +429,7 @@ export default function RingkasanPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           {data && data.people.length > 1 && (
             <select value={data.employee.id} aria-label="Pilih karyawan"
-                    onChange={(ev) => { setEmployee(ev.target.value); setPicked(null); setEdit(false); }}
+                    onChange={(ev) => { setEmployee(ev.target.value); setPicked(null); setEdit(false); setNotice(null); }}
                     style={{ minHeight: 40, borderRadius: 10, border: `1px solid ${LINE}`, padding: "0 10px", maxWidth: 220 }}>
               {data.people.map((p) => <option key={p.id} value={p.id}>{p.full_name} · {p.employee_no}</option>)}
             </select>
@@ -391,7 +453,8 @@ export default function RingkasanPage() {
           {/* money */}
           <div>
             <Money data={data} />
-            <SlipCheck data={data} />
+            <NoticeBar notice={notice} />
+            <SlipCheck data={data} busy={recalcing} onRecalc={() => recalc("")} />
           </div>
 
           {/* the month in tiles */}
@@ -519,7 +582,8 @@ export default function RingkasanPage() {
             </div>
             <div style={{ flex: "1 1 340px", minWidth: 0 }}>
               {day && edit ? (
-                <DayPanel key={`${day.date}-${day.day_id}`} row={toDayRow(data, day)} onChanged={() => load()} onClose={() => setEdit(false)} />
+                <DayPanel key={`${day.date}-${day.day_id}`} row={toDayRow(data, day)} onChanged={() => recalc(`Hari ${dmy(day.date)} disimpan. `)}
+                          onClose={() => setEdit(false)} />
               ) : day ? (
                 <Detail data={data} d={day} onEdit={() => setEdit(true)} />
               ) : (

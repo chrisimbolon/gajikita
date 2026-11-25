@@ -264,6 +264,11 @@ export const payrollApi = {
     const { data } = await api.get(`/api/hr/payroll/runs/${runId}/lines/${lineId}/`);
     return data.line;
   },
+  /** G21-2: only this person's line read again from attendance (after HR fixed one of their days). */
+  async recalcLine(runId: string, lineId: string): Promise<{ changed: boolean; net_before: string; line: LineDetail }> {
+    const { data } = await api.post(`/api/hr/payroll/runs/${runId}/lines/${lineId}/recalculate/`, {}, { timeout: 60000 });
+    return data;
+  },
   async saveLine(runId: string, lineId: string, body: { override?: Record<string, string>; note?: string; loan_balance?: string | null }): Promise<LineDetail> {
     const { data } = await api.patch(`/api/hr/payroll/runs/${runId}/lines/${lineId}/`, body);
     return data.line;

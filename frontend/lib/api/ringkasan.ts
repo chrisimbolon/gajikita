@@ -27,7 +27,8 @@ export interface RkDay {
 }
 
 export interface RkSlipLine { code: string; label: string; amount: string; quantity: string | null; unit: string }
-export interface RkCheck { state: "none" | "same" | "stale" | "override"; changed: string[]; fixed: string[] }
+/** none = no payroll yet · missing = a payroll without this person (G21-2) · same · stale = Hitung ulang · override */
+export interface RkCheck { state: "none" | "missing" | "same" | "stale" | "override"; changed: string[]; fixed: string[] }
 export type RkMoneyBlock =
   | { source: "slip"; earnings: RkSlipLine[]; deductions: RkSlipLine[]; gross: string; deductions_total: string;
       net: string; warnings: string[]; line_id: string; note: string; check: RkCheck }

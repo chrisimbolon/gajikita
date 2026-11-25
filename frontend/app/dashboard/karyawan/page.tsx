@@ -14,6 +14,7 @@ import ExemptionCard from "@/components/ExemptionCard";                         
 import { FileSpreadsheet, KeyRound, Loader2, Plus, Save, Search, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";                                                       // G16-4
+import { ringkasanHref } from "@/lib/api/ringkasan";                                // G21-2
 
 type Form = Omit<EmployeeInput, "end_date" | "probation_end_date"> & { end_date: string; probation_end_date: string };
 // G17-8.1: someone with a Tanggal keluar in the past has left, even while the status still says Aktif
@@ -156,7 +157,9 @@ export default function KaryawanPage() {
                                        background: "#E7F1FB", color: "var(--midnight)", whiteSpace: "nowrap" }}>
                           DL · {e.attendance_exempt.reason}
                         </span>
-                      )}</td>
+                      )}
+                      <Link href={ringkasanHref(e.id)} onClick={(ev) => ev.stopPropagation()} title="Ringkasan bulan ini (hari demi hari)"
+                            style={{ marginLeft: 8, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap" }}>Ringkasan</Link></td>
                     {!editing && <td style={{ fontSize: 13, whiteSpace: "nowrap" }}>{PAY_TYPE_LABEL[e.pay_type]} · {rupiah(e.base_rate)}</td>}
                     {!editing && <td style={{ fontSize: 13 }}>{e.default_site ? siteName[e.default_site] ?? "-" : "-"}</td>}
                     <td style={{ whiteSpace: "nowrap" }}>{loginPill(e)}</td>
@@ -456,6 +459,17 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
       </button>
 
       {employee && <LoginBox employee={employee} onSaved={onSaved} />}
+      {employee && (                                                                 // G21-2
+        <div style={{ marginTop: 22, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>Ringkasan karyawan</div>
+          <div style={{ fontSize: 13, color: "var(--steel)", marginBottom: 10 }}>
+            Satu periode hari demi hari: jam, lembur, uang makan, potongan, dan kenapa slipnya begitu.
+          </div>
+          <Link href={ringkasanHref(employee.id)} className="btn-ghost" style={{ display: "flex", justifyContent: "center", width: "100%" }}>
+            Lihat ringkasan
+          </Link>
+        </div>
+      )}
       {employee && (                                                                 // G16-4
         <div style={{ marginTop: 22, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
           <div style={{ fontWeight: 700, marginBottom: 4 }}>Hak akhir</div>
