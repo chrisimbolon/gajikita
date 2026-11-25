@@ -39,7 +39,10 @@ export interface PayrollSettings {
   jp_employee_by_company?:      boolean;  // G16-1
   pph21_late_reduces_bruto?:    boolean;  // G16-1
   pph21_company_jht_in_bruto?:  boolean;  // G16-1
-  pph21_tax_month?:             "paid" | "period_end";   // G16-2
+  pph21_tax_month?:             MasaMode;                 // G16-2; G16-5a: "earliest" = the law (default, new companies)
+  pph21_tax_month_since?:       string | null;            // G16-5a: periods ending on or after (1st of a month)
+  pph21_tax_month_history?:     { mode: MasaMode; since: string | null }[];   // G16-5a: earlier rules (read-only)
+  pph21_company_jp_in_bruto?:   boolean;                  // G16-5a (D78)
   overtime_source?:             "decision" | "spl";       // G17-E1: Persetujuan lembur
   separation_pay_months?:       string;   // G16-4: uang pisah in months of upah (Pasal 233)
   small_business?:              boolean;  // G16-4: usaha mikro / kecil (Pasal 250)
@@ -48,6 +51,26 @@ export interface PayrollSettings {
   slip_place:                   string;
   slip_signer:                  string;
   updated_at:                   string;
+}
+
+// G16-5a: masa pajak (PMK 168/2023 Pasal 19: whichever comes first, payment or the end of the period)
+export type MasaMode = "earliest" | "paid" | "period_end";
+export const MASA_LABELS: Record<MasaMode, string> = {
+  earliest: "Yang lebih dulu: dibayar atau periode selesai (sesuai aturan)",
+  period_end: "Bulan periode berakhir",
+  paid: "Bulan dibayar",
+};
+export interface MasaWarning { kind: "double" | "gap" | "midyear"; masa: string; text: string }
+export interface MasaMove { run: string; before: string; after: string }
+export class MasaConfirmNeeded extends Error {
+  warnings: MasaWarning[];
+  moves: MasaMove[];
+  constructor(warnings: MasaWarning[], moves: MasaMove[]) {
+    super("Perubahan masa pajak perlu dikonfirmasi.");
+    this.name = "MasaConfirmNeeded";
+    this.warnings = warnings;
+    this.moves = moves;
+  }
 }
 
 export interface RunSummary {
@@ -70,6 +93,9 @@ export interface RunSummary {
   notes?:        number;                  // G18-0: soft wage notes (not warnings)
   negative?:     number;                  // G17-0: people whose net pay is below zero (blocks locking)
   typed_items?:  number;                  // G13 part 2: lost when the run is deleted
+  masa?:         string;                  // G16-5a: masa pajak PPh 21 ("Oktober 2026")
+  masa_frozen?:  boolean;                 // G16-5a: frozen when the payroll was locked
+  masa_rule?:    string;
   corrections?:  number;
 }
 
@@ -181,8 +207,9 @@ export interface OpeningRow {
   months: number; bruto: string; pph: string; iuran: string; note: string; saved: boolean;
 }
 export interface OpeningList {
-  year: number; tax_month: "paid" | "period_end"; tax_month_label: string;
-  runs: { name: string; masa: string }[]; december_run: string | null;
+  year: number; tax_month: MasaMode; tax_month_label: string;
+  runs: { name: string; masa: string; frozen?: boolean }[]; december_run: string | null;
+  masa_warnings?: MasaWarning[];                                                  // G16-5a
   rows: OpeningRow[]; totals: { people: number; bruto: string; pph: string };
 }
 export interface OpeningImport {
@@ -233,9 +260,17 @@ export const payrollApi = {
     const { data } = await api.get("/api/hr/payroll/settings/");
     return data.settings;
   },
-  async saveSettings(body: Partial<PayrollSettings>): Promise<PayrollSettings> {
-    const { data } = await api.patch("/api/hr/payroll/settings/", body);
-    return data.settings;
+  /** G16-5a: a masa change that moves or doubles a masa comes back as MasaConfirmNeeded; save again with confirm. */
+  async saveSettings(body: Partial<PayrollSettings>, confirmMasa = false): Promise<PayrollSettings> {
+    try {
+      const { data } = await api.patch("/api/hr/payroll/settings/", confirmMasa ? { ...body, confirm_masa: true } : body);
+      return data.settings;
+    } catch (e) {
+      const r = (e as { response?: { status?: number; data?: { needs_confirm?: boolean; warnings?: MasaWarning[];
+                                                                    moves?: MasaMove[] } } }).response;
+      if (r?.status === 409 && r.data?.needs_confirm) throw new MasaConfirmNeeded(r.data.warnings ?? [], r.data.moves ?? []);
+      throw e;
+    }
   },
   async runs(): Promise<RunSummary[]> {
     const { data } = await api.get("/api/hr/payroll/runs/");
