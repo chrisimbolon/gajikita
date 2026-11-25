@@ -4,7 +4,7 @@
 // One person, one period, one page (design G21 v0.1, D66-D68):
 //   Uang            what the slip pays and whether it still matches the attendance
 //   Ritme bulan ini one coloured tile per day (dots: lembur, makan, perlu dilihat)
-//   Perlu dilihat   days HR should look at (read-only; G21-3 adds SeeGaji's suggestions with a button)
+//   Perlu dilihat   suggestions and problems first; days only "belum ditinjau" in one quiet line of dates (G21-3c)
 //   Hari demi hari  a time bar per day, chips and the day's rupiah
 //   Hari terpilih   the facts, "Kenapa begini" (each rule in one sentence) and the day's rupiah; "Ubah / setujui"
 //                   opens the same day panel as Harian and Rekap (same endpoints, same audit).
@@ -537,7 +537,7 @@ export default function RingkasanPage() {
     if (!data) return;
     setPicked((p) => {
       if (p && data.days.some((d) => d.date === p)) return p;
-      const first = data.suggestions[0]?.date ?? data.attention[0]?.date;
+      const first = data.suggestions[0]?.date ?? data.attention.find((a) => a.kind !== "review")?.date;
       const lastWorked = [...data.days].reverse().find((d) => d.in || d.out)?.date;
       return first ?? lastWorked ?? data.days[0]?.date ?? null;
     });
@@ -582,8 +582,13 @@ export default function RingkasanPage() {
     document.getElementById(`rk-${iso}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   };
   const day = useMemo(() => data?.days.find((d) => d.date === picked) ?? null, [data, picked]);
-  const attn = useMemo(() => new Set([...(data?.attention.map((a) => a.date) ?? []),
-                                      ...(data?.suggestions.flatMap((s) => [s.date, s.to_date ?? s.date]) ?? [])]), [data]);
+  // G21-3c: "belum ditinjau" days follow the company rule until HR decides, so they are grouped in one quiet line
+  // and get no purple dot; the dot and the count are for what really needs HR (suggestions and problems)
+  const problems = useMemo(() => data?.attention.filter((a) => a.kind !== "review") ?? [], [data]);
+  const reviews = useMemo(() => data?.attention.filter((a) => a.kind === "review").map((a) => a.date) ?? [], [data]);
+  const attn = useMemo(() => new Set([...problems.map((a) => a.date),
+                                      ...(data?.suggestions.flatMap((s) => [s.date, s.to_date ?? s.date]) ?? [])]),
+                       [data, problems]);
   const mealAt = useMemo(() => {
     const t = data?.rules.meal_late_after;
     return data?.employee.meal_rule === "late_out" && t ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5)) : null;
@@ -689,16 +694,18 @@ export default function RingkasanPage() {
             <div style={{ background: "#F5EEFD", border: "1px solid #DCCAF5", borderRadius: 18, padding: "14px 18px",
                           display: "flex", flexDirection: "column", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ minWidth: 28, height: 28, borderRadius: 9, background: "#7B3FC4", color: "#FFFFFF", display: "flex",
-                               alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, padding: "0 6px" }}>
-                  {data.attention.length + data.suggestions.length}</span>
+                {problems.length + data.suggestions.length > 0 && (
+                  <span style={{ minWidth: 28, height: 28, borderRadius: 9, background: "#7B3FC4", color: "#FFFFFF", display: "flex",
+                                 alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, padding: "0 6px" }}>
+                    {problems.length + data.suggestions.length}</span>
+                )}
                 <h2 style={{ ...h2, color: "#3E1F6B" }}>Perlu dilihat</h2>
                 <span style={{ fontSize: 12.5, color: "#5A3D86" }}>Ketuk tanggalnya untuk melihat harinya</span>
               </div>
               {data.suggestions.map((sg) => <SaranCard key={sg.id} s={sg} employee={data.employee.id} month={data.month}
                                                        onPick={pick} onDone={saranDone} />)}
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                {data.attention.map((a, i) => (
+                {problems.map((a, i) => (
                   <button key={i} type="button" onClick={() => pick(a.date)}
                           style={{ display: "flex", gap: 12, alignItems: "center", textAlign: "left", background: "#FFFFFF",
                                    border: "1px solid #E6DAF8", borderRadius: 12, padding: "9px 12px", cursor: "pointer", color: INK }}>
@@ -707,6 +714,25 @@ export default function RingkasanPage() {
                     <ChevronRight size={14} style={{ color: "#5A3D86", flex: "0 0 auto" }} />
                   </button>
                 ))}
+                {reviews.length > 0 && (                                                  // G21-3c: one quiet line
+                  <div style={{ background: "#FBF9FE", border: "1px dashed #DCCAF5", borderRadius: 12, padding: "9px 12px",
+                                display: "flex", flexDirection: "column", gap: 7 }}>
+                    <span style={{ fontSize: 13, color: "#3E4C5A" }}>
+                      <b>{reviews.length} hari belum ditinjau HR</b> · sementara mengikuti aturan perusahaan (denda, ½ hari), jadi
+                      tidak menghalangi payroll.
+                    </span>
+                    <span style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                      {reviews.map((iso) => (
+                        <button key={iso} type="button" onClick={() => pick(iso)}
+                                style={{ padding: "3px 9px", borderRadius: 999, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                                         background: iso === picked ? NAVY : "#FFFFFF", color: iso === picked ? "#FFFFFF" : "#3E4C5A",
+                                         border: `1px solid ${iso === picked ? NAVY : "#DCE2E9"}` }}>
+                          {dayText(iso)}
+                        </button>
+                      ))}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
