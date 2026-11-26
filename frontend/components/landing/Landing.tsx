@@ -412,8 +412,8 @@ export default function Landing({ appHref }: { appHref: string | null }) {
           <div className="lp-neu lp-dkcb-story" style={{ borderRadius: 36, padding: 48, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 40, alignItems: "center" }}>
             <div>
               <div className="lp-eyebrow">CERITA PILOT</div>
-              <h2 className="lp-h2" style={{ fontSize: "clamp(30px, 4vw, 40px)" }}>Dibangun di lapangan, bersama HR DKCB.</h2>
-              <p className="lp-lead" style={{ marginTop: 18, lineHeight: 1.7 }}>SeeGaji tidak dirancang dari meja. Setiap aturan diambil dari cara kerja HR DKCB di Tanjung Uban: dua mesin fingerprint dengan nomor ID sendiri-sendiri, catatan HR yang selama ini ditulis di Excel, staf yang bertugas di lokasi lain. Hasil hitungan SeeGaji dibandingkan baris per baris dengan slip yang sudah dibayar.</p>
+              <h2 className="lp-h2" style={{ fontSize: "clamp(30px, 4vw, 40px)" }}>Dibangun di lapangan, bersama Ahli HR.</h2>
+              <p className="lp-lead" style={{ marginTop: 18, lineHeight: 1.7 }}>SeeGaji tidak dirancang dari meja. Setiap aturan diambil dari cara kerja HR diberbagai perusahaan: multi mesin fingerprint dengan nomor ID sendiri-sendiri, catatan HR yang selama ini ditulis di Excel, staf yang bertugas di lokasi lain. Hasil hitungan SeeGaji dibandingkan baris per baris dengan slip yang sudah dibayar.</p>
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 16 }}>
               {[["2", "mesin, satu Rekap"], ["±30", "karyawan per periode"], ["0", "rumus Excel yang perlu dirawat"], ["1:1", "dicocokkan dengan slip lama"]].map(([n, l], i) => (
