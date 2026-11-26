@@ -77,8 +77,12 @@ def employee_year(employee, year, cfg, exclude_run):
                                        company_jp_in_bruto=cfg.pph21_company_jp_in_bruto)
         taken = Y.withheld_from_slip(line.result)
         agg.withheld += m.tax if taken is None else taken
+        agg.seegaji_months.add(Y.run_masa(run, cfg)[1])                                 # G16-5b
     first = min([r.period_start for r in runs] + [exclude_run.period_start])
     agg.incomplete = o is None and bool(employee.join_date) and employee.join_date < first
+    if o is not None:                                                                 # G16-5b: an overlap waits
+        agg.seegaji_months.add(Y.run_masa(exclude_run, cfg)[1])
+        Y.apply_opening_checks(agg, year)
     return agg
 
 
@@ -125,8 +129,8 @@ def add_pph21(slip, line, cfg):
                 _settle(slip, e, res, agg, kw, year)
                 _retotal(slip)
                 return
-            slip.warnings.append(f"PPh 21 setahun {year} belum dihitung: saldo awal PPh 21 belum diisi "
-                                 f"(Payroll → Pengaturan → Saldo awal PPh 21). Sementara dipotong TER bulanan.")
+            why = agg.problem or "saldo awal PPh 21 belum diisi (Payroll → Pengaturan → Saldo awal PPh 21)."
+            slip.warnings.append(f"PPh 21 setahun {year} belum dihitung: {why} Sementara dipotong TER bulanan.")
         m = P.monthly_for_slip(res, e.ptkp_status, by_company=e.pph21_by_company, **kw)
         _tax_lines(slip, e.pph21_by_company, m.tax, "PPh 21")
     except ValueError as err:
@@ -145,5 +149,10 @@ def readiness(organization, today):
     have = set(Pph21Opening.objects.filter(organization=organization, year=year).values_list("employee_id", flat=True))
     active = Employee.objects.filter(organization=organization, status=Employee.Status.ACTIVE)
     missing = sum(1 for e in active if first and e.join_date and e.join_date < first and e.pk not in have)
+    months_of = Y.person_months(runs, cfg)                                           # G16-5b
+    overlap = sum(1 for o in Pph21Opening.objects.filter(organization=organization, year=year).select_related("employee")
+                  if any(c["level"] == "red" for c in Y.opening_checks(o.masa_from, o.masa_to, o.months,
+                                                                       months_of.get(o.employee_id),
+                                                                       Y.join_month(o.employee, year))))
     return {"year": year, "missing_opening": missing, "ptkp_unchecked": active.filter(ptkp_checked=False).count(),
-            "december_run": december.name if december else None}
+            "opening_overlap": overlap, "december_run": december.name if december else None}
