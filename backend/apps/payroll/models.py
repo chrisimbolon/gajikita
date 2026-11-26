@@ -157,6 +157,10 @@ class Pph21Opening(TenantScopedModel):
     employee = models.ForeignKey("employees.Employee", on_delete=models.CASCADE, related_name="pph21_openings")
     year     = models.PositiveSmallIntegerField(verbose_name="Tahun")
     months   = models.PositiveSmallIntegerField(default=0, verbose_name="Jumlah bulan")
+    # G16-5b (D77): which masa the saldo awal covers (1-12 of `year`), so SeeGaji can see an overlap or a gap with
+    # its own payrolls; empty = only the count of months is known (the G16-2 way, still accepted, shown amber)
+    masa_from = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Masa dari (bulan)")
+    masa_to   = models.PositiveSmallIntegerField(null=True, blank=True, verbose_name="Masa sampai (bulan)")
     bruto    = models.DecimalField(max_digits=16, decimal_places=2, default=Decimal("0"), verbose_name="Bruto")
     pph      = models.DecimalField(max_digits=16, decimal_places=2, default=Decimal("0"), verbose_name="PPh 21 dipotong")
     iuran    = models.DecimalField(max_digits=16, decimal_places=2, default=Decimal("0"),
