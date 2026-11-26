@@ -5,6 +5,8 @@
 // Tabs: Terlambat · Pulang cepat · UL / Mangkir · Uang makan (+ a link to the overtime log).
 // Read-only: every number is the payroll's own decision for that day; each person says whether the payroll
 // line still says the same ("Sama dengan slip"), needs "Hitung ulang", or was corrected by HR on the line.
+// G21-4 (26 Nov 2026, Anthony): "Cari nama atau no. karyawan" filters the people of every tab (kept when switching
+// tab or period); the cards stay the company's totals; one match opens by itself. CSV still holds everyone.
 // =============================================================================
 import AbsensiTabs from "@/components/AbsensiTabs";
 import {
@@ -13,7 +15,7 @@ import {
 import { readErrors } from "@/lib/api/hr";
 import { ringkasanHref } from "@/lib/api/ringkasan";
 import { rupiah } from "@/lib/format";
-import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Info, Loader2 } from "lucide-react";
+import { AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Download, Info, Loader2, Search, X } from "lucide-react";
 import Link from "next/link";
 import { CSSProperties, Fragment, ReactNode, useCallback, useEffect, useState } from "react";
 
@@ -102,6 +104,7 @@ export default function LogKehadiranPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [q, setQ] = useState("");                                                   // G21-4
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -116,7 +119,15 @@ export default function LogKehadiranPage() {
   }, [month]);
   useEffect(() => { load(); }, [load]);
   const go = (m: string) => { setMonth(m); setOpen({}); };
-  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !o[id] }));
+  const toggle = (id: string) => setOpen((o) => ({ ...o, [id]: !isOpen(id) }));
+  // G21-4: name or number, any part, any case ("ganda", "dk08", "bintan")
+  const needle = q.trim().toLowerCase();
+  const shown = <T extends { employee: { full_name: string; employee_no: string } }>(list: T[]): T[] =>
+    !needle ? list : list.filter((p) => `${p.employee.full_name} ${p.employee.employee_no}`.toLowerCase().includes(needle));
+  const current = (data ? (data[tab].people as { employee: { id: string; full_name: string; employee_no: string } }[]) : []);
+  const matches = shown(current);
+  const single = needle && matches.length === 1 ? matches[0].employee.id : null;
+  const isOpen = (id: string) => open[id] ?? id === single;
 
   const download = () => {
     if (!data) return;
@@ -147,9 +158,9 @@ export default function LogKehadiranPage() {
     <Fragment key={id}>
       <tr onClick={() => toggle(id)} style={{ cursor: "pointer" }}>
         {cells}
-        <td style={{ width: 24, color: "var(--steel)" }}>{open[id] ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</td>
+        <td style={{ width: 24, color: "var(--steel)" }}>{isOpen(id) ? <ChevronUp size={15} /> : <ChevronDown size={15} />}</td>
       </tr>
-      {open[id] && (
+      {isOpen(id) && (
         <tr><td colSpan={cols} style={{ background: "var(--paper-2)", padding: "4px 10px" }}>
           <Days items={items} kind={tab} />
         </td></tr>
@@ -195,7 +206,7 @@ export default function LogKehadiranPage() {
         {people.length === 0 ? <div style={{ ...hint, marginTop: 10 }}>Tidak ada yang terlambat di periode ini.</div> : (
           <table className="data-table" style={{ marginTop: 10 }}>
             <thead><tr><th>Karyawan</th><th>Terlambat</th><th>Dipotong</th><th>Rupiah</th><th>Dalam toleransi</th><th>Payroll</th><th /></tr></thead>
-            <tbody>{people.map((p: LatePerson) => row(p.employee.id, <>
+            <tbody>{shown(people).map((p: LatePerson) => row(p.employee.id, <>
               {who(p)}
               <td style={nowrap}>{p.days ? `${p.days}× · ${p.minutes} menit` : "-"}
                 {p.forgiven_days > 0 && <div style={{ fontSize: 12, color: "#2E7D4F" }}>{p.forgiven_days} dimaafkan</div>}
@@ -224,7 +235,7 @@ export default function LogKehadiranPage() {
         {data.early.people.length === 0 ? <div style={{ ...hint, marginTop: 10 }}>Tidak ada yang pulang cepat di periode ini.</div> : (
           <table className="data-table" style={{ marginTop: 10 }}>
             <thead><tr><th>Karyawan</th><th>Pulang cepat</th><th>Dipotong</th><th>Rupiah</th><th>Payroll</th><th /></tr></thead>
-            <tbody>{data.early.people.map((p: EarlyPerson) => row(p.employee.id, <>
+            <tbody>{shown(data.early.people).map((p: EarlyPerson) => row(p.employee.id, <>
               {who(p)}
               <td style={nowrap}>{p.days}× · {p.minutes} menit
                 {p.forgiven_days > 0 && <div style={{ fontSize: 12, color: "#2E7D4F" }}>{p.forgiven_days} dimaafkan</div>}</td>
@@ -251,7 +262,7 @@ export default function LogKehadiranPage() {
         {data.absent.people.length === 0 ? <div style={{ ...hint, marginTop: 10 }}>Tidak ada hari tanpa upah di periode ini.</div> : (
           <table className="data-table" style={{ marginTop: 10 }}>
             <thead><tr><th>Karyawan</th><th>Hari</th><th>Dasar</th><th>Rupiah</th><th>Payroll</th><th /></tr></thead>
-            <tbody>{data.absent.people.map((p: AbsentPerson) => row(p.employee.id, <>
+            <tbody>{shown(data.absent.people).map((p: AbsentPerson) => row(p.employee.id, <>
               {who(p)}
               <td style={nowrap}>{p.days} hari</td>
               <td style={{ fontSize: 13 }}>
@@ -283,7 +294,7 @@ export default function LogKehadiranPage() {
         {data.meal.people.length === 0 ? <div style={{ ...hint, marginTop: 10 }}>Tidak ada uang makan di periode ini.</div> : (
           <table className="data-table" style={{ marginTop: 10 }}>
             <thead><tr><th>Karyawan</th><th>Aturan</th><th>Makan</th><th>Sarapan</th><th>Rupiah</th><th>Payroll</th><th /></tr></thead>
-            <tbody>{data.meal.people.map((p: MealPerson) => row(p.employee.id, <>
+            <tbody>{shown(data.meal.people).map((p: MealPerson) => row(p.employee.id, <>
               {who(p)}
               <td style={{ fontSize: 13 }}>{p.rule_label}</td>
               <td style={nowrap}>{p.meals}×{p.missed_days > 0 && <div style={{ fontSize: 12, color: "var(--steel)" }}>{p.missed_days} hari hadir tanpa</div>}</td>
@@ -334,6 +345,18 @@ export default function LogKehadiranPage() {
         <Link href="/dashboard/lembur/spl" style={{ fontSize: 13.5, fontWeight: 700, color: "var(--steel)", padding: "6px 10px" }}>
           Lembur → SPL
         </Link>
+        <div style={{ position: "relative", marginLeft: "auto", minWidth: 220, flex: "0 1 280px" }}>      {/* G21-4 */}
+          <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: "var(--steel)" }} />
+          <input className="input" placeholder="Cari nama atau no. karyawan" value={q} aria-label="Cari karyawan"
+                 onChange={(e) => setQ(e.target.value)} style={{ width: "100%", paddingLeft: 30, paddingRight: q ? 30 : undefined }} />
+          {q && (
+            <button onClick={() => setQ("")} aria-label="Hapus pencarian" title="Hapus pencarian"
+                    style={{ position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)", border: "none",
+                             background: "transparent", color: "var(--steel)", cursor: "pointer", padding: 4, display: "flex" }}>
+              <X size={14} />
+            </button>
+          )}
+        </div>
       </div>
 
       {r && (tab === "late" || tab === "early") && (
@@ -347,7 +370,18 @@ export default function LogKehadiranPage() {
 
       {loading && <div style={{ ...hint, marginTop: 14 }}><Loader2 size={14} style={{ animation: "spin 1s linear infinite", verticalAlign: "-2px" }} /> Memuat…</div>}
       {error && <div style={{ color: WARN, marginTop: 14 }}>{error}</div>}
-      {!loading && data && <div className="card" style={{ marginTop: 10 }}>{body}</div>}
+      {!loading && data && (
+        <div className="card" style={{ marginTop: 10 }}>
+          {needle && current.length > 0 && (                                          // G21-4
+            <div style={{ fontSize: 13, fontWeight: 600, color: matches.length ? "var(--midnight)" : WARN }}>
+              {matches.length
+                ? `Menampilkan ${matches.length} dari ${current.length} orang untuk "${q.trim()}". Kartu di bawah tetap total semua karyawan.`
+                : `Tidak ada "${q.trim()}" di tab ini. Coba tab lain, atau hapus pencarian.`}
+            </div>
+          )}
+          {body}
+        </div>
+      )}
     </div>
   );
 }
