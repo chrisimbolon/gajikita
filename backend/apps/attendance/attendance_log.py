@@ -193,11 +193,11 @@ def meal_days(trace, rates, late_after=None, breakfast_before=None):
                 if rule == "overtime_day":
                     parts.append("Hari lembur")
                 elif rule == "late_out":
-                    parts.append(f"Pulang {hhmm(t['last_out'])} (setelah {after})")
+                    parts.append(f"Pulang {hhmm(t['last_out'])} (jam {after} atau lebih)")
                 else:
                     parts.append("Hadir")
                 if t["meal"] > 1:
-                    parts.append("lewat tengah malam (2×)")
+                    parts.append("sampai 00:00 atau lebih (2×)")
             if t["breakfast"]:
                 parts.append(f"Sarapan: masuk {hhmm(t['first_in'])} (sebelum {before})")
             warn = bool(t["leave_label"]) and t["working"]                     # G20-2: a leave day with taps
