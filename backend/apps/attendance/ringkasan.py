@@ -309,7 +309,10 @@ def explain_day(t, cell, rows, rates, cfg, emp, price, note):
             continue
         label = f"Makan {r['meals']}×" if r["meals"] else "Sarapan"
         chip("meal", label, "green")
-        why.append(f"Uang makan {r['meals']}× ({r['label']})" + (f": Rp {_dot(r['amount'])}." if r["amount"] != "0" else "."))
+        rp = f" Rp {_dot(r['amount'])}." if r["amount"] != "0" else ""
+        lead = f"Uang makan {r['meals']}×: " if r["meals"] else ""            # G12h.2: no brackets in brackets
+        text = r["label"][0].lower() + r["label"][1:] if lead else r["label"]
+        why.append(f"{lead}{text}." + rp)
         add(label, Decimal(r["amount"]), "meal")
     if not rows.get("meal") and t["meal_rule"] == "late_out" and t["present"] and t["working"] and after \
             and t["status"] not in ("leave", "exempt"):
