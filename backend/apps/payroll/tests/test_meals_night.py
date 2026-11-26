@@ -29,7 +29,8 @@ class MidnightMealTests(SimpleTestCase):
     def test_late_out(self):
         self.assertEqual(meals(LATE_OUT, at(18, 59)), 0)
         self.assertEqual(meals(LATE_OUT, at(22, 19)), 1)
-        self.assertEqual(meals(LATE_OUT, at(0, 0, NEXT)), 1)        # "melebihi 00:00": exactly 00:00 is not past it
+        self.assertEqual(meals(LATE_OUT, at(23, 59)), 1)
+        self.assertEqual(meals(LATE_OUT, at(0, 0, NEXT)), 2)        # G12h.1: exactly 00:00 counts (Prayuda 3 Okt)
         self.assertEqual(meals(LATE_OUT, at(0, 1, NEXT)), 2)
         self.assertEqual(meals(LATE_OUT, at(2, 1, NEXT)), 2)
         self.assertEqual(meals(LATE_OUT, at(2, 1, NEXT), extra=False), 1)   # setting off: as G12d
