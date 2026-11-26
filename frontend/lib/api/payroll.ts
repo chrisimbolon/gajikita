@@ -202,7 +202,8 @@ export interface LawRow {
 export interface LawCheck { law: string; effective: string; as_of: string; rows: LawRow[] }
 
 // G16-2: saldo awal PPh 21 (backend/apps/payroll/opening_views.py)
-export interface OpeningCheck { kind: "overlap" | "gap" | "before_join" | "no_range"; level: "red" | "amber"; text: string }
+export interface OpeningCheck { kind: "overlap" | "gap" | "before_join" | "no_range"; level: "red" | "amber"; text: string;
+                              short?: string }                                    // G16-5b.1: the row's short line
 export interface OpeningRow {
   employee: { id: string; employee_no: string; full_name: string; status: string };
   months: number; bruto: string; pph: string; iuran: string; note: string; saved: boolean;

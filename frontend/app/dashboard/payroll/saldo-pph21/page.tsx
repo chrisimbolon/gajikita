@@ -30,9 +30,10 @@ function Checks({ checks }: { checks: OpeningCheck[] }) {
   return (
     <div style={{ marginTop: 3 }}>
       {checks.map((c, i) => (
-        <div key={i} style={{ fontSize: 12, lineHeight: 1.35, color: c.level === "red" ? "var(--danger)" : "#8A5A00",
-                              fontWeight: c.level === "red" ? 700 : 500 }}>
-          {c.level === "red" ? "✕" : "⚠"} {c.text}
+        <div key={i} title={c.text} style={{ fontSize: 12, lineHeight: 1.35, maxWidth: 260,
+                                             color: c.level === "red" ? "var(--danger)" : "#8A5A00",
+                                             fontWeight: c.level === "red" ? 700 : 500 }}>
+          {c.level === "red" ? "✕" : "⚠"} {c.short || c.text}
         </div>
       ))}
     </div>
