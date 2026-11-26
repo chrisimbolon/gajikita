@@ -9,6 +9,10 @@ months before the company's first SeeGaji payroll (from the old book or Coretax)
   PATCH payroll/pph21-opening/               one row (all zero = remove it)
   POST  payroll/pph21-opening/import/        CSV, commit=0 checks only, commit=1 saves (only when no row has an error)
 Every save goes to the audit log.
+
+G16-5b (26 Nov 2026, D77): each row also says which masa it covers (masa_from / masa_to, 1-12) and carries the checks
+against the person's SeeGaji payrolls ("checks": overlap red, gap / before join / no range amber). With a range,
+"months" is the range (a different count is refused).
 """
 from datetime import date
 from decimal import Decimal
@@ -50,10 +54,15 @@ def _employees(org, year):
             .filter(Q(end_date__isnull=True) | Q(end_date__gte=first)).order_by("full_name"))
 
 
-def _row(e, o):
+def _row(e, o, year, seegaji_months):
+    checks = Y.opening_checks(o.masa_from, o.masa_to, o.months, seegaji_months, Y.join_month(e, year)) if o else []
     return {"employee": {"id": str(e.pk), "employee_no": e.employee_no, "full_name": e.full_name, "status": e.status},
             "months": o.months if o else 0, "bruto": _money(o.bruto if o else 0), "pph": _money(o.pph if o else 0),
-            "iuran": _money(o.iuran if o else 0), "note": o.note if o else "", "saved": o is not None}
+            "iuran": _money(o.iuran if o else 0), "note": o.note if o else "", "saved": o is not None,
+            "masa_from": o.masa_from if o else None, "masa_to": o.masa_to if o else None,          # G16-5b
+            "masa_text": Y.range_text(o.masa_from, o.masa_to, year) if o else "",
+            "seegaji_masa": [Y.MONTHS[m - 1] for m in sorted(seegaji_months or ())],
+            "checks": checks}
 
 
 def payload(org, year):
@@ -61,7 +70,8 @@ def payload(org, year):
     runs, december = Y.year_runs(org, year, cfg)                                    # G16-5a
     rule_list = Y.rules(cfg)
     openings = {o.employee_id: o for o in Pph21Opening.objects.filter(organization=org, year=year)}
-    rows = [_row(e, openings.get(e.pk)) for e in _employees(org, year)]
+    months_of = Y.person_months(runs, cfg, rule_list)                                # G16-5b
+    rows = [_row(e, openings.get(e.pk), year, months_of.get(e.pk)) for e in _employees(org, year)]
     saved = [r for r in rows if r["saved"]]
     return {
         "success": True, "year": year, "tax_month": cfg.pph21_tax_month,
@@ -72,7 +82,9 @@ def payload(org, year):
         "december_run": december.name if december else None,
         "rows": rows,
         "totals": {"people": len(saved), "bruto": _money(sum((Decimal(r["bruto"]) for r in saved), Decimal("0"))),
-                   "pph": _money(sum((Decimal(r["pph"]) for r in saved), Decimal("0")))},
+                   "pph": _money(sum((Decimal(r["pph"]) for r in saved), Decimal("0"))),
+                   "overlap": sum(1 for r in rows if any(c["level"] == "red" for c in r["checks"])),     # G16-5b
+                   "amber": sum(1 for r in rows if any(c["level"] == "amber" for c in r["checks"]))},
     }
 
 
@@ -85,13 +97,30 @@ class OpeningInput(serializers.Serializer):
     iuran = serializers.DecimalField(max_digits=16, decimal_places=2, min_value=Decimal("0"), required=False,
                                      default=Decimal("0"))
     note = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+    masa_from = serializers.IntegerField(min_value=1, max_value=12, required=False, allow_null=True, default=None)
+    masa_to = serializers.IntegerField(min_value=1, max_value=12, required=False, allow_null=True, default=None)
+
+    def validate(self, d):
+        """G16-5b: both ends or neither; from <= to; the count of months is the range."""
+        a, b = d.get("masa_from"), d.get("masa_to")
+        if (a is None) != (b is None):
+            raise serializers.ValidationError({"masa_to": "Isi masa dari dan masa sampai, atau kosongkan keduanya."})
+        if a is not None:
+            if a > b:
+                raise serializers.ValidationError({"masa_from": "Masa dari harus sebelum masa sampai."})
+            span = b - a + 1
+            if d["months"] and d["months"] != span:
+                raise serializers.ValidationError(
+                    {"months": f"Jumlah bulan {d['months']} tidak sama dengan masa {Y.range_text(a, b)} ({span} bulan)."})
+            d["months"] = span
+        return d
 
 
-def _save(org, employee, year, months, bruto, pph, iuran, note, source):
+def _save(org, employee, year, months, bruto, pph, iuran, note, source, masa_from=None, masa_to=None):
     """Upsert one saldo awal; all zero removes it. -> (before, after) for the audit log."""
     o = Pph21Opening.objects.filter(organization=org, employee=employee, year=year).first()
     before = None if o is None else {"months": o.months, "bruto": _money(o.bruto), "pph": _money(o.pph),
-                                     "iuran": _money(o.iuran)}
+                                     "iuran": _money(o.iuran), "masa": Y.range_text(o.masa_from, o.masa_to)}
     if not months and not bruto and not pph and not iuran:
         if o is not None:
             o.delete()
@@ -99,8 +128,10 @@ def _save(org, employee, year, months, bruto, pph, iuran, note, source):
     if o is None:
         o = Pph21Opening(organization=org, employee=employee, year=year)
     o.months, o.bruto, o.pph, o.iuran, o.note, o.source = months, bruto, pph, iuran, note or "", source
+    o.masa_from, o.masa_to = masa_from, masa_to                                       # G16-5b
     o.save()
-    return before, {"months": months, "bruto": _money(bruto), "pph": _money(pph), "iuran": _money(iuran)}
+    return before, {"months": months, "bruto": _money(bruto), "pph": _money(pph), "iuran": _money(iuran),
+                    "masa": Y.range_text(masa_from, masa_to)}
 
 
 class OpeningListView(APIView):
@@ -119,11 +150,13 @@ class OpeningListView(APIView):
             return Response({"success": False, "message": "Karyawan tidak ditemukan."}, status=status.HTTP_404_NOT_FOUND)
         with transaction.atomic():
             before, after = _save(org, employee, d["year"], d["months"], d["bruto"], d["pph"], d["iuran"], d["note"],
-                                  Pph21Opening.Source.MANUAL)
+                                  Pph21Opening.Source.MANUAL, d.get("masa_from"), d.get("masa_to"))
             if before != after:
                 record_audit(organization=org, actor=request.user, action="payroll.pph21_opening", target=employee,
                              summary=f"Saldo awal PPh 21 {d['year']} {employee.full_name}: "
-                                     + ("dihapus" if after is None else f"{d['months']} bulan, PPh {_money(d['pph'])}"),
+                                     + ("dihapus" if after is None else
+                                        f"{d['months']} bulan{' (' + after['masa'] + ')' if after['masa'] else ''}, "
+                                        f"PPh {_money(d['pph'])}"),
                              before=before, after=after)
         return Response(payload(org, d["year"]))
 
@@ -161,13 +194,19 @@ class OpeningImportView(APIView):
             with transaction.atomic():
                 for r in rows:
                     _save(org, r["_employee"], year, r["months"], r["bruto"], r["pph"], r["iuran"],
-                          "dari file CSV", Pph21Opening.Source.CSV)
+                          "dari file CSV", Pph21Opening.Source.CSV, r["masa_from"], r["masa_to"])
                 record_audit(organization=org, actor=request.user, action="payroll.pph21_opening", target=org,
                              summary=f"Saldo awal PPh 21 {year} diimpor dari CSV: {len(rows)} karyawan",
                              after={"file": f.name, "rows": len(rows)})
+        cfg = PayrollSettings.for_org(org)                                             # G16-5b: checks in the preview
+        months_of = Y.person_months(Y.year_runs(org, year, cfg)[0], cfg)
         preview = [{"line": r["line"], "employee_no": r["employee_no"], "full_name": r.get("full_name") or r["name"],
                     "months": r["months"], "bruto": _money(r["bruto"]), "pph": _money(r["pph"]),
-                    "iuran": _money(r["iuran"]), "errors": r["errors"]} for r in rows]
+                    "iuran": _money(r["iuran"]), "errors": r["errors"],
+                    "masa_text": Y.range_text(r["masa_from"], r["masa_to"]),
+                    "checks": (Y.opening_checks(r["masa_from"], r["masa_to"], r["months"],
+                                                months_of.get(r["_employee"].pk), Y.join_month(r["_employee"], year))
+                               if r["_employee"] is not None and not r["errors"] else [])} for r in rows]
         return Response({
             "success": True, "year": year, "saved": bool(commit and not bad and rows), "rows": preview, "errors": bad,
             "totals": {"people": len(rows), "bruto": _money(sum((r["bruto"] for r in rows), Decimal("0"))),
