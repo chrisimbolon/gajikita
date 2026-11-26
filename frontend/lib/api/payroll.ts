@@ -202,25 +202,29 @@ export interface LawRow {
 export interface LawCheck { law: string; effective: string; as_of: string; rows: LawRow[] }
 
 // G16-2: saldo awal PPh 21 (backend/apps/payroll/opening_views.py)
+export interface OpeningCheck { kind: "overlap" | "gap" | "before_join" | "no_range"; level: "red" | "amber"; text: string }
 export interface OpeningRow {
   employee: { id: string; employee_no: string; full_name: string; status: string };
   months: number; bruto: string; pph: string; iuran: string; note: string; saved: boolean;
+  masa_from: number | null; masa_to: number | null; masa_text: string;           // G16-5b
+  seegaji_masa: string[]; checks: OpeningCheck[];
 }
 export interface OpeningList {
   year: number; tax_month: MasaMode; tax_month_label: string;
   runs: { name: string; masa: string; frozen?: boolean }[]; december_run: string | null;
   masa_warnings?: MasaWarning[];                                                  // G16-5a
-  rows: OpeningRow[]; totals: { people: number; bruto: string; pph: string };
+  rows: OpeningRow[]; totals: { people: number; bruto: string; pph: string; overlap: number; amber: number };
 }
 export interface OpeningImport {
   year: number; saved: boolean; errors: number;
   rows: { line: number; employee_no: string; full_name: string; months: number; bruto: string; pph: string;
-          iuran: string; errors: string[] }[];
+          iuran: string; errors: string[]; masa_text: string; checks: OpeningCheck[] }[];
   totals: { people: number; bruto: string; pph: string };
 }
 
 // G16-3: shown next to the "Hitung PPh 21 di slip" switch
-export interface Pph21Readiness { year: number; missing_opening: number; ptkp_unchecked: number; december_run: string | null }
+export interface Pph21Readiness { year: number; missing_opening: number; ptkp_unchecked: number; december_run: string | null;
+                                  opening_overlap?: number }                              // G16-5b
 
 export const payrollApi = {
   async pph21Readiness(): Promise<Pph21Readiness> {                       // G16-3
@@ -232,7 +236,7 @@ export const payrollApi = {
     return data;
   },
   async saveOpening(body: { employee_id: string; year: number; months: number; bruto: string; pph: string;
-                            iuran: string }): Promise<OpeningList> {
+                            iuran: string; masa_from: number | null; masa_to: number | null }): Promise<OpeningList> {
     const { data } = await api.patch("/api/hr/payroll/pph21-opening/", body);
     return data;
   },

@@ -359,12 +359,14 @@ export default function PayrollSettingsPage() {
           <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
             Berlaku untuk payroll draft setelah Hitung ulang. Payroll terkunci tidak berubah.
           </div>
-          {ready && (ready.missing_opening > 0 || ready.ptkp_unchecked > 0) && (
+          {ready && (ready.missing_opening > 0 || ready.ptkp_unchecked > 0 || (ready.opening_overlap ?? 0) > 0) && (
             <div style={{ fontSize: 12.5, color: "#2563A8", marginTop: 6 }}>
               <Info size={12} style={{ verticalAlign: "-1px" }} /> Sebelum dinyalakan:
               {ready.missing_opening > 0 && <> saldo awal PPh 21 {ready.year} belum diisi untuk {ready.missing_opening} karyawan
                 (<Link href="/dashboard/payroll/saldo-pph21">isi</Link>);</>}
               {ready.ptkp_unchecked > 0 && <> status PTKP belum dicek untuk {ready.ptkp_unchecked} karyawan.</>}
+              {(ready.opening_overlap ?? 0) > 0 && <> saldo awal tumpang tindih dengan payroll SeeGaji untuk{" "}
+                {ready.opening_overlap} karyawan (<Link href="/dashboard/payroll/saldo-pph21">perbaiki</Link>).</>}
             </div>
           )}
         </div>
