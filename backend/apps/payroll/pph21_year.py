@@ -94,8 +94,8 @@ def range_text(masa_from, masa_to, year=None):
     return f"{text} {year}" if year else text
 
 
-def _month_list(months):
-    names = [MONTHS_LONG[m - 1] for m in months]
+def _month_list(months, short=False):
+    names = [(MONTHS if short else MONTHS_LONG)[m - 1] for m in months]
     return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " dan " + names[-1]
 
 
@@ -105,31 +105,37 @@ def opening_checks(masa_from, masa_to, months, seegaji_months, join_month=None):
       masa_from/masa_to  the range (1-12) or None;  months  the count kept with it
       seegaji_months     the masa months (1-12) of the payrolls this person has a slip in
       join_month         the join month when they joined in that year, else None
-    -> [{"kind", "level", "text"}]: overlap (red: the yearly PPh 21 waits), gap / before_join / no_range (amber).
+    -> [{"kind", "level", "text", "short"}]: overlap (red: the yearly PPh 21 waits), gap / before_join / no_range
+    (amber). "short" is what the saldo-awal table shows in the row (G16-5b.1); "text" goes on the slip and the preview.
     """
     out, seegaji = [], sorted(set(seegaji_months or ()))
     if not masa_from or not masa_to:
         if months:
             out.append({"kind": "no_range", "level": "amber",
-                        "text": "Rentang masa belum diisi (hanya jumlah bulan): tumpang tindih belum bisa dicek."})
+                        "text": "Rentang masa belum diisi (hanya jumlah bulan): tumpang tindih belum bisa dicek.",
+                        "short": "Rentang masa belum diisi."})
         return out
     covered = range(masa_from, masa_to + 1)
     both = [m for m in seegaji if m in covered]
     if both:
         out.append({"kind": "overlap", "level": "red",
                     "text": f"Masa {_month_list(both)} ada di saldo awal dan di payroll SeeGaji. Perbaiki rentang "
-                            f"saldo awal; sampai itu PPh 21 setahun orang ini belum dihitung."})
+                            f"saldo awal; sampai itu PPh 21 setahun orang ini belum dihitung.",
+                    "short": f"Masa {_month_list(both, True)} dihitung dua kali (saldo awal dan SeeGaji). "
+                             f"PPh 21 setahun ditahan."})
     if seegaji and masa_to < seegaji[0] - 1:
         missing = list(range(masa_to + 1, seegaji[0]))
         if join_month:
             missing = [m for m in missing if m >= join_month]
         if missing:
             out.append({"kind": "gap", "level": "amber",
-                        "text": f"Masa {_month_list(missing)} tidak ada di saldo awal maupun di payroll SeeGaji."})
+                        "text": f"Masa {_month_list(missing)} tidak ada di saldo awal maupun di payroll SeeGaji.",
+                        "short": f"Masa {_month_list(missing, True)} tidak dihitung di mana pun."})
     if join_month and masa_from < join_month:
         out.append({"kind": "before_join", "level": "amber",
                     "text": f"Saldo awal mulai {MONTHS_LONG[masa_from - 1]}, padahal masuk kerja "
-                            f"{MONTHS_LONG[join_month - 1]}."})
+                            f"{MONTHS_LONG[join_month - 1]}.",
+                    "short": f"Mulai {MONTHS[masa_from - 1]}, padahal masuk kerja {MONTHS[join_month - 1]}."})
     return out
 
 

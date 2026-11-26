@@ -37,6 +37,8 @@ class PureTests(SimpleTestCase):
         overlap = Y.opening_checks(1, 10, 10, {10, 11})
         self.assertEqual([(c["kind"], c["level"]) for c in overlap], [("overlap", "red")])
         self.assertIn("Masa Oktober ada di saldo awal dan di payroll SeeGaji", overlap[0]["text"])
+        self.assertEqual(overlap[0]["short"], "Masa Okt dihitung dua kali (saldo awal dan SeeGaji). PPh 21 setahun ditahan.")
+        self.assertEqual(Y.opening_checks(1, 7, 7, {10, 11})[0]["short"], "Masa Agu dan Sep tidak dihitung di mana pun.")
         gap = Y.opening_checks(1, 8, 8, {10})
         self.assertEqual([(c["kind"], c["text"]) for c in gap],
                          [("gap", "Masa September tidak ada di saldo awal maupun di payroll SeeGaji.")])
