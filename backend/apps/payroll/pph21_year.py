@@ -11,7 +11,12 @@ G16-2 (21 Nov 2026) — PPh 21 for the whole year (Pasal 17), still switched off
 The payroll whose masa pajak is December settles the year; its own monthly TER is not counted as withheld.
 Tax paid by the company is grossed up in that month too (annual_gross_up).
 
-Pure parts at the top (tested without a database): parse_amount, parse_opening_csv, tax_month, withheld_from_slip.
+Pure parts at the top (tested without a database): parse_amount, parse_opening_csv, tax_month, withheld_from_slip,
+parse_month, opening_checks.
+
+G16-5b (26 Nov 2026, D77): a saldo awal says which masa it covers (masa_from..masa_to). Checked against the masa of
+the person's own SeeGaji payrolls: an overlap is red (that person's yearly PPh 21 waits until it is fixed), a gap,
+a start before the join month, or a saldo awal with only a count of months are amber.
 """
 import csv
 import io
@@ -30,10 +35,12 @@ MODE_LABELS = {EARLIEST: "yang lebih dulu: dibayar atau periode selesai (PMK 168
 MONTHS_LONG = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober",
                "November", "Desember"]
 MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
-TEMPLATE_HEADER = ["no_karyawan", "nama", "bulan", "bruto", "pph21", "iuran_jht_jp"]
+TEMPLATE_HEADER = ["no_karyawan", "nama", "masa_dari", "masa_sampai", "bulan", "bruto", "pph21", "iuran_jht_jp"]
 _ALIASES = {
     "no_karyawan": ("no_karyawan", "no karyawan", "no. karyawan", "nomor karyawan", "employee_no", "nik karyawan"),
     "nama": ("nama", "nama karyawan", "name"),
+    "masa_dari": ("masa_dari", "masa dari", "dari masa", "masa awal", "bulan dari"),            # G16-5b
+    "masa_sampai": ("masa_sampai", "masa sampai", "sampai masa", "masa akhir", "bulan sampai"),
     "bulan": ("bulan", "jumlah bulan", "months"),
     "bruto": ("bruto", "penghasilan bruto", "total bruto"),
     "pph21": ("pph21", "pph 21", "pph", "pph21 dipotong", "pph 21 dipotong"),
@@ -59,6 +66,73 @@ def parse_amount(text):
     return -Decimal(s) if negative else Decimal(s)
 
 
+_MONTH_WORDS = {w: i + 1 for i, names in enumerate([
+    ("jan", "januari", "january"), ("feb", "februari", "pebruari", "february"), ("mar", "maret", "march"),
+    ("apr", "april"), ("mei", "may"), ("jun", "juni", "june"), ("jul", "juli", "july"),
+    ("agu", "agt", "agus", "agustus", "aug", "august"), ("sep", "sept", "september"),
+    ("okt", "oktober", "oct", "october"), ("nov", "nopember", "november"), ("des", "desember", "dec", "december"),
+]) for w in names}
+
+
+def parse_month(text):
+    """G16-5b: '9', '09', 'Sep', 'September', '9/2026', 'Sep 2026' -> 9; '' -> None; anything else -> 0 (bad)."""
+    s = str(text if text is not None else "").strip().lower()
+    if not s:
+        return None
+    s = re.split(r"[\s/\-.]+", s)[0]
+    if s.isdigit():
+        n = int(s)
+        return n if 1 <= n <= 12 else 0
+    return _MONTH_WORDS.get(s, 0)
+
+
+def range_text(masa_from, masa_to, year=None):
+    """'Jan–Sep 2026', 'Sep 2026', or '' when there is no range."""
+    if not masa_from or not masa_to:
+        return ""
+    text = MONTHS[masa_from - 1] if masa_from == masa_to else f"{MONTHS[masa_from - 1]}–{MONTHS[masa_to - 1]}"
+    return f"{text} {year}" if year else text
+
+
+def _month_list(months):
+    names = [MONTHS_LONG[m - 1] for m in months]
+    return names[0] if len(names) == 1 else ", ".join(names[:-1]) + " dan " + names[-1]
+
+
+def opening_checks(masa_from, masa_to, months, seegaji_months, join_month=None):
+    """
+    G16-5b (D77): one saldo awal against the masa of the person's own SeeGaji payrolls in the same year.
+      masa_from/masa_to  the range (1-12) or None;  months  the count kept with it
+      seegaji_months     the masa months (1-12) of the payrolls this person has a slip in
+      join_month         the join month when they joined in that year, else None
+    -> [{"kind", "level", "text"}]: overlap (red: the yearly PPh 21 waits), gap / before_join / no_range (amber).
+    """
+    out, seegaji = [], sorted(set(seegaji_months or ()))
+    if not masa_from or not masa_to:
+        if months:
+            out.append({"kind": "no_range", "level": "amber",
+                        "text": "Rentang masa belum diisi (hanya jumlah bulan): tumpang tindih belum bisa dicek."})
+        return out
+    covered = range(masa_from, masa_to + 1)
+    both = [m for m in seegaji if m in covered]
+    if both:
+        out.append({"kind": "overlap", "level": "red",
+                    "text": f"Masa {_month_list(both)} ada di saldo awal dan di payroll SeeGaji. Perbaiki rentang "
+                            f"saldo awal; sampai itu PPh 21 setahun orang ini belum dihitung."})
+    if seegaji and masa_to < seegaji[0] - 1:
+        missing = list(range(masa_to + 1, seegaji[0]))
+        if join_month:
+            missing = [m for m in missing if m >= join_month]
+        if missing:
+            out.append({"kind": "gap", "level": "amber",
+                        "text": f"Masa {_month_list(missing)} tidak ada di saldo awal maupun di payroll SeeGaji."})
+    if join_month and masa_from < join_month:
+        out.append({"kind": "before_join", "level": "amber",
+                    "text": f"Saldo awal mulai {MONTHS_LONG[masa_from - 1]}, padahal masuk kerja "
+                            f"{MONTHS_LONG[join_month - 1]}."})
+    return out
+
+
 def _key(header):
     h = re.sub(r"\s+", " ", str(header or "").strip().lower().replace("_", " "))
     for key, names in _ALIASES.items():
@@ -81,6 +155,8 @@ def parse_opening_csv(text):
     The saldo-awal CSV (';' or ',' separated, as Excel saves it) -> rows:
       {"line", "employee_no", "name", "months", "bruto", "pph", "iuran", "errors": [..]}
     Columns by name (see _ALIASES); "no_karyawan" and "bulan" are required, the rest default to 0.
+    G16-5b: optional "masa_dari" / "masa_sampai" (1-12 or Jan..Des). With them "bulan" may be empty (it is the
+    range); when both are filled they must agree. Rows also carry "masa_from" / "masa_to" (None without a range).
     """
     text = text.lstrip("﻿")
     first = text.splitlines()[0] if text.strip() else ""
@@ -94,7 +170,8 @@ def parse_opening_csv(text):
         k = _key(h)
         if k and k not in cols:
             cols[k] = i
-    missing = [k for k in ("no_karyawan", "bulan") if k not in cols]
+    ranged = "masa_dari" in cols and "masa_sampai" in cols
+    missing = [k for k in ("no_karyawan",) + (() if ranged else ("bulan",)) if k not in cols]
     if missing:
         return [], [f"Kolom wajib tidak ada: {', '.join(missing)}. Pakai template dari halaman ini."]
     rows = []
@@ -106,10 +183,25 @@ def parse_opening_csv(text):
         no = get("no_karyawan")
         if not no:
             errors.append("no_karyawan kosong")
+        masa_from, masa_to = parse_month(get("masa_dari")), parse_month(get("masa_sampai"))
+        if masa_from == 0 or masa_to == 0:
+            errors.append("masa_dari / masa_sampai harus bulan 1 sampai 12 (atau Jan sampai Des)")
+            masa_from = masa_to = None
+        elif (masa_from is None) != (masa_to is None):
+            errors.append("isi masa_dari dan masa_sampai, atau kosongkan keduanya")
+            masa_from = masa_to = None
+        elif masa_from and masa_from > masa_to:
+            errors.append("masa_dari sesudah masa_sampai")
+            masa_from = masa_to = None
+        span = masa_to - masa_from + 1 if masa_from else None
         months_text = get("bulan")
         months = int(months_text) if months_text.isdigit() else None
+        if months is None and not months_text and span:
+            months = span
         if months is None or not 0 <= months <= 12:
             errors.append("bulan harus 0 sampai 12")
+        elif span and months != span:
+            errors.append(f"bulan ({months}) tidak sama dengan masa {range_text(masa_from, masa_to)} ({span} bulan)")
         amounts = {}
         for k, out in (("bruto", "bruto"), ("pph21", "pph"), ("iuran_jht_jp", "iuran")):
             v = parse_amount(get(k))
@@ -118,7 +210,7 @@ def parse_opening_csv(text):
                 v = ZERO
             amounts[out] = v
         rows.append({"line": n, "employee_no": no, "name": get("nama"), "months": months or 0, **amounts,
-                     "errors": errors})
+                     "masa_from": masa_from, "masa_to": masa_to, "errors": errors})
     return rows, []
 
 
@@ -267,6 +359,8 @@ class YearRow:
     allowance: Decimal = ZERO                # gross-up in the December payroll (tax paid by the company)
     notes: list = field(default_factory=list)
     incomplete: bool = False                 # G16-2.1: worked before SeeGaji this year but no saldo awal yet
+    problem: str = ""                        # G16-5b: why the year is not settled (an overlap), for the slip
+    seegaji_months: set = field(default_factory=set)
 
 
 def plan_masa_change(runs, cfg, new_mode, new_since):
@@ -311,6 +405,37 @@ def freeze_locked(organization, cfg):
         r.save(update_fields=["masa_year", "masa_month"])
 
 
+def person_months(runs, cfg, rule_list=None):
+    """G16-5b: {employee_id: {masa month, ...}} for the pay runs given (each run's own masa)."""
+    from .models import PayRunLine
+    month_of = {r.pk: run_masa(r, cfg, rule_list)[1] for r in runs}
+    out = {}
+    for emp_id, run_id in PayRunLine.objects.filter(run__in=[r.pk for r in runs]).values_list("employee_id", "run_id"):
+        out.setdefault(emp_id, set()).add(month_of[run_id])
+    return out
+
+
+def join_month(employee, year):
+    """The join month when the employee joined in `year`, else None."""
+    j = getattr(employee, "join_date", None)
+    return j.month if j and j.year == year else None
+
+
+def apply_opening_checks(row, year):
+    """G16-5b: the saldo-awal checks on a YearRow (needs row.opening and row.seegaji_months). Red blocks the year."""
+    o = row.opening
+    if o is None:
+        return []
+    found = opening_checks(o.masa_from, o.masa_to, o.months, row.seegaji_months, join_month(row.employee, year))
+    for c in found:
+        if c["level"] == "red":
+            row.incomplete, row.problem = True, c["text"]
+            row.notes.insert(0, "TUMPANG TINDIH: " + c["text"])
+        else:
+            row.notes.append(c["text"])
+    return found
+
+
 def year_runs(organization, year, cfg):
     """The pay runs whose masa falls in `year` and the one whose masa is December (G16-5a: by each run's rule)."""
     from .models import PayRun
@@ -338,11 +463,14 @@ def year_rows(organization, year):
         r.bruto += o.bruto
         r.iuran += o.iuran
         r.withheld += o.pph
+    rule_list = rules(cfg)
     for run in runs:
         on = run.pay_date or run.period_end
+        run_month = run_masa(run, cfg, rule_list)[1]
         for line in run.lines.select_related("employee"):
             e = line.employee
             r = rows.setdefault(e.pk, YearRow(e))
+            r.seegaji_months.add(run_month)                                          # G16-5b
             try:
                 plain = P.monthly_for_slip(line.result, e.ptkp_status, by_company=False,
                                            late_reduces=cfg.pph21_late_reduces_bruto,
@@ -377,6 +505,10 @@ def year_rows(organization, year):
         if r.months > 12:
             r.notes.append(f"{r.months} bulan: saldo awal tumpang tindih dengan payroll SeeGaji?")
         first = runs[0].period_start if runs else None                                 # G16-2.1
+        apply_opening_checks(r, year)                                                  # G16-5b
+        if r.incomplete:                                       # an overlap: shown, not calculated, not in the totals
+            out.append(r)
+            continue
         if r.opening is None:
             if first and e.join_date and e.join_date < first:
                 r.incomplete = True
