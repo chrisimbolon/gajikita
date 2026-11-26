@@ -314,7 +314,7 @@ def explain_day(t, cell, rows, rates, cfg, emp, price, note):
     if not rows.get("meal") and t["meal_rule"] == "late_out" and t["present"] and t["working"] and after \
             and t["status"] not in ("leave", "exempt"):
         lo = log.hhmm(t["last_out"])
-        why.append(f"Tidak dapat uang makan: pulang {lo or '-'} (aturan: pulang setelah {after}).")
+        why.append(f"Tidak dapat uang makan: pulang {lo or '-'} (aturan: pulang jam {after} atau lebih).")
 
     # HR's note from the rekap file (information only)
     if note:

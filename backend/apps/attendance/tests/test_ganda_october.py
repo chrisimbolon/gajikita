@@ -6,10 +6,11 @@ DKCB's rules from the 'Note' sheet:
   * late start after overtime past midnight (10:00 / 13:00 / day off)
   * late fine minutes = (late - 5) per day
   * overtime from 18:00, rounded in 15/45-minute blocks
-  * uang makan when home after 19:00, plus one more when past 00:00
+  * uang makan when home at 19:00 or later, plus one more at 00:00 or later (G12h.1)
 
-Anthony charged 301 late minutes and paid 25 meals. SeeGaji gives 25 meals and 265 minutes:
-the 36-minute difference is 22 and 24 Okt, when Ganda had worked past midnight and was
+Anthony charged 301 late minutes and paid 25 meals. SeeGaji gives 26 meals and 265 minutes. The extra meal is
+3 Okt, home at exactly 00:00: G12h.1 counts it, as Anthony's own book does for Prayuda the same night (his count
+is by hand; asked on 27 Nov). The 36-minute difference is 22 and 24 Okt, when Ganda had worked past midnight and was
 allowed in at 10:00 under DKCB's own rule, but was still charged from 08:00.
 """
 from datetime import date, datetime, time, timedelta
@@ -63,7 +64,7 @@ class GandaOctoberTests(SimpleTestCase):
     def test_meals(self):
         n = sum(meal_count(LATE_OUT, d, r.first_in, r.last_out, False, 0, time(19), WIB, midnight_extra=True)
                 for d, r in month().items())
-        self.assertEqual(n, 25)                                               # 20 evenings + 5 nights past 00:00
+        self.assertEqual(n, 26)                                               # 20 evenings + 6 nights from 00:00 (3 Okt)
 
     def test_overtime_per_day(self):
         for d, r in month().items():

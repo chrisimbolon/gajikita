@@ -4,6 +4,7 @@ G12h (8 Nov 2026) — found on Ganda's 13 Okt (no clock-out tap, Anthony paid 2 
   * not for someone who is not paid overtime;
   * Ubah jam approves the overtime its new times propose (it used to leave it empty: paid 0);
   * uang makan 'pulang malam' is AFTER 19:00 (DKCB: 'OT melebihi pukul 19.00'), so 19:00 earns none.
+    G12h.1 (26 Nov 2026): 19:00 itself counts (Anthony confirmed Prayuda's 20x); 18:59 earns none.
 """
 from datetime import date, datetime, time
 from decimal import Decimal
@@ -97,9 +98,9 @@ class DayPanelOvertimeTests(APITestCase):
         self.only_clock_in(self.driver)
         self.assertIsNone(self.fix(self.driver, "21:00").data["day"]["overtime_approved_minutes"])
 
-    def test_uang_makan_after_seven_not_at_seven(self):
+    def test_uang_makan_from_seven(self):
         self.only_clock_in(self.ganda)
+        self.fix(self.ganda, "18:59")
+        self.assertEqual(self.meals(self.ganda), 0)
         self.fix(self.ganda, "19:00")
-        self.assertEqual(self.meals(self.ganda), 0)                                   # Ganda, 13 Okt: as Anthony
-        self.fix(self.ganda, "19:01")
-        self.assertEqual(self.meals(self.ganda), 1)
+        self.assertEqual(self.meals(self.ganda), 1)                                   # G12h.1: 19:00 counts
