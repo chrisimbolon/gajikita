@@ -145,7 +145,6 @@ export default function Landing({ appHref }: { appHref: string | null }) {
 
         <div className="lp-wrap lp-hero-grid lp-hero" id="top">
           <div>
-            <div className="lp-badge lp-glass lp-glass-flat"><b>PILOT</b>Dibangun bersama HR DKCB, Tanjung Uban</div>
             <h1 className="lp-h1">Dari mesin fingerprint ke slip gaji. <span className="lp-gold">Tanpa rumus Excel.</span></h1>
             <p className="lp-hero-p">SeeGaji membaca file dari mesin absen, menghitung telat, lembur dan uang makan sesuai aturan perusahaan Anda, lalu menyiapkan slip dan file transfer bank. HR cukup memeriksa yang memang perlu diputuskan.</p>
             <div className="lp-row" style={{ marginTop: 36 }}>
