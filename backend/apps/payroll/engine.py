@@ -351,7 +351,7 @@ def calculate(terms, period, rules):
         slip.warnings += week_warnings([(d.day, d.minutes, d.rest_day) for d in days])
 
     earn("meal", "Uang makan", D(period.meal_days) * D(rules.meal_allowance), quantity=D(period.meal_days),
-         unit="hari", rate=D(rules.meal_allowance))
+         unit="kali", rate=D(rules.meal_allowance))           # G12h.2: meals, not days (a night past 00:00 is 2)
     earn("breakfast", "Uang sarapan", D(period.breakfast_days) * D(rules.breakfast_allowance),
          quantity=D(period.breakfast_days), unit="hari", rate=D(rules.breakfast_allowance))
     for x in tuple(period.piece_work) + tuple(terms.monthly_extras) + tuple(period.additions):
