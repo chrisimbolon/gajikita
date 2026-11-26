@@ -49,6 +49,7 @@ class Command(BaseCommand):
         for r in rows:
             e, a = r.employee, r.annual
             if a is None:
+                incomplete += 1 if r.incomplete else 0                              # G16-5b: an overlap
                 w(f"{e.full_name[:25]:<26}  " + " · ".join(r.notes))
                 continue
             notes = list(r.notes)
