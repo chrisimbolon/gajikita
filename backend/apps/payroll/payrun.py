@@ -209,8 +209,13 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
             nums["overtime"].append({"date": d.isoformat(), "minutes": ot, "rest_day": not working})
         rejected = r.status == Status.REJECTED
         no_taps = rejected or r.status == Status.EXEMPT          # G12i: taps decide nothing on an exempt day
+        meal_ot = bool(cfg.meal_needs_overtime and emp.overtime_eligible)                # G23-1
         meal = meals.meal_count(meal_rule, d, r.first_in, r.last_out, no_taps, ot,
-                                cfg.meal_late_after, tz, midnight_extra=cfg.meal_midnight_extra)
+                                cfg.meal_late_after, tz, midnight_extra=cfg.meal_midnight_extra, needs_overtime=meal_ot)
+        meal_wait = not meal and meals.waits_for_overtime(meal_rule, d, r.first_in, r.last_out, no_taps, ot,
+                                                          cfg.meal_late_after, tz, meal_ot)
+        if meal_wait:
+            nums["meal_wait_days"] = nums.get("meal_wait_days", 0) + 1
         nums["meal_days"] += meal
         got_breakfast = bool(breakfast and (ot or r.spl or not cfg.breakfast_needs_overtime)
                              and meals.earns_breakfast(d, r.first_in, no_taps, cfg.breakfast_before, tz))   # G13-4
@@ -235,7 +240,8 @@ def collect_numbers(emp, start, end, cfg, days, leaves, now, cells=None, ctx=Non
                 "leave_kind": leave[0] if leave else "", "leave_label": label,
                 "absent": absent, "unpaid_leave": bool(r.status == Status.LEAVE and leave and leave[0] == UNPAID),
                 "exempt": r.status == Status.EXEMPT, "meal": meal, "breakfast": got_breakfast, "overtime": ot,
-                "meal_rule": meal_rule,
+                "meal_rule": meal_rule, "meal_wait": meal_wait,                                 # G23-1
+                "overtime_open": bool(day is not None and not day.decision and r.overtime_proposed_minutes),
                 "present": present, "holiday": bool(r.holiday), "disrupted": bool(r.disrupted),       # G21-1
                 "worked_minutes": r.worked_minutes or 0, "spl": r.spl or "", "night_rule": r.night_rule or "",
             })
@@ -320,6 +326,9 @@ def calculate_line(line, cfg):
     if nums.get("overtime_open_days"):             # G17-7: late / one tap are facts; only overtime waits for HR
         slip.warnings.insert(0, f"Lembur {nums['overtime_open_days']} hari belum diputuskan HR: belum dibayar "
                                 f"(Perlu Tinjau → Lembur).")
+    if nums.get("meal_wait_days"):                                                   # G23-1: never silent
+        slip.notes.append(f"Uang makan pulang malam {nums['meal_wait_days']} hari tidak dibayar: lembur hari itu "
+                          f"tidak disetujui (Pengaturan: uang makan pulang malam hanya jika lembur disetujui).")
     if nums.get("disrupted_days"):                                                   # G17-2: never silent
         slip.warnings.append(f"{nums['disrupted_reason']} ({nums['disrupted_days']} hari): tap yang hilang dimaafkan "
                              f"(tanpa potongan ½ hari atau tidak hadir); terlambat yang tercatat tetap dihitung.")
