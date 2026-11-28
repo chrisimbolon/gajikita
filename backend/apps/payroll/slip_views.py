@@ -61,6 +61,8 @@ class SlipsView(APIView):
                 "gross": _money(line.gross), "deductions_total": _money(line.deductions), "net": _money(line.net),
                 "loan_balance": _money(line.loan_balance) if line.loan_balance is not None else None,
                 "leave_left": leave["left"] if leave["entitled"] else None,
+                "company_tax": _money(sum((Decimal(str(x.get("amount") or 0)) for x in result.get("employer", [])
+                                          if x.get("code") == "pph21_company"), Decimal("0"))),          # G23-2
             })
         org = run.organization
         return Response({
