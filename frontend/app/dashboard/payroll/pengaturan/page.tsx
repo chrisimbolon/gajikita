@@ -220,6 +220,17 @@ export default function PayrollSettingsPage() {
                  onChange={(e) => set("meal_midnight_extra", e.target.checked)} />
           Uang makan 1x lagi jika pulang jam 00:00 atau lebih
         </label>
+        <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 14 }}>
+          <input type="checkbox" checked={!!form.meal_needs_overtime} style={{ marginTop: 3 }}
+                 onChange={(e) => set("meal_needs_overtime", e.target.checked)} />
+          <span>
+            Uang makan pulang malam hanya jika lembur hari itu disetujui
+            <div style={{ fontSize: 12, color: "var(--steel)", marginTop: 3 }}>
+              Pulang jam di atas atau lebih DAN lembur hari itu disetujui HR (atau ada SPL). Karyawan yang tidak berhak
+              lembur (misalnya sopir) tetap dihitung dari jam pulang saja.
+            </div>
+          </span>
+        </label>
         {money("breakfast_allowance", "Uang sarapan", "0 = tidak ada")}
         <label>
           <div className="label">Sarapan jika masuk sebelum jam</div>

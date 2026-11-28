@@ -32,6 +32,7 @@ export interface PayrollSettings {
   single_tap_half_day?:         boolean;  // G17-1
   long_late_half_day_minutes?:  number | null;   // G13-4: null = off (DKCB 120)
   breakfast_needs_overtime?:    boolean;  // G13-4: breakfast only with an SPL (paid overtime that day)
+  meal_needs_overtime?:         boolean;  // G23-1: 'pulang malam' meal only with that day's overtime approved
   bpjs_base_includes_allowance: boolean;
   jkk_rate:                     string;
   minimum_wage:                 string;
