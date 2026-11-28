@@ -18,7 +18,7 @@ def rule_for(employee_rule, company_rule):
     return employee_rule or company_rule or NONE
 
 
-def earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz):
+def earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz, needs_overtime=False):
     """
     rule              one of NONE / OVERTIME_DAY / PRESENT_DAY / LATE_OUT
     day               the working date
@@ -34,6 +34,11 @@ def earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_a
     (the clock-in tap missing, G17-1) earns it too: Syaiful 26 Sep, out 21:50, and Amsar 14 Okt, out 23:26, were
     paid in DKCB's book and not in SeeGaji. The missing clock-in is still the ½-day rule, as before. A per-present-
     day meal keeps needing the clock-in (unchanged).
+
+    G23-1 (28 Nov 2026, Anthony at the 27 Nov visit, A3: "lembur harus disetujui"): with needs_overtime, 'pulang
+    malam' also needs overtime APPROVED that day (HR's decision or an SPL). The clock-out alone is not enough.
+    The caller passes it only for people paid overtime: a TM driver (no lembur, paid per kubikasi) still earns the
+    meal from the clock-out (A5: Edi 14 Okt, 2x).
     """
     if rule == OVERTIME_DAY:
         return bool(overtime_minutes)
@@ -42,6 +47,8 @@ def earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_a
     if rule == PRESENT_DAY:
         return first_in is not None
     if rule == LATE_OUT:
+        if needs_overtime and not overtime_minutes:
+            return False
         return last_out is not None and _minute(last_out, tz) >= datetime.combine(day, late_after, tzinfo=tz)
     return False
 
@@ -51,19 +58,26 @@ def _minute(when, tz):
     return when.astimezone(tz).replace(second=0, microsecond=0)
 
 
-def meal_count(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz, midnight_extra=False):
+def meal_count(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz, midnight_extra=False,
+               needs_overtime=False):
     """
     G12e: how many meals that day (0, 1 or 2). With midnight_extra, a clock-out at 00:00 or later earns a second
     meal (G12h.1: exactly 00:00 counts, Prayuda 3 Okt in Anthony's book; it was 00:01 or later). Only for the evening rules
     (per overtime day / per day home late): a per-present-day meal is one meal a day.
     """
-    if not earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz):
+    if not earns_meal(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz, needs_overtime):
         return 0
     if midnight_extra and rule in (OVERTIME_DAY, LATE_OUT) and last_out is not None:
         midnight = datetime.combine(day + timedelta(days=1), time(0), tzinfo=tz)
         if _minute(last_out, tz) >= midnight:
             return 2
     return 1
+
+
+def waits_for_overtime(rule, day, first_in, last_out, rejected, overtime_minutes, late_after, tz, needs_overtime):
+    """G23-1: True when the clock-out earns 'pulang malam' but the day's overtime is not approved (so no meal yet)."""
+    return bool(needs_overtime and rule == LATE_OUT and not overtime_minutes
+                and earns_meal(rule, day, first_in, last_out, rejected, 0, late_after, tz, needs_overtime=False))
 
 
 def earns_breakfast(day, first_in, rejected, before, tz):
