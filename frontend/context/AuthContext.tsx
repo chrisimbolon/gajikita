@@ -18,6 +18,7 @@ interface AuthContextValue {
   // organization.onboarding_completed available the moment loading
   // finishes, not after a second, page-specific fetch.
   organization: Organization | null;
+  orgRole:   string | null;                              // G22-1: owner / admin / hr in the active company
   loading:   boolean;
   login:     (email: string, password: string) => Promise<void>;
   register:  (payload: RegisterPayload) => Promise<void>;
@@ -27,6 +28,7 @@ interface AuthContextValue {
   // organization.onboarding_completed and dismiss itself without a
   // full page reload.
   refreshOrganization: () => Promise<void>;
+  updateUser: (user: User) => void;                      // G22-1: after "Ubah password"
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -34,6 +36,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser]               = useState<User | null>(null);
   const [organization, setOrganization] = useState<Organization | null>(null);
+  const [orgRole, setOrgRole]         = useState<string | null>(null);
   const [loading, setLoading]         = useState(true);
   const router = useRouter();
 
@@ -48,6 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .then(([me, orgResult]) => {
         setUser(me);
         setOrganization(orgResult?.organization ?? null);
+        setOrgRole(orgResult?.role ?? null);
       })
       .catch(() => tokenStorage.clear())
       .finally(() => setLoading(false));
@@ -58,7 +62,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const [me, orgResult] = await Promise.all([authApi.me(), organizationsApi.mine()]);
     setUser(me);
     setOrganization(orgResult?.organization ?? null);
-    router.push("/dashboard");
+    setOrgRole(orgResult?.role ?? null);
+    router.push(me.must_change_password ? "/dashboard/akun" : "/dashboard");
   };
 
   const register = async (payload: RegisterPayload) => {
@@ -71,6 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // organization: null defaulting to "skip the gate" by accident.
     const orgResult = await organizationsApi.mine();
     setOrganization(orgResult?.organization ?? null);
+    setOrgRole(orgResult?.role ?? null);
     router.push("/dashboard");
   };
 
@@ -78,16 +84,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     authApi.logout();
     setUser(null);
     setOrganization(null);
+    setOrgRole(null);
     router.push("/login");
   };
 
   const refreshOrganization = async () => {
     const orgResult = await organizationsApi.mine();
     setOrganization(orgResult?.organization ?? null);
+    setOrgRole(orgResult?.role ?? null);
   };
 
+  const updateUser = (next: User) => setUser(next);
+
   return (
-    <AuthContext.Provider value={{ user, organization, loading, login, register, logout, refreshOrganization }}>
+    <AuthContext.Provider value={{ user, organization, orgRole, loading, login, register, logout, refreshOrganization, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

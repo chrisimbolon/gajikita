@@ -3,7 +3,8 @@
 // review count in Marigold (theme "Arah A", 28 Oct 2026).
 import Wordmark from "@/components/Wordmark";
 import { useAuth } from "@/context/AuthContext";
-import { CalendarCheck, CalendarOff, ClipboardCheck, Clock, LayoutDashboard, LogOut, MapPin, Timer, Users, Wallet, Zap } from "lucide-react";
+import { CalendarCheck, CalendarOff, ClipboardCheck, Clock, KeyRound, LayoutDashboard, LogOut, MapPin, Timer, UserCog, Users, Wallet,
+         Zap } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -19,10 +20,13 @@ const NAV = [
   { href: "/dashboard/lokasi", icon: MapPin, label: "Lokasi" },
   { href: "/dashboard/shift", icon: Clock, label: "Shift" },
 ];
+// G22-1: only an owner or admin manages the company's office users
+const MANAGER_NAV = [{ href: "/dashboard/pengguna", icon: UserCog, label: "Pengguna" }];
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { user, organization, logout } = useAuth();
+  const { user, organization, orgRole, logout } = useAuth();
+  const nav = orgRole === "owner" || orgRole === "admin" ? [...NAV, ...MANAGER_NAV] : NAV;
 
   return (
     <aside style={{ width: 236, minHeight: "100vh", background: "var(--midnight)", color: "#FFFFFF", display: "flex",
@@ -37,7 +41,7 @@ export default function Sidebar() {
         </div>
       )}
       <nav aria-label="Menu utama" style={{ flex: 1, display: "flex", flexDirection: "column", gap: 4 }}>
-        {NAV.map((item) => {
+        {nav.map((item) => {
           const active = pathname === item.href;
           const Icon = item.icon;
           return (
@@ -54,7 +58,11 @@ export default function Sidebar() {
       </nav>
       <div style={{ borderTop: "1px solid rgba(255,255,255,0.12)", paddingTop: 16, marginTop: 16 }}>
         <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 2, padding: "0 4px" }}>{user?.full_name}</div>
-        <div style={{ fontSize: 12, color: "var(--on-dark-muted)", marginBottom: 12, padding: "0 4px" }}>{user?.email}</div>
+        <div style={{ fontSize: 12, color: "var(--on-dark-muted)", marginBottom: 8, padding: "0 4px" }}>{user?.email}</div>
+        <Link href="/dashboard/akun" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 600,
+                                              color: "#C9DAE4", textDecoration: "none", padding: "0 4px", marginBottom: 12 }}>
+          <KeyRound size={13} /> Akun saya · ubah password
+        </Link>
         <button onClick={logout} style={{ width: "100%", display: "flex", justifyContent: "center", alignItems: "center", gap: 7,
                                           fontSize: 13, fontWeight: 700, color: "#FFFFFF", background: "rgba(255,255,255,0.10)",
                                           border: "1px solid rgba(255,255,255,0.18)", borderRadius: 10, padding: "9px 0" }}>
