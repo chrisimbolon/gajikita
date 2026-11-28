@@ -10,6 +10,7 @@ export interface User {
   full_name: string;
   phone:     string;
   role:      "owner" | "super_admin" | "employee";
+  must_change_password?: boolean;                       // G22-1: a temporary password, to change first
 }
 
 export interface RegisterPayload {
@@ -34,6 +35,13 @@ export const authApi = {
 
   async me(): Promise<User> {
     const { data } = await api.get("/api/auth/me/");
+    return data.user;
+  },
+
+  // G22-1: every other device is signed out; this one gets fresh tokens
+  async changePassword(oldPassword: string, newPassword: string): Promise<User> {
+    const { data } = await api.post("/api/auth/password/", { old_password: oldPassword, new_password: newPassword });
+    tokenStorage.set(data.tokens.access, data.tokens.refresh);
     return data.user;
   },
 
