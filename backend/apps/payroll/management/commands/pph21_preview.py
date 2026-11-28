@@ -54,13 +54,13 @@ class Command(BaseCommand):
         yes = lambda b: "ya" if b else "tidak"
         w(f"{run.name} · PPh 21 bulanan (TER) · hanya pratinjau, tidak ada yang disimpan")
         w(f"Aturan: potong telat: {yes(late)} · JHT 2% ditanggung perusahaan masuk bruto: {yes(jht)} · "
-          f"JP 1% ditanggung perusahaan masuk bruto: ya · PPh ditanggung perusahaan: gross-up\n")
+          f"JP 1% ditanggung perusahaan masuk bruto: ya · PPh ditanggung perusahaan: per karyawan\n")
         w(f"{'Nama':<28}{'PTKP':>6}{'TER':>4}{'Bruto':>14}{'Tarif':>7}{'PPh 21':>11}  Catatan")
         total, flags = Decimal("0"), {"default": 0, "npwp": 0}
         for line in run.lines.select_related("employee").order_by("employee__full_name"):
             e = line.employee
             try:
-                m = P.monthly_for_slip(line.result, e.ptkp_status, by_company=e.pph21_by_company, late_reduces=late,
+                m = P.monthly_for_slip(line.result, e.ptkp_status, by_company=P.tax_mode(e) == P.GROSS_UP, late_reduces=late,
                                        company_jht_in_bruto=jht, company_jp_in_bruto=cfg.pph21_company_jp_in_bruto,
                                        on=pay_date)
                 rate, tax = m.rate, m.tax
@@ -77,6 +77,8 @@ class Command(BaseCommand):
                 flags["npwp"] += 1
             if m.gross_up:
                 notes.append("ditanggung perusahaan, gross-up")
+            elif P.tax_mode(e) == P.BORNE:                                              # G23-2
+                notes.append("ditanggung perusahaan, tanpa gross-up")
             if len(m.parts) > 1:
                 notes.append(" + ".join(f"{label} {rp(a)}" for label, a in m.parts[1:]))
             total += tax
