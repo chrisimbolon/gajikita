@@ -26,6 +26,9 @@ class IsCompanyHR(BasePermission):
         user = request.user
         if not (user and user.is_authenticated):
             return False
+        if getattr(user, "must_change_password", False):                     # G22-1: temporary password first
+            self.message = "Ganti password sementara dulu (Akun saya → Ubah password)."
+            return False
         membership = active_membership(user)
         if membership is None or membership.role not in HR_ROLES:
             return False
