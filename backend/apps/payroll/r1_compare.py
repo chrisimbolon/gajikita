@@ -188,6 +188,8 @@ def seegaji_amounts(result, net=None):
         for line in (result or {}).get("employer", []):
             if line.get("code") == "jht_employee_company":
                 amounts["jht"] = amounts.get("jht", ZERO) + to_dec(line.get("amount"))
+            if line.get("code") == "pph21_company":                       # G23-2: PPh the company paid, no gross-up
+                amounts["pph21"] = amounts.get("pph21", ZERO) + to_dec(line.get("amount"))
     if net is None:
         earned = sum((v for k, v in amounts.items() if k not in DEDUCTIONS), ZERO)
         net = earned - sum((v for k, v in amounts.items() if k in DEDUCTIONS), ZERO)
