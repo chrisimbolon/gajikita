@@ -10,6 +10,8 @@ G16-3 (22 Nov 2026) — PPh 21 on the slip, behind Pengaturan payroll -> PPh 21 
   or last month   withheld -> "PPh 21 (hitung setahun)", or "Pengembalian kelebihan PPh 21" when too much was taken.
   of a leaver     If the saldo awal is missing for someone who worked before SeeGaji, TER is used and the slip says why.
   Tax paid by the company: "Tunjangan PPh 21" (earning) = "PPh 21" (deduction): take-home pay is unchanged.
+  G23-2: or, per employee, WITHOUT gross-up: the TER tax is an employer line "PPh 21 ditanggung perusahaan"
+  (code pph21_company), not an earning and not a deduction; bruto and take-home pay stay as they are.
   A manual PPh item on the slip wins: SeeGaji adds nothing and says so (no double tax).
 """
 from decimal import Decimal
@@ -44,10 +46,15 @@ def _retotal(slip):
     slip.net = slip.gross - slip.total_deductions
 
 
-def _tax_lines(slip, by_company, tax, label):
+def _tax_lines(slip, mode, tax, label):
     if tax <= 0:
         return
-    if by_company:
+    if mode == P.BORNE:                                                               # G23-2
+        slip.employer.append(SlipLine(Y.COMPANY_PAID, f"{label} ditanggung perusahaan", tax))
+        slip.notes.append(f"{label} Rp {_rp(tax)} ditanggung perusahaan (tanpa gross-up): tidak dipotong dari gaji "
+                          f"dan tidak menambah bruto.")
+        return
+    if mode == P.GROSS_UP:
         slip.earnings.append(SlipLine(ALLOWANCE, "Tunjangan PPh 21", tax))
     slip.deductions.append(SlipLine(DEDUCTION, label, tax))
 
@@ -67,7 +74,7 @@ def employee_year(employee, year, cfg, exclude_run):
         line = run.lines.filter(employee=employee).first()
         if line is None or not line.result:
             continue
-        m = P.monthly_for_slip(line.result, employee.ptkp_status, by_company=employee.pph21_by_company,
+        m = P.monthly_for_slip(line.result, employee.ptkp_status, by_company=P.tax_mode(employee) == P.GROSS_UP,
                                late_reduces=cfg.pph21_late_reduces_bruto,
                                company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
                                company_jp_in_bruto=cfg.pph21_company_jp_in_bruto, on=run.pay_date or run.period_end)
@@ -87,15 +94,19 @@ def employee_year(employee, year, cfg, exclude_run):
 
 
 def _settle(slip, employee, res, agg, kw, year):
-    ptkp, by_company = employee.ptkp_status, employee.pph21_by_company
+    ptkp, mode = employee.ptkp_status, P.tax_mode(employee)
+    by_company = mode != P.WITHHELD
     plain = P.monthly_for_slip(res, ptkp, by_company=False, **kw)
     months = min(agg.months + 1, 12)
     bruto = agg.bruto + plain.bruto
     iuran = agg.iuran + Y.iuran_from_slip(res, company_jht_in_bruto=kw["company_jht_in_bruto"],
                                           company_jp_in_bruto=kw["company_jp_in_bruto"])
-    if by_company:
+    if mode == P.GROSS_UP:
         a, t = Y.annual_gross_up(bruto, months, iuran, ptkp, agg.withheld, kw["on"])
-        _tax_lines(slip, True, t, "PPh 21 (hitung setahun)")
+        _tax_lines(slip, mode, t, "PPh 21 (hitung setahun)")
+    elif mode == P.BORNE:                                                             # G23-2: no refund to the employee
+        a = P.annual_pph(bruto, months, iuran, ptkp, agg.withheld, kw["on"])
+        _tax_lines(slip, mode, a.due, "PPh 21 (hitung setahun)")
     else:
         a = P.annual_pph(bruto, months, iuran, ptkp, agg.withheld, kw["on"])
         if a.due > 0:
@@ -131,8 +142,9 @@ def add_pph21(slip, line, cfg):
                 return
             why = agg.problem or "saldo awal PPh 21 belum diisi (Payroll → Pengaturan → Saldo awal PPh 21)."
             slip.warnings.append(f"PPh 21 setahun {year} belum dihitung: {why} Sementara dipotong TER bulanan.")
-        m = P.monthly_for_slip(res, e.ptkp_status, by_company=e.pph21_by_company, **kw)
-        _tax_lines(slip, e.pph21_by_company, m.tax, "PPh 21")
+        mode = P.tax_mode(e)
+        m = P.monthly_for_slip(res, e.ptkp_status, by_company=mode == P.GROSS_UP, **kw)
+        _tax_lines(slip, mode, m.tax, "PPh 21")
     except ValueError as err:
         slip.warnings.append(f"PPh 21 tidak dihitung: {err}")
     _retotal(slip)

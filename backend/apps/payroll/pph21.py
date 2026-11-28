@@ -126,6 +126,21 @@ def gross_up(bruto, ptkp, on=None, max_rounds=50):
     return ter_rate(cat, D(bruto) + tax, on), tax
 
 
+WITHHELD, GROSS_UP, BORNE = "withheld", "gross_up", "borne"
+
+
+def tax_mode(employee):
+    """
+    G23-2: who pays the employee's PPh 21, and how.
+      WITHHELD  taken from the pay (the default)
+      GROSS_UP  paid by the company as "Tunjangan PPh 21" = "PPh 21": the allowance is income, so it is grossed up
+      BORNE     paid by the company, nothing added to bruto ("ditanggung perusahaan tanpa gross-up", DKCB's book)
+    """
+    if not getattr(employee, "pph21_by_company", False):
+        return WITHHELD
+    return GROSS_UP if getattr(employee, "pph21_gross_up", True) else BORNE
+
+
 @dataclass
 class Bruto:
     total: Decimal

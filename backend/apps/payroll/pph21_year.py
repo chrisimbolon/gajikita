@@ -304,6 +304,9 @@ def masa_checks(runs, cfg, rule_list=None):
     return out
 
 
+COMPANY_PAID = "pph21_company"                                          # G23-2: employer line, no gross-up
+
+
 def withheld_from_slip(result):
     """PPh 21 actually taken on a slip (a 'pph21' line or an item called PPh), or None when there is none."""
     found = None
@@ -313,6 +316,9 @@ def withheld_from_slip(result):
             continue
         if d.get("code") in ("pph21", "pph_21") or "pph" in text or "pajak" in text:
             found = (found or ZERO) + Decimal(str(d.get("amount") or 0))
+    for e in (result or {}).get("employer", []):                          # G23-2: paid by the company (BORNE)
+        if e.get("code") == COMPANY_PAID:
+            found = (found or ZERO) + Decimal(str(e.get("amount") or 0))
     return found
 
 
@@ -482,7 +488,7 @@ def year_rows(organization, year):
                                            late_reduces=cfg.pph21_late_reduces_bruto,
                                            company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
                                            company_jp_in_bruto=cfg.pph21_company_jp_in_bruto, on=on)
-                m = P.monthly_for_slip(line.result, e.ptkp_status, by_company=e.pph21_by_company,
+                m = P.monthly_for_slip(line.result, e.ptkp_status, by_company=P.tax_mode(e) == P.GROSS_UP,
                                        late_reduces=cfg.pph21_late_reduces_bruto,
                                        company_jht_in_bruto=cfg.pph21_company_jht_in_bruto,
                                        company_jp_in_bruto=cfg.pph21_company_jp_in_bruto, on=on)
@@ -522,12 +528,15 @@ def year_rows(organization, year):
             else:
                 r.notes.append("saldo awal tidak perlu (masuk di bulan SeeGaji)")
         try:
-            if e.pph21_by_company and r.in_december:
+            mode = P.tax_mode(e)
+            if mode == P.GROSS_UP and r.in_december:
                 r.annual, r.allowance = annual_gross_up(r.bruto, min(r.months, 12) or 1, r.iuran, e.ptkp_status,
                                                         r.withheld)
                 r.notes.append("ditanggung perusahaan, gross-up di Desember")
             else:
                 r.annual = P.annual_pph(r.bruto, min(r.months, 12) or 1, r.iuran, e.ptkp_status, r.withheld)
+                if mode == P.BORNE:                                                   # G23-2
+                    r.notes.append("ditanggung perusahaan tanpa gross-up")
         except ValueError as err:
             r.notes.append(str(err))
             continue
