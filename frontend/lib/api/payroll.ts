@@ -175,7 +175,8 @@ export interface SlipBook {
   signer:  string;
   slips:   { line_id: string; employee: { employee_no: string; full_name: string; position: string };
              earnings: SlipLine[]; deductions: SlipLine[]; gross: string; deductions_total: string; net: string;
-             loan_balance: string | null; leave_left: number | null }[];
+             loan_balance: string | null; leave_left: number | null;
+             company_tax?: string }[];                                   // G23-2: PPh 21 paid by the company
 }
 
 export interface TransferList {
