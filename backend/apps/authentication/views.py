@@ -10,6 +10,7 @@ from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .models import CustomUser
+from .passwords import password_problems, set_password
 from .serializers import RegisterSerializer, UserSerializer
 
 
@@ -57,9 +58,37 @@ class RegisterView(APIView):
         }, status=status.HTTP_201_CREATED)
 
 
+class ChangePasswordView(APIView):
+    """
+    POST /api/auth/password/ {old_password, new_password} — G22-1 "Akun saya → Ubah password".
+    Every other session of this user is signed out; this one gets fresh tokens. Clears "wajib ganti password".
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        old, new = request.data.get("old_password") or "", request.data.get("new_password") or ""
+        if not user.check_password(old):
+            return Response({"success": False, "errors": {"old_password": ["Password lama salah."]}},
+                            status=status.HTTP_400_BAD_REQUEST)
+        problems = password_problems(user, new, old)
+        if problems:
+            return Response({"success": False, "errors": {"new_password": problems}}, status=status.HTTP_400_BAD_REQUEST)
+        set_password(user, new, temporary=False)
+        membership = user.memberships.filter(is_active=True).select_related("organization").order_by("id").first()
+        if membership:
+            from apps.core.audit import record_audit
+            record_audit(organization=membership.organization, actor=user, action="user.password_change", target=user,
+                         summary=f"{user.full_name} mengganti password sendiri")
+        refresh = RefreshToken.for_user(user)
+        return Response({"success": True, "user": UserSerializer(user).data,
+                         "tokens": {"access": str(refresh.access_token), "refresh": str(refresh)}})
+
+
 class MeView(APIView):
     """GET /api/auth/me/"""
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
         return Response({"success": True, "user": UserSerializer(request.user).data})
+
