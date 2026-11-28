@@ -76,6 +76,11 @@ class Employee(TenantScopedModel):
     # G13-3: what the company pays for this person instead of taking it from the pay (DKCB: Anthony)
     jht_by_company    = models.BooleanField(default=False, verbose_name="JHT 2% ditanggung perusahaan")
     pph21_by_company  = models.BooleanField(default=False, verbose_name="PPh 21 ditanggung perusahaan")
+    # G23-2 (Anthony, 27 Nov 2026, A6): how the company pays it. True = tunjangan PPh 21 (gross-up, as before);
+    # False = the company pays the TER tax and nothing is added to bruto (DKCB's book: 1,5% x (gaji + JKK + JKM)).
+    pph21_gross_up    = models.BooleanField(default=True, verbose_name="PPh 21 ditanggung perusahaan: gross-up",
+                                            help_text="Ya = tunjangan PPh 21 (gross-up). Tidak = dibayar perusahaan "
+                                                      "tanpa ditambahkan ke bruto.")
     # G16-1: the wage reported to BPJS Ketenagakerjaan (empty = gaji pokok + tunjangan tetap) and Jaminan Pensiun
     bpjs_wage         = models.DecimalField(max_digits=14, decimal_places=2, null=True, blank=True,
                                             verbose_name="Upah dilaporkan ke BPJS",
