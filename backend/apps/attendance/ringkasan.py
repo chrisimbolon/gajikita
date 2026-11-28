@@ -314,7 +314,15 @@ def explain_day(t, cell, rows, rates, cfg, emp, price, note):
         text = r["label"][0].lower() + r["label"][1:] if lead else r["label"]
         why.append(f"{lead}{text}." + rp)
         add(label, Decimal(r["amount"]), "meal")
-    if not rows.get("meal") and t["meal_rule"] == "late_out" and t["present"] and t["working"] and after \
+    if t.get("meal_wait"):                                                           # G23-1
+        lo = log.hhmm(t["last_out"])
+        if t.get("overtime_open"):
+            chip("meal_wait", "Makan menunggu lembur", "amber")
+            why.append(f"Uang makan menunggu lembur disetujui: pulang {lo}, tetapi lembur hari itu belum diputuskan HR.")
+        else:
+            why.append(f"Tidak dapat uang makan: pulang {lo}, tetapi tidak ada lembur yang disetujui hari itu "
+                       f"(aturan: uang makan pulang malam hanya jika lembur disetujui).")
+    elif not rows.get("meal") and t["meal_rule"] == "late_out" and t["present"] and t["working"] and after \
             and t["status"] not in ("leave", "exempt"):
         lo = log.hhmm(t["last_out"])
         why.append(f"Tidak dapat uang makan: pulang {lo or '-'} (aturan: pulang jam {after} atau lebih).")
