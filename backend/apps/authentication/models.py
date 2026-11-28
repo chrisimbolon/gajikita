@@ -48,6 +48,9 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     is_active  = models.BooleanField(default=True)
     is_staff   = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
+    # G22-1: a password given by someone else (a new HR user, a reset) must be replaced at first login;
+    # until then the office screens refuse (IsCompanyHR) and the app sends them to "Akun saya".
+    must_change_password = models.BooleanField(default=False, verbose_name="Wajib ganti password")
 
     objects = CustomUserManager()
 
