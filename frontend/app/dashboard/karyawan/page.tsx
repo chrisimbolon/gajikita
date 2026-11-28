@@ -37,7 +37,7 @@ function npwpText(value: string): string {
 const blank = (): Form => ({
   employee_no: "", full_name: "", position: "", fingerprint_id: "", probation_end_date: "", nik: "", npwp: "", ptkp_status: "TK/0", gender: "", ptkp_checked: false, join_date: todayISO(), end_date: "",
   employment_type: "pkwtt", pay_type: "monthly", base_rate: "0", fixed_allowance: "0", overtime_eligible: true, bpjs_tk_enrolled: true, meal_rule: "",
-  jht_by_company: false, pph21_by_company: false, attendance_bonus: "0", bpjs_wage: null, jp_enrolled: false,                       // G13-3
+  jht_by_company: false, pph21_by_company: false, pph21_gross_up: true, attendance_bonus: "0", bpjs_wage: null, jp_enrolled: false,                       // G13-3
   bank_name: "", bank_account_no: "",
   bank_account_name: "", bpjs_kesehatan_no: "", bpjs_tk_no: "", phone: "", sites: [], default_site: null,
   default_shift: null, mandor: null, status: "active",
@@ -49,7 +49,7 @@ const fromEmployee = (e: Employee): Form => ({
   join_date: e.join_date, end_date: e.end_date ?? "", employment_type: e.employment_type, pay_type: e.pay_type,
   base_rate: e.base_rate, fixed_allowance: e.fixed_allowance, overtime_eligible: e.overtime_eligible,
   bpjs_tk_enrolled: e.bpjs_tk_enrolled, meal_rule: e.meal_rule ?? "",
-  jht_by_company: !!e.jht_by_company, pph21_by_company: !!e.pph21_by_company, attendance_bonus: e.attendance_bonus ?? "0",
+  jht_by_company: !!e.jht_by_company, pph21_by_company: !!e.pph21_by_company, pph21_gross_up: e.pph21_gross_up ?? true, attendance_bonus: e.attendance_bonus ?? "0",
   bpjs_wage: e.bpjs_wage ?? null, jp_enrolled: !!e.jp_enrolled,                                   // G16-1
   bank_name: e.bank_name, bank_account_no: e.bank_account_no,
   bank_account_name: e.bank_account_name, bpjs_kesehatan_no: e.bpjs_kesehatan_no, bpjs_tk_no: e.bpjs_tk_no,
@@ -407,6 +407,21 @@ function EmployeePanel({ employee, employees, sites, shifts, machines, onClose, 
         <input type="checkbox" checked={!!form.pph21_by_company} onChange={(e) => set("pph21_by_company", e.target.checked)} />
         PPh 21 ditanggung perusahaan <span style={{ color: "var(--steel)", fontSize: 12.5 }}>(dipakai saat PPh 21 dihitung)</span>
       </label>
+      {form.pph21_by_company && (                                                                   /* G23-2 */
+        <div style={{ marginLeft: 26, marginBottom: 12 }}>
+          <div className="label">Cara perusahaan menanggung PPh 21</div>
+          <select className="input" style={{ width: "100%" }} value={form.pph21_gross_up === false ? "borne" : "gross_up"}
+                  onChange={(e) => set("pph21_gross_up", e.target.value !== "borne")}>
+            <option value="gross_up">Tunjangan PPh 21 (gross-up)</option>
+            <option value="borne">Dibayar perusahaan, tanpa gross-up</option>
+          </select>
+          <div style={{ fontSize: 12.5, color: "var(--steel)", marginTop: 4 }}>
+            {form.pph21_gross_up === false
+              ? "PPh 21 dihitung dari bruto apa adanya dan dibayar perusahaan. Tidak ada tunjangan PPh di slip; bruto dan gaji diterima tidak berubah."
+              : "Tunjangan PPh 21 ditambahkan ke bruto dan dipotong lagi sebagai PPh 21 (gross-up). Gaji diterima tidak berubah."}
+          </div>
+        </div>
+      )}
       {money("attendance_bonus", "Tunjangan kehadiran sebulan (0 = tidak ada)")}
       <div style={{ fontSize: 12.5, color: "var(--steel)", margin: "-6px 0 12px" }}>
         Dibayar hanya kalau sebulan penuh tidak terlambat / pulang cepat, tidak sakit, dan tidak ada hari tanpa upah.

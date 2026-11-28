@@ -340,7 +340,7 @@ export default function PayRunPage() {
 
   const cards: [string, string][] = [
     ["Karyawan", String(run.people)], ["Total bruto", rupiah(run.gross)], ["Total potongan", rupiah(run.deductions)],
-    ["Total ditransfer", rupiah(run.net)], ["BPJS ditanggung perusahaan", rupiah(run.employer_cost)],
+    ["Total ditransfer", rupiah(run.net)], ["Ditanggung perusahaan (BPJS, PPh 21)", rupiah(run.employer_cost)],
   ];
 
   return (

@@ -144,6 +144,11 @@ export default function SlipPrintPage() {
             <div className="sum"><span>Total Pengurangan</span><span>({rp(s.deductions_total)})</span></div>
 
             <div className="net"><span>TOTAL DITERIMA KARYAWAN</span><span className="box">{rp(s.net)}</span></div>
+            {Number(s.company_tax ?? 0) > 0 && (                                                    /* G23-2 */
+              <div className="row" style={{ marginTop: 4 }}>
+                <span className="l">PPh 21 ditanggung perusahaan (tidak dipotong)</span><span className="a">{rp(s.company_tax!)}</span>
+              </div>
+            )}
 
             <div style={{ marginTop: 12 }}>
               <div className="row"><span className="l red">SISA PINJAMAN</span><span className="a red">{s.loan_balance ? rp(s.loan_balance) : "-"}</span></div>
