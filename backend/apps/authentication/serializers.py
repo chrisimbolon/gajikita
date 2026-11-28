@@ -9,8 +9,8 @@ from .models import CustomUser
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model  = CustomUser
-        fields = ["id", "email", "full_name", "phone", "role"]
-        read_only_fields = ["id", "role"]
+        fields = ["id", "email", "full_name", "phone", "role", "must_change_password"]
+        read_only_fields = ["id", "role", "must_change_password"]
 
 
 class RegisterSerializer(serializers.Serializer):
